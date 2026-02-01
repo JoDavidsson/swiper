@@ -45,20 +45,17 @@ Chrome opens the app. It talks to the emulator by default (`http://localhost:500
 
 | # | What to try | What to check |
 |---|-------------|----------------|
-| 1 | **Splash** | Splash screen with “Get started” and “Skip to swipe”. |
-| 2 | **Get started** | Tap “Get started” → onboarding (3 steps). |
-| 3 | **Onboarding** | Step 1: pick styles. Step 2: budget slider. Step 3: eco/new/size toggles. Tap “Building your deck…” → deck. |
-| 4 | **Skip to swipe** | From splash, tap “Skip to swipe” → deck (no onboarding). |
-| 5 | **Deck** | Cards appear (sample sofas). Swipe left (X) and right (heart). Deck updates. |
-| 6 | **Filters** | Tap filter (tune) icon → sheet. Choose Size (e.g. Small), Color (e.g. Gray), Condition (e.g. New). Tap “Apply” → deck refreshes. Tap filter again → “Clear all” → deck refreshes. |
-| 7 | **Detail** | Tap a card → detail sheet (images, title, price, “View on site”). Close sheet (drag or tap outside). |
-| 8 | **Likes** | Swipe right on 1–2 items. Tap heart icon in app bar → Likes list. Tap an item → detail sheet. |
-| 9 | **Compare** | In Likes, long-press to select 2–4 items. Tap “Compare” → compare screen with table. |
-| 10 | **Share shortlist** | In Likes, select items, tap “Share” (or similar) → get link. Open link in new tab → `/s/:token` shows shared shortlist. |
-| 11 | **Profile** | Tap person icon → Profile. “Language” (coming soon, disabled). “Data & Privacy” → Data & Privacy screen. “Edit preferences” → onboarding. |
-| 12 | **Data & Privacy** | “Opt out of analytics” switch: turn ON → then use deck/detail/filters; events for those are not sent. Turn OFF to send again. |
-| 13 | **View on site** | From detail, tap “View on site” → redirect to `/go/:itemId` then outbound URL (or placeholder). |
-| 14 | **Empty deck** | Swipe through all cards (or apply strict filters with no match) → “No more items” with hint to adjust filters. |
+| 1 | **Deck launch** | App opens directly to the deck. One-time swipe hint overlay appears and dismisses on first swipe/tap. |
+| 2 | **Deck** | Cards appear (sample sofas). Swipe left (X) and right (heart). Deck updates. |
+| 3 | **Filters** | Tap hamburger menu → Filters. Choose Size (e.g. Small), Color (e.g. Gray), Condition (e.g. New). Tap “Apply” → deck refreshes. Tap filter again → “Clear all” → deck refreshes. |
+| 4 | **Detail** | Tap a card → detail modal sheet (images, title, price, “View on site”). Close sheet (drag or tap outside). |
+| 5 | **Likes** | Swipe right on 1–2 items. Open menu → Likes list. Tap an item → detail sheet. |
+| 6 | **Share shortlist** | In Likes, select items, tap “Share shortlist” → get link. Open link in new tab → `/s/:token` shows shared shortlist. |
+| 7 | **Preferences** | Open menu → Preferences. Step 1: pick styles. Step 2: budget slider. Step 3: eco/new/size toggles. Tap “Building your deck…” → deck. |
+| 8 | **Data & Privacy** | Open menu → Data & Privacy. “Opt out of analytics” switch: turn ON → then use deck/detail/filters; events for those are not sent. Turn OFF to send again. |
+| 9 | **Language** | Open menu → Language. Pick Swedish or English; labels update. |
+| 10 | **View on site** | From detail, tap “View on site” → redirect to `/go/:itemId` then outbound URL (or placeholder). |
+| 11 | **Empty deck** | Swipe through all cards (or apply strict filters with no match) → “No more items” with hint to adjust filters. |
 
 ---
 

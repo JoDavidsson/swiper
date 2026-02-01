@@ -35,7 +35,7 @@
    ```
    The app runs on **http://localhost:8080** (same port every time – you can bookmark it). **Leave this terminal running:** code changes hot-reload automatically; you don’t need to re-run the command. Admin: **http://localhost:8080/admin**. API base: `http://localhost:5002/swiper-95482/europe-west1`.
 
-You can swipe through the sample sofas, open likes, compare, and use the bottom nav. Admin is at `/admin/login` (password from `.env` `ADMIN_PASSWORD`).
+You can swipe through the sample sofas and open Likes and Filters from the hamburger menu. Admin is at `/admin/login` (password from `.env` `ADMIN_PASSWORD`).
 
 ### Verify API without Chrome (CI / agent autonomy)
 
@@ -147,7 +147,7 @@ Yes. Mock data lives in **`sample_data/sample_feed.csv`** (5 sofas: titles, pric
    ```  
    The app uses the Functions emulator by default.
 
-4. **In the app:** Tap **“Skip to swipe”** → the deck loads the 5 sample sofas. Swipe **left** (pass) or **right** (like). Open **Likes** from the bottom nav to see liked items. Swiped items disappear from the deck; you can keep swiping until the deck is empty.
+4. **In the app:** The deck opens immediately with the 5 sample sofas. Swipe **left** (pass) or **right** (like). Open the hamburger menu → **Likes** to see liked items. Swiped items disappear from the deck; you can keep swiping until the deck is empty.
 
 **Sample feed contents:** `sample_data/sample_feed.csv` has 5 rows (Scandi 2-seat, Velvet 3-seat, Compact sofa, Leather corner, Boucle armchair) with `title`, `price`, `currency`, `url`, `image_url`, `brand`, `description`, dimensions, `material`, `color`, `new_used`. The Supply Engine normalizes and writes them to Firestore with `isActive: true` so the deck API returns them.
 

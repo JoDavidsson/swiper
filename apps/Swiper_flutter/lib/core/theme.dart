@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 /// Design tokens: Scandinavian minimalism.
-/// Base spacing: 16dp; corner radius: 16 (cards), 12 (sheets), 10 (chips).
+/// Base spacing: 16dp; corner radius: 16 (cards), 18 (sheets), 10 (chips).
 class AppTheme {
   static const double spacingUnit = 16.0;
   static const double radiusCard = 16.0;
-  static const double radiusSheet = 12.0;
+  static const double radiusSheet = 18.0;
   static const double radiusChip = 10.0;
 
   static const Color primaryAction = Color(0xFF007AFF);

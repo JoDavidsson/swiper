@@ -9,12 +9,16 @@ class AppShell extends StatelessWidget {
     required this.title,
     required this.body,
     this.showBottomNav = false,
+    this.leading,
+    this.automaticallyImplyLeading = true,
     this.actions = const [],
   });
 
   final String title;
   final Widget body;
   final bool showBottomNav;
+  final Widget? leading;
+  final bool automaticallyImplyLeading;
   final List<Widget> actions;
 
   @override
@@ -24,6 +28,8 @@ class AppShell extends StatelessWidget {
       appBar: AppBar(
         title: Text(title),
         centerTitle: true,
+        leading: leading,
+        automaticallyImplyLeading: automaticallyImplyLeading,
         actions: actions,
       ),
       body: body,

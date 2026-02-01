@@ -20,9 +20,11 @@ final adminPasswordProvider = StateProvider<String?>((ref) => null);
 const String kSessionIdKey = 'swiper_session_id';
 const String kAdminAuthKey = 'swiper_admin_auth';
 const String kAnalyticsOptOutKey = 'swiper_analytics_opt_out';
+const String kSwipeHintSeenKey = 'swiper_swipe_hint_seen';
 
 /// Analytics opt-out: when true, skip non-essential event logging (open_detail, filter_change, etc.).
 final analyticsOptOutProvider = StateNotifierProvider<AnalyticsOptOutNotifier, bool>((ref) => AnalyticsOptOutNotifier());
+final swipeHintSeenProvider = StateNotifierProvider<SwipeHintSeenNotifier, bool>((ref) => SwipeHintSeenNotifier());
 
 class AnalyticsOptOutNotifier extends StateNotifier<bool> {
   AnalyticsOptOutNotifier() : super(false) {
@@ -45,6 +47,31 @@ class AnalyticsOptOutNotifier extends StateNotifier<bool> {
       final box = await Hive.openBox('swiper_prefs');
       await box.put(kAnalyticsOptOutKey, value);
       state = value;
+    } catch (_) {}
+  }
+}
+
+class SwipeHintSeenNotifier extends StateNotifier<bool> {
+  SwipeHintSeenNotifier() : super(false) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final box = await Hive.openBox('swiper_prefs');
+      final value = box.get(kSwipeHintSeenKey);
+      state = value == true;
+    } catch (_) {
+      state = false;
+    }
+  }
+
+  Future<void> markSeen() async {
+    if (state) return;
+    try {
+      final box = await Hive.openBox('swiper_prefs');
+      await box.put(kSwipeHintSeenKey, true);
+      state = true;
     } catch (_) {}
   }
 }

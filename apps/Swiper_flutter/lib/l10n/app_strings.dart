@@ -17,6 +17,10 @@ class AppStrings {
   String get english => isSv ? 'Engelska' : 'English';
   String get getStarted => isSv ? 'Kom igång' : 'Get started';
   String get skipToSwipe => isSv ? 'Hoppa till swipe' : 'Skip to swipe';
+  String get menu => isSv ? 'Meny' : 'Menu';
+  String get filters => isSv ? 'Filter' : 'Filters';
+  String get preferences => isSv ? 'Preferenser' : 'Preferences';
+  String get swipeHint => isSv ? 'Svep höger för att gilla, vänster för att hoppa.' : 'Swipe right to like, left to skip.';
   String get likes => isSv ? 'Gillade' : 'Likes';
   String get compare => isSv ? 'Jämför' : 'Compare';
   String get deck => isSv ? 'Deck' : 'Deck';
