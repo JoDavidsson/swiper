@@ -102,7 +102,30 @@ So: **no other accounts are required** for the MVP besides Firebase (and the sam
 
 ---
 
-## 5. Quick checklist
+## 5. Push to a private Git repo (one-time)
+
+Create a **private** repository on GitHub (or GitLab, etc.); do **not** initialize it with a README. Then from the repo root:
+
+```bash
+./scripts/push_to_remote.sh <YOUR_REPO_URL>
+```
+
+Example (GitHub SSH):
+
+```bash
+./scripts/push_to_remote.sh git@github.com:yourusername/Swiper.git
+```
+
+If you prefer to add the remote yourself:
+
+```bash
+git remote add origin <YOUR_REPO_URL>
+git push -u origin main
+```
+
+---
+
+## 6. Quick checklist
 
 - [ ] Firebase project created and Project ID noted.
 - [ ] Service account key downloaded; path set in **`.env`** as `GOOGLE_APPLICATION_CREDENTIALS`.
@@ -150,3 +173,7 @@ flutterfire configure
 ```
 
 (Permanent PATH: add `export PATH="$PATH":"$HOME/.pub-cache/bin"` to your `~/.zshrc` and run `source ~/.zshrc`, or use the same `export` in the same terminal before running `flutterfire configure`.)
+
+### "command not found: flutter"
+
+Install Flutter and add it to your PATH (see [Flutter install](https://docs.flutter.dev/get-started/install)). On macOS you can use `brew install flutter` or download the SDK and add e.g. `export PATH="$PATH:$HOME/flutter/bin"` to `~/.zshrc`. Then run `./scripts/setup_flutter_firebase.sh` again.
