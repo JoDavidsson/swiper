@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/theme.dart';
 import '../../data/models/item.dart';
 import 'draggable_swipe_card.dart';
 import 'detail_sheet.dart';
 
+const _minImpressionDurationMs = 150;
+const _uuid = Uuid();
+
 /// Full-screen swipe deck: stack of cards with stack peek.
-class SwipeDeck extends StatelessWidget {
+class SwipeDeck extends StatefulWidget {
   const SwipeDeck({
     super.key,
     required this.items,
@@ -14,19 +18,110 @@ class SwipeDeck extends StatelessWidget {
     required this.onSwipeRight,
     this.goBaseUrl,
     this.onTapDetail,
+    this.onCardImpressionStart,
+    this.onCardImpressionEnd,
   });
 
   final List<Item> items;
   final String? sessionId;
-  final void Function(Item item, int position) onSwipeLeft;
-  final void Function(Item item, int position) onSwipeRight;
+  final void Function(Item item, int position, {String gesture}) onSwipeLeft;
+  final void Function(Item item, int position, {String gesture}) onSwipeRight;
   final String? goBaseUrl;
   /// If set, called when user taps card (e.g. to log open_detail, show sheet, log detail_dismiss).
   final Future<void> Function(Item item)? onTapDetail;
+  /// Called when top card becomes visible (for card_impression_start).
+  final void Function(Item item, String impressionId)? onCardImpressionStart;
+  /// Called when top card leaves (for card_impression_end). Only called if visibleDurationMs >= 150. [itemId] is the card that left.
+  final void Function(String impressionId, int visibleDurationMs, String endReason, String itemId)? onCardImpressionEnd;
+
+  @override
+  State<SwipeDeck> createState() => _SwipeDeckState();
+}
+
+class _SwipeDeckState extends State<SwipeDeck> {
+  String? _currentTopId;
+  String? _impressionId;
+  DateTime? _impressionStartedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
+  }
+
+  @override
+  void didUpdateWidget(SwipeDeck oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.items != oldWidget.items) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
+    }
+  }
+
+  void _endImpressionIfAny(String endReason) {
+    if (_impressionId == null || _impressionStartedAt == null || widget.onCardImpressionEnd == null) return;
+    final itemId = _currentTopId ?? '';
+    final durationMs = DateTime.now().difference(_impressionStartedAt!).inMilliseconds;
+    if (durationMs >= _minImpressionDurationMs) {
+      widget.onCardImpressionEnd!(_impressionId!, durationMs, endReason, itemId);
+    }
+    _impressionId = null;
+    _impressionStartedAt = null;
+    _currentTopId = null;
+  }
+
+  void _maybeStartImpression() {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    if (top.id == _currentTopId) return;
+    _endImpressionIfAny('nav');
+    _currentTopId = top.id;
+    _impressionId = _uuid.v4();
+    _impressionStartedAt = DateTime.now();
+    widget.onCardImpressionStart?.call(top, _impressionId!);
+  }
+
+  void _onSwipeLeft() {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    _endImpressionIfAny('swipe');
+    widget.onSwipeLeft(top, 0);
+  }
+
+  void _onSwipeRight() {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    _endImpressionIfAny('swipe');
+    widget.onSwipeRight(top, 0);
+  }
+
+  void _onSwipeLeftButton() {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    _endImpressionIfAny('swipe');
+    widget.onSwipeLeft(top, 0, gesture: 'button');
+  }
+
+  void _onSwipeRightButton() {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    _endImpressionIfAny('swipe');
+    widget.onSwipeRight(top, 0, gesture: 'button');
+  }
+
+  Future<void> _onTapDetail() async {
+    if (widget.items.isEmpty) return;
+    final top = widget.items.first;
+    _endImpressionIfAny('detail_open');
+    if (widget.onTapDetail != null) {
+      await widget.onTapDetail!(top);
+    } else {
+      if (mounted) showDetailSheet(context, top, goBaseUrl: widget.goBaseUrl);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
+    if (widget.items.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -41,8 +136,8 @@ class SwipeDeck extends StatelessWidget {
       );
     }
 
-    final top = items.first;
-    final rest = items.sublist(1);
+    final top = widget.items.first;
+    final rest = widget.items.sublist(1);
 
     return Column(
       children: [
@@ -66,15 +161,9 @@ class SwipeDeck extends StatelessWidget {
               Positioned.fill(
                 child: DraggableSwipeCard(
                   item: top,
-                  onSwipeLeft: () => onSwipeLeft(top, 0),
-                  onSwipeRight: () => onSwipeRight(top, 0),
-                  onTap: () async {
-                    if (onTapDetail != null) {
-                      await onTapDetail!(top);
-                    } else {
-                      showDetailSheet(context, top, goBaseUrl: goBaseUrl);
-                    }
-                  },
+                  onSwipeLeft: _onSwipeLeft,
+                  onSwipeRight: _onSwipeRight,
+                  onTap: _onTapDetail,
                 ),
               ),
             ],
@@ -88,13 +177,13 @@ class SwipeDeck extends StatelessWidget {
               _ControlButton(
                 icon: Icons.close,
                 color: AppTheme.negativeDislike,
-                onPressed: () => onSwipeLeft(top, 0),
+                onPressed: _onSwipeLeftButton,
               ),
               const SizedBox(width: AppTheme.spacingUnit * 2),
               _ControlButton(
                 icon: Icons.favorite,
                 color: AppTheme.positiveLike,
-                onPressed: () => onSwipeRight(top, 0),
+                onPressed: _onSwipeRightButton,
               ),
               const SizedBox(width: AppTheme.spacingUnit * 2),
               _ControlButton(icon: Icons.undo, color: AppTheme.textSecondary, onPressed: null),

@@ -8,6 +8,7 @@ import { likesTogglePost } from "./likes";
 import { likesGet } from "./likes_get";
 import { shortlistsCreatePost, shortlistsByTokenGet } from "./shortlists";
 import { eventsPost } from "./events";
+import { eventsBatchPost } from "./events_batch";
 import { adminVerifyPost } from "./admin";
 import { adminStatsGet } from "./admin_stats";
 import { adminSourcesGet, adminSourcesPost, adminSourceGet, adminSourcePut, adminSourceDelete } from "./admin_sources";
@@ -76,6 +77,10 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "POST" && path === "events") {
       await eventsPost(req, res);
+      return;
+    }
+    if (method === "POST" && path === "events/batch") {
+      await eventsBatchPost(req, res);
       return;
     }
     // Admin routes (except verify): require Bearer token + allowlist OR X-Admin-Password (password gate)

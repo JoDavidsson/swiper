@@ -4,7 +4,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/models/item.dart';
 
-Future<void> showDetailSheet(BuildContext context, Item item, {String? goBaseUrl}) {
+Future<void> showDetailSheet(
+  BuildContext context,
+  Item item, {
+  String? goBaseUrl,
+  void Function(Item item)? onOutboundClick,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -12,18 +17,19 @@ Future<void> showDetailSheet(BuildContext context, Item item, {String? goBaseUrl
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
     ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 1,
-        expand: false,
-        builder: (context, scrollController) => DetailSheetContent(
-          item: item,
-          scrollController: scrollController,
-          goBaseUrl: goBaseUrl,
-        ),
+    builder: (context) => DraggableScrollableSheet(
+      initialChildSize: 0.9,
+      minChildSize: 0.5,
+      maxChildSize: 1,
+      expand: false,
+      builder: (context, scrollController) => DetailSheetContent(
+        item: item,
+        scrollController: scrollController,
+        goBaseUrl: goBaseUrl,
+        onOutboundClick: onOutboundClick,
       ),
-    );
+    ),
+  );
 }
 
 class DetailSheetContent extends StatelessWidget {
@@ -32,11 +38,13 @@ class DetailSheetContent extends StatelessWidget {
     required this.item,
     required this.scrollController,
     this.goBaseUrl,
+    this.onOutboundClick,
   });
 
   final Item item;
   final ScrollController scrollController;
   final String? goBaseUrl;
+  final void Function(Item item)? onOutboundClick;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +100,10 @@ class DetailSheetContent extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _openOutbound(context),
+                onPressed: () {
+                  onOutboundClick?.call(item);
+                  _openOutbound(context);
+                },
                 icon: const Icon(Icons.open_in_new),
                 label: const Text('View on site'),
               ),

@@ -5,11 +5,24 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
+import '../../data/event_tracker.dart';
 import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
+import '../../data/models/item.dart';
 import '../../shared/widgets/swipe_deck.dart';
+
+Map<String, dynamic> _itemSnapshot(Item item) {
+  return {
+    if (item.brand != null) 'brand': item.brand,
+    'newUsed': item.newUsed,
+    if (item.sizeClass != null) 'sizeClass': item.sizeClass,
+    if (item.material != null) 'material': item.material,
+    if (item.colorFamily != null) 'colorFamily': item.colorFamily,
+    'styleTags': item.styleTags,
+  };
+}
 
 String _userFriendlyError(Object e) {
   if (e is DioException) {
@@ -40,28 +53,66 @@ class DeckScreen extends ConsumerWidget {
         data: (items) {
           final notifier = ref.read(deckItemsProvider.notifier);
           final client = ref.read(apiClientProvider);
+          final tracker = ref.read(eventTrackerProvider);
+          final rank = notifier.rankContext;
+          final itemScores = notifier.itemScores;
           return SwipeDeck(
             items: items,
             sessionId: sessionId,
             goBaseUrl: Uri.base.origin,
-            onSwipeLeft: (item, position) => notifier.swipe(item.id, 'left', position),
-            onSwipeRight: (item, position) => notifier.swipe(item.id, 'right', position),
+            onSwipeLeft: (item, position, {gesture = 'swipe'}) => notifier.swipe(item.id, 'left', position, item: item, gesture: gesture),
+            onSwipeRight: (item, position, {gesture = 'swipe'}) => notifier.swipe(item.id, 'right', position, item: item, gesture: gesture),
+            onCardImpressionStart: (item, impressionId) {
+              tracker.track('card_impression_start', {
+                'item': {
+                  'itemId': item.id,
+                  'positionInDeck': 0,
+                  'source': 'deck',
+                  if (rank != null) 'snapshot': _itemSnapshot(item),
+                },
+                'impression': {'impressionId': impressionId},
+                if (rank != null) 'rank': {
+                  'rankerRunId': rank.rankerRunId,
+                  'algorithmVersion': rank.algorithmVersion,
+                  if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
+                },
+              });
+            },
+            onCardImpressionEnd: (impressionId, visibleDurationMs, endReason, itemId) {
+              tracker.track('card_impression_end', {
+                'item': {'itemId': itemId, 'positionInDeck': 0},
+                'impression': {
+                  'impressionId': impressionId,
+                  'visibleDurationMs': visibleDurationMs,
+                  'endReason': endReason,
+                },
+              });
+            },
             onTapDetail: sessionId != null
                 ? (item) async {
-                    final sid = sessionId;
-                    if (!ref.read(analyticsOptOutProvider)) {
-                      client.logEvent(sessionId: sid, eventType: 'open_detail', itemId: item.id).ignore();
-                    }
+                    tracker.track('detail_open', {
+                      'item': {'itemId': item.id, 'source': 'deck'},
+                      'surface': {'name': 'detail'},
+                    });
                     final started = DateTime.now();
-                    await showDetailSheet(context, item, goBaseUrl: Uri.base.origin);
+                    await showDetailSheet(
+                      context,
+                      item,
+                      goBaseUrl: Uri.base.origin,
+                      onOutboundClick: (i) {
+                        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                        tracker.track('outbound_click', {
+                          'item': {'itemId': i.id},
+                          'outbound': {'destinationDomain': domain ?? 'unknown'},
+                        });
+                      },
+                    );
                     final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
-                    if (context.mounted && !ref.read(analyticsOptOutProvider)) {
-                      client.logEvent(
-                        sessionId: sid,
-                        eventType: 'detail_dismiss',
-                        itemId: item.id,
-                        metadata: <String, dynamic>{'timeViewedMs': timeViewedMs},
-                      ).ignore();
+                    if (context.mounted) {
+                      tracker.track('detail_close', {
+                        'item': {'itemId': item.id},
+                        'ext': {'durationMs': timeViewedMs},
+                      });
                     }
                   }
                 : null,
@@ -106,10 +157,7 @@ class DeckScreen extends ConsumerWidget {
   }
 
   void _showFiltersSheet(BuildContext context, WidgetRef ref) {
-    final sessionId = ref.read(sessionIdProvider);
-    if (sessionId != null && !ref.read(analyticsOptOutProvider)) {
-      ref.read(apiClientProvider).logEvent(sessionId: sessionId, eventType: 'filter_sheet_open').ignore();
-    }
+    ref.read(eventTrackerProvider).track('filters_open', {});
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -120,29 +168,28 @@ class DeckScreen extends ConsumerWidget {
         onApply: (filters) {
           ref.read(deckFiltersProvider.notifier).state = Map<String, dynamic>.from(filters);
           ref.read(deckItemsProvider.notifier).refresh();
-          if (sessionId != null && !ref.read(analyticsOptOutProvider)) {
-            ref.read(apiClientProvider).logEvent(
-              sessionId: sessionId,
-              eventType: 'filter_change',
-              metadata: Map<String, dynamic>.from(filters),
-            ).ignore();
-          }
+          _trackFiltersApply(ref, filters);
           Navigator.of(context).pop();
         },
         onClear: () {
           ref.read(deckFiltersProvider.notifier).state = <String, dynamic>{};
           ref.read(deckItemsProvider.notifier).refresh();
-          if (sessionId != null && !ref.read(analyticsOptOutProvider)) {
-            ref.read(apiClientProvider).logEvent(
-              sessionId: sessionId,
-              eventType: 'filter_change',
-              metadata: <String, dynamic>{},
-            ).ignore();
-          }
+          _trackFiltersApply(ref, <String, dynamic>{});
           Navigator.of(context).pop();
         },
       ),
     );
+  }
+
+  void _trackFiltersApply(WidgetRef ref, Map<String, dynamic> filters) {
+    final active = <String, dynamic>{};
+    final newUsed = filters['newUsed'] as String?;
+    if (newUsed != null) active['newOnly'] = newUsed == 'new';
+    final colorFamily = filters['colorFamily'] as String?;
+    if (colorFamily != null && colorFamily.isNotEmpty) {
+      active['colorFamilies'] = [colorFamily];
+    }
+    ref.read(eventTrackerProvider).track('filters_apply', {'filters': {'active': active}});
   }
 }
 

@@ -21,6 +21,7 @@ class DeviceContext {
   }
 
   /// Screen size bucket: small (<600), medium (<900), large (>=900). Null if unknown.
+  /// Used for session body (backend may accept legacy values).
   static String? get screenBucket {
     try {
       final views = PlatformDispatcher.instance.views;
@@ -35,6 +36,26 @@ class DeviceContext {
       return 'large';
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Schema enum for events: xs (<400), s (<600), m (<900), l (<1200), xl (>=1200).
+  static String get screenBucketSchema {
+    try {
+      final views = PlatformDispatcher.instance.views;
+      if (views.isEmpty) return 'm';
+      final view = views.first;
+      final physical = view.physicalSize;
+      final ratio = view.devicePixelRatio;
+      if (ratio <= 0) return 'm';
+      final logicalWidth = physical.width / ratio;
+      if (logicalWidth < 400) return 'xs';
+      if (logicalWidth < 600) return 's';
+      if (logicalWidth < 900) return 'm';
+      if (logicalWidth < 1200) return 'l';
+      return 'xl';
+    } catch (_) {
+      return 'm';
     }
   }
 

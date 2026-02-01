@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://swiper.example/schemas/swiper_event_v1.schema.json",
+  "title": "Swiper Event v1",
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventName",
+    "sessionId",
+    "clientSeq",
+    "createdAtClient",
+    "app"
+  ],
+
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+
+    "eventId": {
+      "type": "string",
+      "description": "UUID v4",
+      "pattern": "^[0-9a-fA-F-]{36}$"
+    },
+
+    "eventName": {
+      "type": "string",
+      "enum": [
+        "app_open",
+        "deep_link_open",
+        "share_link_landing_view",
+        "referral_attribution",
+
+        "session_start",
+        "session_resume",
+        "session_end",
+
+        "consent_prompt_shown",
+        "consent_updated",
+
+        "onboarding_start",
+        "onboarding_step_view",
+        "onboarding_step_change",
+        "onboarding_complete",
+        "onboarding_skip",
+
+        "deck_request",
+        "deck_response",
+        "card_render",
+        "card_impression_start",
+        "card_impression_end",
+        "card_dwell_bucket",
+
+        "swipe_left",
+        "swipe_right",
+        "swipe_cancel",
+        "swipe_undo",
+
+        "card_image_swipe",
+        "card_expand_quick_specs",
+        "card_tap_brand",
+        "card_tap_price",
+        "card_save_for_later",
+
+        "detail_open",
+        "detail_close",
+        "detail_scroll",
+        "detail_section_view",
+        "detail_gallery_interaction",
+        "detail_spec_expand",
+        "detail_copy_spec",
+        "detail_open_similar_items",
+
+        "like_add",
+        "like_remove",
+        "likes_open",
+        "likes_sort_change",
+        "likes_filter_change",
+        "likes_item_open_detail",
+        "likes_clear_all",
+
+        "compare_open",
+        "compare_close",
+        "compare_add_item",
+        "compare_remove_item",
+        "compare_attribute_sort",
+        "compare_attribute_focus",
+        "compare_highlight_differences_toggle",
+        "compare_outbound_click",
+
+        "filters_open",
+        "filter_change",
+        "filters_apply",
+        "filters_clear",
+        "sort_change",
+        "budget_range_adjust",
+        "toggle_change",
+
+        "shortlist_create",
+        "shortlist_open",
+        "shortlist_item_open_detail",
+        "shortlist_share",
+        "shortlist_copy_link",
+        "shortlist_remove_item",
+
+        "outbound_click",
+        "outbound_redirect_start",
+        "outbound_redirect_success",
+        "outbound_redirect_fail",
+        "outbound_return_to_app",
+        "outbound_multi_click",
+
+        "report_item",
+        "hide_item",
+        "feedback_submit",
+
+        "api_request",
+        "image_load",
+        "render_slow",
+        "client_error",
+        "empty_deck",
+
+        "session_summary",
+        "preference_snapshot",
+        "intent_stage"
+      ]
+    },
+
+    "sessionId": { "type": "string", "minLength": 8 },
+
+    "anonUserId": {
+      "type": "string",
+      "description": "Optional: stable random id persisted in local storage to link sessions",
+      "minLength": 8
+    },
+
+    "clientSeq": { "type": "integer", "minimum": 1 },
+
+    "createdAtClient": { "type": "string", "format": "date-time" },
+    "createdAtServer": { "type": "string", "format": "date-time" },
+
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "appVersion", "locale", "timezoneOffsetMinutes", "screenBucket"],
+      "properties": {
+        "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+        "appVersion": { "type": "string" },
+        "buildId": { "type": "string" },
+
+        "locale": { "type": "string", "minLength": 2 },
+        "timezoneOffsetMinutes": { "type": "integer" },
+
+        "screenBucket": { "type": "string", "enum": ["xs", "s", "m", "l", "xl"] },
+
+        "userAgentNormalized": {
+          "type": "string",
+          "description": "Normalized UA (no raw UA string if you want to be conservative)"
+        }
+      }
+    },
+
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["deck_card", "detail", "likes", "compare", "filters", "shortlist", "share", "onboarding", "landing", "outbound_redirect"]
+        },
+        "route": { "type": "string" },
+        "referrerSurface": {
+          "type": "string",
+          "enum": ["deck_card", "detail", "likes", "compare", "filters", "shortlist", "share", "onboarding", "landing", "outbound_redirect", "unknown"]
+        }
+      }
+    },
+
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "itemId": { "type": "string" },
+        "source": { "type": "string", "enum": ["deck", "detail", "likes", "compare", "shortlist", "share", "unknown"] },
+        "positionInDeck": { "type": "integer", "minimum": 0 },
+
+        "priceSEKAtTime": { "type": "integer", "minimum": 0 },
+
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "brand": { "type": "string" },
+            "newUsed": { "type": "string", "enum": ["new", "used", "unknown"] },
+            "sizeClass": { "type": "string" },
+            "material": { "type": "string" },
+            "colorFamily": { "type": "string" },
+            "styleTags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "itemIds": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 50 },
+        "count": { "type": "integer", "minimum": 1, "maximum": 50 }
+      }
+    },
+
+    "rank": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rankerRunId": { "type": "string", "minLength": 8 },
+        "algorithmVersion": { "type": "string" },
+        "modelVersion": { "type": "string" },
+        "candidateSetId": { "type": "string" },
+
+        "scoreAtRender": { "type": "number" },
+
+        "explorationPolicy": { "type": "string" },
+        "reasonCodes": { "type": "array", "items": { "type": "string" }, "maxItems": 20 }
+      }
+    },
+
+    "impression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "impressionId": { "type": "string", "minLength": 8 },
+        "visibleDurationMs": { "type": "integer", "minimum": 0 },
+
+        "endReason": { "type": "string", "enum": ["swipe", "detail_open", "app_background", "nav", "unknown"] },
+
+        "bucket": { "type": "string", "enum": ["0_1s", "1_3s", "3_8s", "8s_plus"] }
+      }
+    },
+
+    "interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gesture": { "type": "string", "enum": ["swipe", "button", "tap", "link", "auto", "unknown"] },
+        "direction": { "type": "string", "enum": ["left", "right"] },
+
+        "velocity": { "type": "number" },
+        "fromIndex": { "type": "integer", "minimum": 0 },
+        "toIndex": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "budgetMinSEK": { "type": "integer", "minimum": 0 },
+            "budgetMaxSEK": { "type": "integer", "minimum": 0 },
+
+            "ecoOnly": { "type": "boolean" },
+            "newOnly": { "type": "boolean" },
+            "smallSpaceOnly": { "type": "boolean" },
+
+            "materials": { "type": "array", "items": { "type": "string" } },
+            "colorFamilies": { "type": "array", "items": { "type": "string" } },
+            "brands": { "type": "array", "items": { "type": "string" } },
+            "styleTags": { "type": "array", "items": { "type": "string" } },
+
+            "sortKey": {
+              "type": "string",
+              "enum": ["match_score", "price_low", "price_high", "newest", "unknown"]
+            }
+          }
+        },
+
+        "change": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "budget",
+                "ecoOnly",
+                "newOnly",
+                "smallSpaceOnly",
+                "materials",
+                "colorFamilies",
+                "brands",
+                "styleTags",
+                "sortKey"
+              ]
+            },
+            "from": {},
+            "to": {}
+          }
+        }
+      }
+    },
+
+    "onboarding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "styleTagsSelected": { "type": "array", "items": { "type": "string" }, "maxItems": 50 },
+        "budgetMinSEK": { "type": "integer", "minimum": 0 },
+        "budgetMaxSEK": { "type": "integer", "minimum": 0 },
+
+        "ecoOnly": { "type": "boolean" },
+        "newOnly": { "type": "boolean" },
+        "smallSpaceOnly": { "type": "boolean" },
+
+        "stepName": { "type": "string", "enum": ["style", "budget", "toggles"] },
+        "field": { "type": "string" },
+
+        "timeSpentMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "compareCount": { "type": "integer", "minimum": 2, "maximum": 4 },
+        "attribute": {
+          "type": "string",
+          "enum": ["price", "width", "depth", "height", "material", "colorFamily", "deliveryComplexity", "unknown"]
+        },
+        "direction": { "type": "string", "enum": ["asc", "desc"] }
+      }
+    },
+
+    "share": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shortlistId": { "type": "string", "minLength": 6 },
+
+        "method": { "type": "string", "enum": ["copy_link", "native_share"] },
+        "channel": { "type": "string", "enum": ["sms", "whatsapp", "email", "messenger", "other", "unknown"] },
+
+        "linkType": { "type": "string", "enum": ["shortlist", "item", "campaign", "unknown"] },
+        "linkId": { "type": "string" }
+      }
+    },
+
+    "outbound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "destinationDomain": { "type": "string" },
+
+        "redirectId": { "type": "string" },
+        "timeToRedirectMs": { "type": "integer", "minimum": 0 },
+
+        "timeAwayMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "perf": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": { "type": "string" },
+        "latencyMs": { "type": "integer", "minimum": 0 },
+        "statusCode": { "type": "integer" },
+
+        "imageIndex": { "type": "integer", "minimum": 0 },
+        "fromCache": { "type": "boolean" },
+
+        "renderTimeMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "errorType": { "type": "string" },
+        "errorCode": { "type": "string" },
+        "surface": { "type": "string" },
+        "stackHash": { "type": "string" }
+      }
+    },
+
+    "ext": {
+      "type": "object",
+      "description": "Escape hatch for forward-compatible additions",
+      "additionalProperties": true
+    }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "eventName": { "enum": ["swipe_left", "swipe_right"] } }, "required": ["eventName"] },
+      "then": {
+        "required": ["item", "interaction"],
+        "properties": {
+          "item": { "required": ["itemId", "positionInDeck"] },
+          "interaction": { "required": ["gesture", "direction"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "card_impression_end" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["item", "impression"],
+        "properties": {
+          "item": { "required": ["itemId", "positionInDeck"] },
+          "impression": { "required": ["impressionId", "visibleDurationMs", "endReason"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "detail_open" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["item", "surface"],
+        "properties": { "item": { "required": ["itemId"] }, "surface": { "required": ["name"] } }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "filters_apply" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["filters"],
+        "properties": { "filters": { "required": ["active"] } }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "compare_open" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["items", "compare"],
+        "properties": { "items": { "required": ["itemIds", "count"] }, "compare": { "required": ["compareCount"] } }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "shortlist_create" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["items", "share"],
+        "properties": { "items": { "required": ["itemIds", "count"] }, "share": { "required": ["shortlistId"] } }
+      }
+    },
+    {
+      "if": { "properties": { "eventName": { "const": "outbound_click" } }, "required": ["eventName"] },
+      "then": {
+        "required": ["item", "outbound"],
+        "properties": { "item": { "required": ["itemId"] }, "outbound": { "required": ["destinationDomain"] } }
+      }
+    }
+  ]
+}

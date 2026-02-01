@@ -128,15 +128,47 @@ Shared shortlist.
 
 ### 7. events/{eventId}
 
-Analytics events (no PII).
+Legacy analytics events (no PII). Still written by backend (swipe.ts, likes.ts, go.ts, shortlists.ts).
 
 | Field | Type | Description |
 |-------|------|-------------|
 | sessionId | string | Opaque ID |
-| eventType | string | swipe_left, swipe_right, open_detail, add_like, remove_like, outbound_click, share_shortlist, filter_change, compare_open |
+| eventType | string | swipe_left, swipe_right, add_like, remove_like, outbound_click, share_shortlist, … |
 | itemId | string? | |
 | metadata | map? | No PII |
 | createdAt | timestamp | |
+
+---
+
+### 7b. events_v1/{eventId}
+
+Canonical v1 events (client → POST /api/events/batch). Document ID = eventId (UUID v4) for dedupe.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| schemaVersion | string | "1.0" |
+| eventId | string | UUID v4 (also doc ID) |
+| eventName | string | session_start, deck_response, swipe_left, swipe_right, card_impression_start, card_impression_end, detail_open, detail_close, like_add, like_remove, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, … |
+| sessionId | string | Opaque ID (min 8 chars) |
+| clientSeq | number | Monotonic per session |
+| createdAtClient | string | ISO 8601 |
+| createdAtServer | timestamp | Set by server |
+| app | map | platform, appVersion, locale, timezoneOffsetMinutes, screenBucket |
+| surface | map? | name, route, referrerSurface |
+| item | map? | itemId, source, positionInDeck, snapshot, … |
+| rank | map? | rankerRunId, algorithmVersion, scoreAtRender, … |
+| impression | map? | impressionId, visibleDurationMs, endReason, … |
+| interaction | map? | gesture, direction, velocity, … |
+| filters | map? | active, change |
+| onboarding | map? | styleTagsSelected, budgetMinSEK, budgetMaxSEK, ecoOnly, newOnly, smallSpaceOnly, … |
+| compare | map? | compareCount, attribute, direction |
+| share | map? | shortlistId, method, channel, … |
+| outbound | map? | destinationDomain, redirectId, timeToRedirectMs, … |
+| perf | map? | endpoint, latencyMs, statusCode, … |
+| error | map? | errorType, errorCode, surface, stackHash |
+| ext | map? | Escape hatch (e.g. durationMs, sizeClass) |
+
+Index: sessionId (ASC), createdAtServer (DESC).
 
 ---
 

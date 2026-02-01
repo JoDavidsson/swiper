@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
+import '../../data/event_tracker.dart';
 import '../../data/models/item.dart';
 import '../../shared/widgets/detail_sheet.dart';
 
@@ -52,7 +53,21 @@ class SharedShortlistScreen extends ConsumerWidget {
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
                   child: InkWell(
-                    onTap: () => showDetailSheet(context, item, goBaseUrl: Uri.base.origin),
+                    onTap: () {
+                      final tracker = ref.read(eventTrackerProvider);
+                      showDetailSheet(
+                        context,
+                        item,
+                        goBaseUrl: Uri.base.origin,
+                        onOutboundClick: (i) {
+                          final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                          tracker.track('outbound_click', {
+                            'item': {'itemId': i.id},
+                            'outbound': {'destinationDomain': domain ?? 'unknown'},
+                          });
+                        },
+                      );
+                    },
                     child: Padding(
                       padding: const EdgeInsets.all(AppTheme.spacingUnit),
                       child: Row(

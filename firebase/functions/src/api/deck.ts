@@ -1,8 +1,10 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { nanoid } from "nanoid";
 
 const DEFAULT_LIMIT = 20;
+const ALGORITHM_VERSION = "preference_weights_v1";
 
 export async function deckGet(req: Request, res: Response): Promise<void> {
   const sessionId = req.query.sessionId as string;
@@ -14,6 +16,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const rankerRunId = nanoid(12);
   const db = admin.firestore();
 
   const [swipesSnap, _likesSnap, sessionSnap] = await Promise.all([
@@ -53,9 +56,19 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     return bScore - aScore;
   });
 
-  const result = items.slice(0, limit).map((doc) => ({ id: doc.id, ...doc.data() }));
+  const sliced = items.slice(0, limit);
+  const result = sliced.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const itemScores: Record<string, number> = {};
+  sliced.forEach((doc) => {
+    const d = doc.data()!;
+    itemScores[doc.id] = scoreItem(d, preferenceWeights);
+  });
 
-  res.status(200).json({ items: result });
+  res.status(200).json({
+    items: result,
+    rank: { rankerRunId, algorithmVersion: ALGORITHM_VERSION },
+    itemScores,
+  });
 }
 
 function scoreItem(data: admin.firestore.DocumentData, weights: Record<string, number>): number {

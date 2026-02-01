@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
+import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart';
 
@@ -52,6 +53,7 @@ class SplashScreen extends ConsumerWidget {
                 TextButton(
                   onPressed: () async {
                     await ensureSession(ref, ref.read(apiClientProvider));
+                    ref.read(eventTrackerProvider).track('onboarding_skip', {});
                     if (context.mounted) context.go('/deck');
                   },
                   child: Text(ref.watch(appStringsProvider).skipToSwipe),

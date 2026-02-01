@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
+import '../../data/event_tracker.dart';
 import '../../data/session_provider.dart';
 import '../../data/models/item.dart';
 import '../../shared/widgets/app_shell.dart';
@@ -22,23 +23,28 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
   final Set<String> _selectedIds = {};
 
   Future<void> _openDetailWithLogging(BuildContext context, Item item) async {
-    final sessionId = ref.read(sessionIdProvider);
-    final client = ref.read(apiClientProvider);
-    final optOut = ref.read(analyticsOptOutProvider);
-    if (sessionId != null && !optOut) {
-      client.logEvent(sessionId: sessionId, eventType: 'open_detail', itemId: item.id, metadata: {'source': 'likes'}).ignore();
-    }
+    final tracker = ref.read(eventTrackerProvider);
+    tracker.track('detail_open', {
+      'item': {'itemId': item.id, 'source': 'likes'},
+      'surface': {'name': 'detail'},
+    });
     final started = DateTime.now();
-    await showDetailSheet(context, item, goBaseUrl: Uri.base.origin);
+    await showDetailSheet(context, item, goBaseUrl: Uri.base.origin, onOutboundClick: (i) => _trackOutbound(tracker, i));
     final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
-    if (context.mounted && sessionId != null && !ref.read(analyticsOptOutProvider)) {
-      client.logEvent(
-        sessionId: sessionId,
-        eventType: 'detail_dismiss',
-        itemId: item.id,
-        metadata: {'timeViewedMs': timeViewedMs, 'source': 'likes'},
-      ).ignore();
+    if (context.mounted) {
+      tracker.track('detail_close', {
+        'item': {'itemId': item.id},
+        'ext': {'durationMs': timeViewedMs},
+      });
     }
+  }
+
+  void _trackOutbound(EventTracker tracker, Item item) {
+    final domain = item.outboundUrl != null ? Uri.tryParse(item.outboundUrl!)?.host : null;
+    tracker.track('outbound_click', {
+      'item': {'itemId': item.id},
+      'outbound': {'destinationDomain': domain ?? 'unknown'},
+    });
   }
 
   @override
@@ -156,10 +162,16 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
 
   Future<void> _shareShortlist(BuildContext context, String sessionId, List<String> itemIds) async {
     final client = ref.read(apiClientProvider);
+    final tracker = ref.read(eventTrackerProvider);
     try {
       final res = await client.createShortlist(sessionId: sessionId, itemIds: itemIds);
+      final shortlistId = res['shortlistId'] as String?;
       final token = res['shareToken'] as String?;
       if (token == null) return;
+      tracker.track('shortlist_create', {
+        'items': {'itemIds': itemIds, 'count': itemIds.length},
+        'share': {'shortlistId': shortlistId ?? token, 'method': 'native_share'},
+      });
       final url = '${Uri.base.origin}/s/$token';
       await Share.share('Check out my shortlist: $url', subject: 'Swiper shortlist');
       if (context.mounted) {

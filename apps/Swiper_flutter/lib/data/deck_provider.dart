@@ -1,14 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_client.dart';
+import 'api_providers.dart';
 import 'device_context.dart';
+import 'event_tracker.dart';
 import 'models/item.dart';
 import 'session_provider.dart';
 
-final apiClientProvider = Provider<ApiClient>((ref) {
-  final getAdminToken = () => ref.read(adminIdTokenProvider);
-  final getAdminPassword = () => ref.read(adminPasswordProvider);
-  return ApiClient(getAdminToken: getAdminToken, getAdminPassword: getAdminPassword);
-});
+export 'api_providers.dart' show apiClientProvider;
 
 /// Admin dashboard stats. Cached so rebuilds don't create a new future (avoids infinite spinner).
 final adminStatsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
@@ -35,7 +33,12 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
   String? _sessionId;
   final Map<String, dynamic> _filters;
 
+  DeckRankContext? _rankContext;
+  Map<String, double> _itemScores = const {};
+
   String? get sessionId => _sessionId ?? _ref.read(sessionIdProvider);
+  DeckRankContext? get rankContext => _rankContext;
+  Map<String, double> get itemScores => _itemScores;
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -70,18 +73,36 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
         if (mounted) state = AsyncValue.error('No session', StackTrace.current);
         return;
       }
+
+      final tracker = _ref.read(eventTrackerProvider);
       final filtersParam = _filters.isEmpty ? null : _filters;
-      final items = await _client.getDeck(sessionId: sid, filters: filtersParam);
+      tracker.track('deck_request', filtersParam != null && filtersParam.isNotEmpty
+          ? {'filters': {'active': _filters}}
+          : {});
+
+      final stopwatch = Stopwatch()..start();
+      final response = await _client.getDeck(sessionId: sid, filters: filtersParam);
+      stopwatch.stop();
       if (!mounted) return;
+
+      _rankContext = response.rank;
+      _itemScores = response.itemScores;
+
       if (mounted) {
-        state = AsyncValue.data(items);
-        if (!_ref.read(analyticsOptOutProvider)) {
-          if (didCreateSession) {
-            _client.logEvent(sessionId: sid, eventType: 'session_start').ignore();
-          }
-          if (items.isEmpty) {
-            _client.logEvent(sessionId: sid, eventType: 'deck_empty_view').ignore();
-          }
+        state = AsyncValue.data(response.items);
+        tracker.track('deck_response', {
+          if (response.rank != null)
+            'rank': {
+              'rankerRunId': response.rank!.rankerRunId,
+              'algorithmVersion': response.rank!.algorithmVersion,
+            },
+          'perf': {'latencyMs': stopwatch.elapsedMilliseconds},
+        });
+        if (didCreateSession) {
+          tracker.track('session_start', {});
+        }
+        if (response.items.isEmpty) {
+          tracker.track('empty_deck', {});
         }
       }
     } catch (e, st) {
@@ -91,13 +112,53 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
 
   Future<void> refresh() => _load();
 
-  Future<void> swipe(String itemId, String direction, int positionInDeck) async {
+  Future<void> swipe(
+    String itemId,
+    String direction,
+    int positionInDeck, {
+    String gesture = 'swipe',
+    double? velocity,
+    Item? item,
+  }) async {
     final sid = sessionId;
     final current = state.valueOrNull;
     if (sid == null || current == null) return;
     try {
       await _client.swipe(sessionId: sid, itemId: itemId, direction: direction, positionInDeck: positionInDeck);
       if (mounted) state = AsyncValue.data(current.where((i) => i.id != itemId).toList());
+
+      final tracker = _ref.read(eventTrackerProvider);
+      final eventName = direction == 'right' ? 'swipe_right' : 'swipe_left';
+      final rank = _rankContext != null
+          ? {
+              'rankerRunId': _rankContext!.rankerRunId,
+              if (_itemScores.containsKey(itemId)) 'scoreAtRender': _itemScores[itemId],
+            }
+          : null;
+      final snapshot = item != null
+          ? {
+              if (item.brand != null) 'brand': item.brand,
+              'newUsed': item.newUsed,
+              if (item.sizeClass != null) 'sizeClass': item.sizeClass,
+              if (item.material != null) 'material': item.material,
+              if (item.colorFamily != null) 'colorFamily': item.colorFamily,
+              'styleTags': item.styleTags,
+            }
+          : null;
+      tracker.track(eventName, {
+        'item': {
+          'itemId': itemId,
+          'positionInDeck': positionInDeck,
+          'source': 'deck',
+          if (snapshot != null) 'snapshot': snapshot,
+        },
+        'interaction': {
+          'gesture': gesture,
+          'direction': direction,
+          if (velocity != null) 'velocity': velocity,
+        },
+        if (rank != null) 'rank': rank,
+      });
     } catch (_) {
       // Keep UI; could retry or show snackbar
     }

@@ -1,12 +1,13 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { Timestamp } from "firebase-admin/firestore";
 
 export async function adminStatsGet(req: Request, res: Response): Promise<void> {
   try {
     const db = admin.firestore();
-    const now = admin.firestore.Timestamp.now();
-    const oneDayAgo = admin.firestore.Timestamp.fromMillis(now.toMillis() - 24 * 60 * 60 * 1000);
+    const now = Timestamp.now();
+    const oneDayAgo = Timestamp.fromMillis(now.toMillis() - 24 * 60 * 60 * 1000);
 
     const [sessionsSnap, swipesSnap, likesSnap, eventsSnap] = await Promise.all([
       db.collection("anonSessions").where("lastSeenAt", ">=", oneDayAgo).get(),

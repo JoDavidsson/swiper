@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/deck_provider.dart';
+import '../../data/event_tracker.dart';
 import '../../data/models/item.dart';
 import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
@@ -14,14 +15,14 @@ class _CompareBody extends StatefulWidget {
   const _CompareBody({
     required this.items,
     required this.sessionId,
-    required this.client,
+    required this.tracker,
     required this.child,
     required this.analyticsOptOut,
   });
 
   final List<Item> items;
   final String? sessionId;
-  final ApiClient client;
+  final EventTracker tracker;
   final Widget child;
   final bool analyticsOptOut;
 
@@ -34,14 +35,13 @@ class _CompareBodyState extends State<_CompareBody> {
   void initState() {
     super.initState();
     if (widget.sessionId != null && !widget.analyticsOptOut) {
-      widget.client.logEvent(
-        sessionId: widget.sessionId!,
-        eventType: 'compare_open',
-        metadata: {
+      widget.tracker.track('compare_open', {
+        'items': {
           'itemIds': widget.items.map((e) => e.id).toList(),
           'count': widget.items.length,
         },
-      ).ignore();
+        'compare': {'compareCount': widget.items.length},
+      });
     }
   }
 
@@ -94,12 +94,13 @@ class CompareScreen extends ConsumerWidget {
         }
 
         final analyticsOptOut = ref.watch(analyticsOptOutProvider);
+        final tracker = ref.read(eventTrackerProvider);
         return AppShell(
           title: 'Compare',
           body: _CompareBody(
             items: items,
             sessionId: sessionId,
-            client: client,
+            tracker: tracker,
             analyticsOptOut: analyticsOptOut,
             child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppTheme.spacingUnit),
@@ -113,7 +114,14 @@ class CompareScreen extends ConsumerWidget {
                 ...items.map((item) => Padding(
                   padding: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
                   child: OutlinedButton.icon(
-                    onPressed: () => _openOutbound(context, item),
+                    onPressed: () {
+                      final domain = item.outboundUrl != null ? Uri.tryParse(item.outboundUrl!)?.host : null;
+                      tracker.track('outbound_click', {
+                        'item': {'itemId': item.id},
+                        'outbound': {'destinationDomain': domain ?? 'unknown'},
+                      });
+                      _openOutbound(context, item);
+                    },
                     icon: const Icon(Icons.open_in_new),
                     label: Text('View ${item.title} on site'),
                   ),

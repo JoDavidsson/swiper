@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../debug_log.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/deck/deck_screen.dart';
@@ -24,15 +23,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   // Recreating the router (e.g. ref.watch(adminAuthProvider)) resets to initialLocation '/' and kicks user back to splash.
   final initialAuth = ref.read(adminAuthProvider);
   final adminAuthNotifier = ValueNotifier<bool>(initialAuth);
-  // #region agent log
-  debugLog('router.dart:routerProvider', 'router created', {'initialAuth': initialAuth}, hypothesisId: 'H4');
-  // #endregion
   ref.listen<bool>(adminAuthProvider, (_, next) {
     adminAuthNotifier.value = next;
     adminAuthNotifier.notifyListeners();
-    // #region agent log
-    debugLog('router.dart:ref.listen', 'adminAuthNotifier updated', {'next': next}, hypothesisId: 'H1');
-    // #endregion
   });
 
   return GoRouter(
@@ -50,9 +43,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // When a second router instance is created it can have initialLocation '/' while user is logged in; redirect to dashboard (avoids kick-back to splash).
       else if (isAdmin && loc == '/') result = '/admin/dashboard';
-      // #region agent log
-      debugLog('router.dart:redirect', 'redirect run', {'loc': loc, 'isAdmin': isAdmin, 'return': result}, hypothesisId: 'H2');
-      // #endregion
       return result;
     },
     routes: [

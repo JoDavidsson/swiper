@@ -1,8 +1,26 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import '../debug_log.dart';
 import 'models/item.dart';
+
+/// Rank context returned with deck response (for analytics).
+class DeckRankContext {
+  const DeckRankContext({required this.rankerRunId, required this.algorithmVersion});
+  final String rankerRunId;
+  final String algorithmVersion;
+}
+
+/// Deck API response: items plus optional rank context and per-item scores.
+class DeckResponse {
+  const DeckResponse({
+    required this.items,
+    this.rank,
+    this.itemScores = const {},
+  });
+  final List<Item> items;
+  final DeckRankContext? rank;
+  final Map<String, double> itemScores;
+}
 
 /// API client for Cloud Functions. Base URL from env or default (emulator).
 /// When [getAdminToken] is set, adds Authorization: Bearer <token> to admin requests (except verify).
@@ -56,15 +74,40 @@ class ApiClient {
     return r.data ?? {};
   }
 
-  /// Get deck items for session. Backend expects filters as JSON string.
-  Future<List<Item>> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 20}) async {
+  /// Deck response: items plus rank context for analytics.
+  static List<Item> itemsFromDeckResponse(Map<String, dynamic> r) {
+    final list = r['items'] as List? ?? [];
+    return list.map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+  }
+
+  /// Get deck items for session. Backend returns items, rank (rankerRunId, algorithmVersion), and optional itemScores.
+  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 20}) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
       if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),
       'limit': limit,
     });
-    final list = r.data?['items'] as List? ?? [];
-    return list.map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    final data = r.data ?? {};
+    final items = ApiClient.itemsFromDeckResponse(data);
+    final rankMap = data['rank'] as Map<String, dynamic>?;
+    final rank = rankMap != null
+        ? DeckRankContext(
+            rankerRunId: rankMap['rankerRunId'] as String? ?? '',
+            algorithmVersion: rankMap['algorithmVersion'] as String? ?? '',
+          )
+        : null;
+    final itemScoresRaw = data['itemScores'] as Map<String, dynamic>?;
+    final itemScores = <String, double>{};
+    if (itemScoresRaw != null) {
+      for (final e in itemScoresRaw.entries) {
+        final v = e.value;
+        if (v is num) itemScores[e.key] = v.toDouble();
+      }
+    }
+    if (rank != null && itemScores.isNotEmpty) {
+      return DeckResponse(items: items, rank: rank, itemScores: itemScores);
+    }
+    return DeckResponse(items: items, rank: rank, itemScores: const {});
   }
 
   /// Record swipe.
@@ -110,7 +153,7 @@ class ApiClient {
     return r.data ?? {};
   }
 
-  /// Log event.
+  /// Log event (legacy). Prefer event_tracker.track() for v1 schema.
   Future<void> logEvent({required String sessionId, required String eventType, String? itemId, Map<String, dynamic>? metadata}) async {
     await _dio.post('/api/events', data: {
       'sessionId': sessionId,
@@ -118,6 +161,12 @@ class ApiClient {
       if (itemId != null) 'itemId': itemId,
       if (metadata != null) 'metadata': metadata,
     });
+  }
+
+  /// Send batched v1 events. Server adds createdAtServer and dedupes by eventId.
+  Future<void> postEventsBatch(List<Map<String, dynamic>> events) async {
+    if (events.isEmpty) return;
+    await _dio.post('/api/events/batch', data: {'events': events});
   }
 
   /// Admin login: verify password against backend (legacy). For full access use Sign in with Google.
@@ -144,21 +193,8 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> adminGetStats() async {
-    // #region agent log
-    debugLog('api_client.dart:adminGetStats', 'request start', {}, hypothesisId: 'S2');
-    // #endregion
-    try {
-      final r = await _dio.get<Map<String, dynamic>>('/api/admin/stats');
-      // #region agent log
-      debugLog('api_client.dart:adminGetStats', 'request success', {'statusCode': r.statusCode}, hypothesisId: 'S2');
-      // #endregion
-      return r.data ?? {};
-    } catch (e) {
-      // #region agent log
-      debugLog('api_client.dart:adminGetStats', 'request error', {'error': e.toString(), 'type': e.runtimeType.toString()}, hypothesisId: 'S2');
-      // #endregion
-      rethrow;
-    }
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/stats');
+    return r.data ?? {};
   }
 
   Future<List<Map<String, dynamic>>> adminGetSources() async {

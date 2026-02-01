@@ -1,6 +1,8 @@
 # Swiper – Event tracking (current vs recommended for ML)
 
-This doc lists what we track today and what we should track for a future ML recommendation engine. Events live in the **events** collection (and some in **swipes**); all use **sessionId** and **createdAt** for session-based and temporal modeling.
+This doc lists what we track today and what we should track for a future ML recommendation engine. Events live in the **events** collection (legacy) and **events_v1** (canonical v1 schema); all use **sessionId** and **createdAt** / **createdAtServer** for session-based and temporal modeling.
+
+**Canonical schema (v1):** Client sends batched v1 events to POST /api/events/batch. Schema and Event Requirements Matrix: [docs/EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). JSON Schema: [docs/schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json). Flutter tracker: `lib/data/event_tracker.dart` — use `ref.read(eventTrackerProvider).track(eventName, partial)`; buffer flushes when size ≥ 20, oldest ≥ 5s, or on session_end / app background.
 
 ---
 
@@ -79,37 +81,17 @@ Store as **metadata** on existing events (e.g. `timeViewedMs` on open_detail/det
 
 ---
 
-## 3. Recommended event schema (for new/updated events)
+## 3. Canonical event schema v1 (implemented)
 
-Use a single **events** collection. Each document:
+V1 events are sent by the Flutter tracker to POST /api/events/batch and stored in **events_v1** (document ID = eventId for dedupe). Each document has:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| sessionId | string | Yes | Anonymous session. |
-| eventType | string | Yes | One of the event types below. |
-| itemId | string | No | Item concerned (if any). |
-| metadata | map | No | Event-specific payload (no PII). |
-| createdAt | timestamp | Yes | Server or client time (prefer server). |
+- **Required:** schemaVersion "1.0", eventId (UUID v4), eventName, sessionId, clientSeq (monotonic per session), createdAtClient, app (platform, appVersion, locale, timezoneOffsetMinutes, screenBucket).
+- **Server-added:** createdAtServer.
+- **Optional:** surface, item, rank, impression, interaction, filters, onboarding, compare, share, outbound, perf, error, ext.
 
-**Event types (canonical list):**
+**Event names (v1):** session_start, session_resume, session_end, deck_request, deck_response, card_impression_start, card_impression_end, swipe_left, swipe_right, detail_open, detail_close, like_add, like_remove, filters_open, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
 
-- swipe_left, swipe_right  
-- add_like, remove_like  
-- outbound_click, share_shortlist  
-- open_detail, detail_dismiss  
-- compare_open, deck_refresh, deck_empty_view  
-- session_start, filter_change, onboarding_complete  
-- (Optional) card_view with duration in metadata.
-
-**Metadata conventions (examples):**
-
-- **positionInDeck**: int (0-based) for deck position.  
-- **timeViewedMs**: int for dwell/time in view.  
-- **filters**: map (e.g. sizeClass, colorFamily, newUsed).  
-- **source**: string (e.g. "deck" | "likes").  
-- **ref**: string (e.g. "detail" | "list") for outbound_click.  
-- **itemIds**: list of strings for compare_open.  
-- **preferences**: map for onboarding_complete.
+**Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion; card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
 
 ---
 
@@ -123,22 +105,26 @@ Typical inputs for training:
 | Negative actions | swipe_left, remove_like | ✅ Stored |
 | Item features | items collection (title, material, color, price, etc.) | ✅ Stored |
 | Session sequence | events + swipes by sessionId, ordered by createdAt | ✅ Available |
-| Context per event | positionInDeck, filters, source | ⚠️ Partial (positionInDeck on swipes; filters not yet logged) |
-| Implicit engagement | open_detail, dwell time | ❌ Not yet |
-| Cold start | onboarding_complete, session_start | ❌ Not yet |
+| Context per event | positionInDeck, filters, source, rank | ✅ In events_v1 (item, rank, filters) |
+| Implicit engagement | detail_open/close, card_impression_start/end, dwell | ✅ In events_v1 |
+| Cold start | onboarding_complete, session_start | ✅ In events_v1 |
 
-**Done (as of 2025-01):**
+**Done (canonical v1):**
 
-1. Client-side calls to `POST /api/events` for: **open_detail**, **detail_dismiss** (with timeViewedMs), **compare_open**, **filter_sheet_open**, **session_start**, **deck_empty_view**, **onboarding_complete**.  
-2. Session creation sends device context (locale, platform, screenBucket, timezoneOffsetMinutes); backend stores on anonSessions.  
-3. Data & Privacy screen in app explains what we collect; placeholders for **opt-out** and **social login (e.g. Instagram/Facebook)** as “Coming later”.
+1. Client sends batched v1 events to POST /api/events/batch; stored in **events_v1** with eventId as doc ID.  
+2. Tracker in `lib/data/event_tracker.dart`: `track(eventName, partial)`; auto-fills schemaVersion, eventId, clientSeq, app; buffer flushes at 20 events, 5s, or session_end.  
+3. Deck API returns rank (rankerRunId, algorithmVersion, itemScores); card impressions and swipes include rank context.
+4. Lifecycle observer flushes buffer and emits session_end / session_resume (resume after >30s background).
+5. Analytics opt-out: when enabled, only essential events (session_start, deck_response, swipe_left/right, like_add/remove, outbound_click, card_impression_*, empty_deck) are sent.
 
-**Backlog:**
+**QA invariants (ship-proofing):**
 
-- **Opt-out UI:** Functional control to reduce or disable non-essential event collection (stored per session or device).  
-- **SSO / social login:** Optional connection to Instagram, Facebook, etc. for personalised feed; no SSO in MVP.  
-- Optionally add **deck_refresh** and **card_view** (or dwell in metadata) later.  
-- Keep using **swipes** + **events**; ensure every event has sessionId, createdAt, and suggested metadata so ML pipelines can join and featurize cleanly.
+- clientSeq strictly increases within a session.
+- Every swipe has itemId and positionInDeck.
+- Every card_impression_end has a matching impressionId from a start.
+- Deck-origin events include rankerRunId when applicable.
+- filters_apply always includes full filters.active snapshot.
+- outbound_click never missing destinationDomain.
 
 ---
 

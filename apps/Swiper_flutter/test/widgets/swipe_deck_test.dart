@@ -13,8 +13,8 @@ void main() {
             body: SwipeDeck(
               items: const [],
               sessionId: null,
-              onSwipeLeft: (_, __) {},
-              onSwipeRight: (_, __) {},
+              onSwipeLeft: (_, __, {gesture = 'swipe'}) {},
+              onSwipeRight: (_, __, {gesture = 'swipe'}) {},
             ),
           ),
         ),
@@ -34,8 +34,8 @@ void main() {
             body: SwipeDeck(
               items: items,
               sessionId: 's1',
-              onSwipeLeft: (_, __) {},
-              onSwipeRight: (_, __) {},
+              onSwipeLeft: (_, __, {gesture = 'swipe'}) {},
+              onSwipeRight: (_, __, {gesture = 'swipe'}) {},
             ),
           ),
         ),

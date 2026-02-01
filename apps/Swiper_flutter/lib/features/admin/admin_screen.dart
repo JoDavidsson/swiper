@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
 import '../../data/session_provider.dart';
-import '../../debug_log.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
@@ -30,16 +29,8 @@ class AdminScreen extends ConsumerWidget {
         ],
       ),
       body: statsAsync.when(
-        loading: () {
-          // #region agent log
-          debugLog('admin_screen.dart:builder', 'adminStats loading', {}, hypothesisId: 'S1');
-          // #endregion
-          return const Center(child: CircularProgressIndicator());
-        },
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) {
-          // #region agent log
-          debugLog('admin_screen.dart:builder', 'adminStats error', {'error': err.toString()}, hypothesisId: 'S1');
-          // #endregion
           String message = err.toString();
           if (err is DioException && err.response?.data != null) {
             final d = err.response!.data;
@@ -65,11 +56,7 @@ class AdminScreen extends ConsumerWidget {
             ),
           );
         },
-        data: (stats) {
-          // #region agent log
-          debugLog('admin_screen.dart:builder', 'adminStats data', {'keys': stats.keys.toList()}, hypothesisId: 'S1');
-          // #endregion
-          return ListView(
+        data: (stats) => ListView(
             padding: const EdgeInsets.all(AppTheme.spacingUnit),
             children: [
               _StatCard(title: 'Daily sessions', value: '${stats['dailySessions'] ?? 0}'),
@@ -109,8 +96,7 @@ class AdminScreen extends ConsumerWidget {
                 onTap: () => context.push('/admin/qa'),
               ),
             ],
-          );
-        },
+          ),
       ),
     );
   }
