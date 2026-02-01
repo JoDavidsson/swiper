@@ -1,0 +1,10 @@
+{
+  "name": "Swiper",
+  "short_name": "Swiper",
+  "description": "Swipe your way to the perfect sofa",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F5F5F5",
+  "theme_color": "#007AFF",
+  "orientation": "portrait-primary"
+}

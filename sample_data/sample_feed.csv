@@ -1,0 +1,6 @@
+title,price,currency,url,image_url,brand,description,width,height,depth,material,color,new_used
+Scandi 2-seat sofa,12990,SEK,https://example.com/sofa1,https://picsum.photos/400/300?1,Example Brand,Modern two-seater in fabric.,180,85,95,fabric,gray,new
+Velvet 3-seat,18990,SEK,https://example.com/sofa2,https://picsum.photos/400/300?2,Example Brand,Luxury velvet three-seater.,220,90,98,velvet,green,new
+Compact sofa,8990,SEK,https://example.com/sofa3,https://picsum.photos/400/300?3,Example Brand,Small space friendly.,160,80,90,fabric,beige,new
+Leather corner,24990,SEK,https://example.com/sofa4,https://picsum.photos/400/300?4,Example Brand,Corner leather sofa.,250,95,100,leather,brown,new
+Boucle armchair,7490,SEK,https://example.com/sofa5,https://picsum.photos/400/300?5,Example Brand,Cozy boucle armchair.,100,75,85,boucle,white,new

@@ -1,0 +1,51 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*serviceAccount*.json
+*firebase-adminsdk*.json
+GOOGLE_APPLICATION_CREDENTIALS.json
+
+# Flutter
+apps/Swiper_flutter/.dart_tool/
+apps/Swiper_flutter/build/
+apps/Swiper_flutter/.packages
+apps/Swiper_flutter/.flutter-plugins
+apps/Swiper_flutter/.flutter-plugins-dependencies
+apps/Swiper_flutter/pubspec.lock
+*.iml
+.idea/
+.vscode/
+*.ipr
+*.iws
+
+# Firebase
+firebase/functions/node_modules/
+firebase/functions/lib/
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local / optional
+*.plan.md
+.cursor/

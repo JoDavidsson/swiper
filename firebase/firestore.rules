@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Items: public read (deck); writes only via Admin SDK (Supply Engine / Functions).
+    match /items/{itemId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Sources: read for admin; writes only via Admin SDK.
+    match /sources/{sourceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Anonymous sessions: client reads/writes by sessionId (opaque).
+    match /anonSessions/{sessionId} {
+      allow read, write: if true;
+      match /likes/{itemId} {
+        allow read, write: if true;
+      }
+      match /preferenceWeights/{docId} {
+        allow read, write: if true;
+      }
+    }
+    match /swipes/{swipeId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+    match /likes/{likeId} {
+      allow read, write: if true;
+    }
+    match /shortlists/{shortlistId} {
+      allow read, write: if true;
+    }
+    match /shortlists/{shortlistId}/items/{itemId} {
+      allow read, write: if true;
+    }
+    match /events/{eventId} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+    // Ingestion: read for admin; writes only via Admin SDK (Supply Engine).
+    match /ingestionRuns/{runId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /ingestionJobs/{jobId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

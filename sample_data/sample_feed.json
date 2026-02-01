@@ -1,0 +1,6 @@
+{
+  "items": [
+    {"title": "Scandi 2-seat sofa", "price": 12990, "currency": "SEK", "url": "https://example.com/sofa1", "image_url": "https://picsum.photos/400/300?1", "brand": "Example Brand", "material": "fabric", "color": "gray"},
+    {"title": "Velvet 3-seat", "price": 18990, "currency": "SEK", "url": "https://example.com/sofa2", "image_url": "https://picsum.photos/400/300?2", "brand": "Example Brand", "material": "velvet", "color": "green"}
+  ]
+}
