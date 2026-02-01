@@ -19,12 +19,13 @@ See **[docs/SETUP_FIREBASE_AND_SERVICES.md](docs/SETUP_FIREBASE_AND_SERVICES.md)
 1. **Emulators**: `./scripts/run_emulators.sh`
 2. **Supply Engine**: `./scripts/run_supply_engine.sh`
 3. **Ingest sample feed**: `FIRESTORE_EMULATOR_HOST=localhost:8180 ./scripts/ingest_sample_feed.sh`
-4. **Flutter**: `cd apps/Swiper_flutter && flutter pub get && flutter run -d chrome`
+4. **Flutter**: `./scripts/run_flutter_web.sh` (runs on **http://localhost:8080**; leave it running – edits hot-reload)
 
 See [docs/RUNBOOK_LOCAL_DEV.md](docs/RUNBOOK_LOCAL_DEV.md) for full setup and env vars.
 
 ## Docs
 
+- [PROJECT_PLAN](docs/PROJECT_PLAN.md)
 - [ARCHITECTURE](docs/ARCHITECTURE.md)
 - [DATA_MODEL](docs/DATA_MODEL.md)
 - [ASSUMPTIONS](docs/ASSUMPTIONS.md)
@@ -34,6 +35,8 @@ See [docs/RUNBOOK_LOCAL_DEV.md](docs/RUNBOOK_LOCAL_DEV.md) for full setup and en
 - [PRIVACY_GDPR](docs/PRIVACY_GDPR.md)
 - [RUNBOOK_LOCAL_DEV](docs/RUNBOOK_LOCAL_DEV.md)
 - [RUNBOOK_DEPLOYMENT](docs/RUNBOOK_DEPLOYMENT.md)
+- [TESTING_LOCAL](docs/TESTING_LOCAL.md)
+- [QA_DIAGNOSTICS_REPORT](docs/QA_DIAGNOSTICS_REPORT.md)
 
 ## License
 

@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../debug_log.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/deck/deck_screen.dart';
@@ -19,10 +20,41 @@ import '../features/admin/admin_qa_screen.dart';
 import '../data/session_provider.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final isAdmin = ref.watch(adminAuthProvider);
+  // Keep admin auth in a listenable so we refresh redirects without recreating the router.
+  // Recreating the router (e.g. ref.watch(adminAuthProvider)) resets to initialLocation '/' and kicks user back to splash.
+  final initialAuth = ref.read(adminAuthProvider);
+  final adminAuthNotifier = ValueNotifier<bool>(initialAuth);
+  // #region agent log
+  debugLog('router.dart:routerProvider', 'router created', {'initialAuth': initialAuth}, hypothesisId: 'H4');
+  // #endregion
+  ref.listen<bool>(adminAuthProvider, (_, next) {
+    adminAuthNotifier.value = next;
+    adminAuthNotifier.notifyListeners();
+    // #region agent log
+    debugLog('router.dart:ref.listen', 'adminAuthNotifier updated', {'next': next}, hypothesisId: 'H1');
+    // #endregion
+  });
+
   return GoRouter(
     initialLocation: '/',
     debugLogDiagnostics: true,
+    refreshListenable: adminAuthNotifier,
+    redirect: (context, state) {
+      final isAdmin = adminAuthNotifier.value;
+      final loc = state.matchedLocation;
+      String? result;
+      // Admin routes: send unauthenticated to login; send /admin or /admin/login to dashboard when logged in.
+      if (loc.startsWith('/admin')) {
+        if (isAdmin && (loc == '/admin' || loc == '/admin/login')) result = '/admin/dashboard';
+        else if (!isAdmin && loc != '/admin' && loc != '/admin/login') result = '/admin/login';
+      }
+      // When a second router instance is created it can have initialLocation '/' while user is logged in; redirect to dashboard (avoids kick-back to splash).
+      else if (isAdmin && loc == '/') result = '/admin/dashboard';
+      // #region agent log
+      debugLog('router.dart:redirect', 'redirect run', {'loc': loc, 'isAdmin': isAdmin, 'return': result}, hypothesisId: 'H2');
+      // #endregion
+      return result;
+    },
     routes: [
       GoRoute(
         path: '/',
@@ -59,11 +91,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           return SharedShortlistScreen(shareToken: token);
         },
       ),
-      // Flat admin routes (no nested children) to avoid go_router 13.x "path cannot be empty" assert
       GoRoute(
         path: '/admin',
-        redirect: (context, state) => isAdmin ? '/admin/dashboard' : '/admin/login',
-        builder: (context, state) => const SizedBox.shrink(), // always redirected
+        builder: (context, state) => const AdminLoginScreen(),
       ),
       GoRoute(
         path: '/admin/login',
@@ -71,32 +101,26 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/admin/dashboard',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminScreen(),
       ),
       GoRoute(
         path: '/admin/sources',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminSourcesScreen(),
       ),
       GoRoute(
         path: '/admin/runs',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminRunsScreen(),
       ),
       GoRoute(
         path: '/admin/items',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminItemsScreen(),
       ),
       GoRoute(
         path: '/admin/import',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminImportScreen(),
       ),
       GoRoute(
         path: '/admin/qa',
-        redirect: (context, state) => isAdmin ? null : '/admin/login',
         builder: (context, state) => const AdminQAScreen(),
       ),
     ],

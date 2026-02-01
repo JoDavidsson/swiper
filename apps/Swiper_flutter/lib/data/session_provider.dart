@@ -7,8 +7,14 @@ import 'device_context.dart';
 /// Session ID stored locally after POST /api/session.
 final sessionIdProvider = StateProvider<String?>((ref) => null);
 
-/// Admin auth: MVP password gate. True when user has passed admin login.
+/// Admin auth: True when user has passed admin login (Google or legacy password).
 final adminAuthProvider = StateProvider<bool>((ref) => false);
+
+/// Admin Firebase ID token; sent on admin API requests. Null when using password only.
+final adminIdTokenProvider = StateProvider<String?>((ref) => null);
+
+/// Admin password; sent as X-Admin-Password on admin API requests when no token (password-only login).
+final adminPasswordProvider = StateProvider<String?>((ref) => null);
 
 /// Keys for local storage.
 const String kSessionIdKey = 'swiper_session_id';

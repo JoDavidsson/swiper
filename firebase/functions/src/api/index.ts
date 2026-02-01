@@ -15,6 +15,7 @@ import { adminRunsGet, adminRunGet } from "./admin_runs";
 import { adminRunTriggerPost } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
 import { adminItemsGet } from "./admin_items";
+import { requireAdminAuth } from "./admin_auth";
 
 export async function apiHandler(req: Request, res: Response): Promise<void> {
   // Emulator: path can be /project/region/api/... ; prod/hosted: /api/... or /items/deck. Normalize to e.g. "session" or "items/deck".
@@ -29,7 +30,7 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Session-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Session-Id, X-Admin-Password",
   };
 
   if (method === "OPTIONS") {
@@ -76,6 +77,17 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     if (method === "POST" && path === "events") {
       await eventsPost(req, res);
       return;
+    }
+    // Admin routes (except verify): require Bearer token + allowlist OR X-Admin-Password (password gate)
+    if (path.startsWith("admin/") && !(method === "POST" && path === "admin/verify")) {
+      const adminUser = await requireAdminAuth(req, res);
+      const passwordHeader = req.headers["x-admin-password"] as string | undefined;
+      const adminPassword = process.env.ADMIN_PASSWORD || "";
+      const passwordOk = adminPassword && passwordHeader === adminPassword;
+      if (!adminUser && !passwordOk) {
+        res.status(401).json({ error: "Unauthorized. Use admin password or Sign in with Google." });
+        return;
+      }
     }
     if (method === "POST" && path === "admin/verify") {
       await adminVerifyPost(req, res);

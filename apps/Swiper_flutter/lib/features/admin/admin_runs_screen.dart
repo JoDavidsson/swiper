@@ -37,7 +37,7 @@ class AdminRunsScreen extends ConsumerWidget {
               final id = r['id'] as String? ?? '';
               final sourceId = r['sourceId'] as String? ?? '';
               final status = r['status'] as String? ?? '';
-              final startedAt = r['startedAt'];
+              final _ = r['startedAt']; // available for future display
               final stats = r['stats'] as Map<String, dynamic>?;
               final errorSummary = r['errorSummary'] as String?;
               return Card(

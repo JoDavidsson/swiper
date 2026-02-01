@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "anonSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lastSeenAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "eventType", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "items",
       "queryScope": "COLLECTION",
       "fields": [

@@ -4,7 +4,16 @@ import 'device_context.dart';
 import 'models/item.dart';
 import 'session_provider.dart';
 
-final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final getAdminToken = () => ref.read(adminIdTokenProvider);
+  final getAdminPassword = () => ref.read(adminPasswordProvider);
+  return ApiClient(getAdminToken: getAdminToken, getAdminPassword: getAdminPassword);
+});
+
+/// Admin dashboard stats. Cached so rebuilds don't create a new future (avoids infinite spinner).
+final adminStatsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
+  return ref.watch(apiClientProvider).adminGetStats();
+});
 
 /// Current deck filters (sizeClass, colorFamily, newUsed). Empty = no filter.
 final deckFiltersProvider = StateProvider<Map<String, dynamic>>((ref) => <String, dynamic>{});

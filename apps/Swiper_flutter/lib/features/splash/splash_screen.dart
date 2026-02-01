@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
+import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart';
 
 class SplashScreen extends ConsumerWidget {
@@ -44,7 +45,7 @@ class SplashScreen extends ConsumerWidget {
                       await ensureSession(ref, ref.read(apiClientProvider));
                       if (context.mounted) context.go('/onboarding');
                     },
-                    child: const Text('Get started'),
+                    child: Text(ref.watch(appStringsProvider).getStarted),
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit),
@@ -53,7 +54,7 @@ class SplashScreen extends ConsumerWidget {
                     await ensureSession(ref, ref.read(apiClientProvider));
                     if (context.mounted) context.go('/deck');
                   },
-                  child: const Text('Skip to swipe'),
+                  child: Text(ref.watch(appStringsProvider).skipToSwipe),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),
               ],

@@ -1,11 +1,43 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import '../debug_log.dart';
 import 'models/item.dart';
 
 /// API client for Cloud Functions. Base URL from env or default (emulator).
+/// When [getAdminToken] is set, adds Authorization: Bearer <token> to admin requests (except verify).
+/// When no token but [getAdminPassword] is set, adds X-Admin-Password for password-only admin access.
 class ApiClient {
-  ApiClient({String? baseUrl}) : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl));
+  ApiClient({String? baseUrl, String? Function()? getAdminToken, String? Function()? getAdminPassword})
+      : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)),
+        _getAdminToken = getAdminToken,
+        _getAdminPassword = getAdminPassword {
+    if (getAdminToken != null || getAdminPassword != null) {
+      _dio.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (_isAdminPath(options.path) && !options.path.contains('admin/verify')) {
+            final token = _getAdminToken?.call();
+            if (token != null && token.isNotEmpty) {
+              options.headers['Authorization'] = 'Bearer $token';
+            } else {
+              final password = _getAdminPassword?.call();
+              if (password != null && password.isNotEmpty) {
+                options.headers['X-Admin-Password'] = password;
+              }
+            }
+          }
+          handler.next(options);
+        },
+      ));
+    }
+  }
+
+  final String? Function()? _getAdminToken;
+  final String? Function()? _getAdminPassword;
+
+  static bool _isAdminPath(String path) {
+    return path.contains('/api/admin') || path.startsWith('admin/');
+  }
 
   static String get _defaultBaseUrl {
     // Emulator: http://localhost:5001/<project>/<region>; prod: set via --dart-define=API_BASE_URL=...
@@ -88,7 +120,7 @@ class ApiClient {
     });
   }
 
-  /// Admin login: verify password against backend. MVP: POST with password.
+  /// Admin login: verify password against backend (legacy). For full access use Sign in with Google.
   Future<bool> adminLogin(String password) async {
     try {
       final r = await _dio.post<Map<String, dynamic>>('/api/admin/verify', data: {'password': password});
@@ -98,9 +130,35 @@ class ApiClient {
     }
   }
 
+  /// Admin verify with Firebase ID token (Bearer). Add your email to Firestore adminAllowlist.
+  Future<bool> adminVerifyWithToken(String idToken) async {
+    try {
+      final r = await _dio.post<Map<String, dynamic>>(
+        '/api/admin/verify',
+        options: Options(headers: {'Authorization': 'Bearer $idToken'}),
+      );
+      return r.data?['ok'] as bool? ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> adminGetStats() async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/stats');
-    return r.data ?? {};
+    // #region agent log
+    debugLog('api_client.dart:adminGetStats', 'request start', {}, hypothesisId: 'S2');
+    // #endregion
+    try {
+      final r = await _dio.get<Map<String, dynamic>>('/api/admin/stats');
+      // #region agent log
+      debugLog('api_client.dart:adminGetStats', 'request success', {'statusCode': r.statusCode}, hypothesisId: 'S2');
+      // #endregion
+      return r.data ?? {};
+    } catch (e) {
+      // #region agent log
+      debugLog('api_client.dart:adminGetStats', 'request error', {'error': e.toString(), 'type': e.runtimeType.toString()}, hypothesisId: 'S2');
+      // #endregion
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> adminGetSources() async {

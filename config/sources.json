@@ -9,6 +9,16 @@
       "rateLimitRps": 1,
       "feedUrl": "sample_data/sample_feed.csv",
       "feedFormat": "csv"
+    },
+    {
+      "id": "demo_feed",
+      "name": "Demo feed (JSON)",
+      "mode": "feed",
+      "isEnabled": true,
+      "baseUrl": "https://example.com",
+      "rateLimitRps": 1,
+      "feedUrl": "sample_data/sample_feed.json",
+      "feedFormat": "json"
     }
   ]
 }

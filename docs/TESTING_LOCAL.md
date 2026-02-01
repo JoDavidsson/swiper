@@ -66,13 +66,13 @@ Chrome opens the app. It talks to the emulator by default (`http://localhost:500
 
 **URL:** Same origin as the app, then go to **`/admin`** (e.g. `http://localhost:xxxxx/admin`). You are redirected to **`/admin/login`** if not logged in.
 
-**Password:** From your **`.env`** file, use the value of **`ADMIN_PASSWORD`**. If missing, add it (see [SETUP_FIREBASE_AND_SERVICES.md](SETUP_FIREBASE_AND_SERVICES.md)).
+**Login:** Use **password** (from `.env` `ADMIN_PASSWORD`) or **Sign in with Google** (requires Web client ID and email in Firestore `adminAllowlist` – see [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md)).
 
 ### Checklist – Admin
 
 | # | What to try | What to check |
 |---|-------------|----------------|
-| 1 | **Login** | Open `/admin`. Enter `ADMIN_PASSWORD` from `.env`. Submit → redirect to admin dashboard. |
+| 1 | **Login** | Open `/admin` (path-based URL; app must be built with path strategy). Enter `ADMIN_PASSWORD` from `.env` → "Login with password" → redirect to dashboard. Or "Sign in with Google" if GOOGLE_SIGN_IN_WEB_CLIENT_ID is set and your email is in adminAllowlist. |
 | 2 | **Dashboard** | Stats and links to Sources, Runs, Items, Import, QA. |
 | 3 | **Sources** | List of sources (after ingest you may see a source or none). “Run now” on a source triggers a run (Supply Engine must be reachable for it to complete; locally you may only see “Run triggered”). |
 | 4 | **Create source** | Tap “+” (FAB). Form: Name, Mode (feed/api/crawl/manual), Base URL, Rate limit, Enabled. Fill name (e.g. “Test feed”), mode “feed”, baseUrl “https://example.com”, rate 1, Enabled ON. Tap “Create” → source appears in list. |

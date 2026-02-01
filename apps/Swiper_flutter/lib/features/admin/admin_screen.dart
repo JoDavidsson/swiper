@@ -1,16 +1,18 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
 import '../../data/session_provider.dart';
+import '../../debug_log.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final client = ref.watch(apiClientProvider);
+    final statsAsync = ref.watch(adminStatsProvider);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -20,18 +22,53 @@ class AdminScreen extends ConsumerWidget {
             icon: const Icon(Icons.logout),
             onPressed: () {
               ref.read(adminAuthProvider.notifier).state = false;
+              ref.read(adminIdTokenProvider.notifier).state = null;
+              ref.read(adminPasswordProvider.notifier).state = null;
               context.go('/admin/login');
             },
           ),
         ],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
-        future: client.adminGetStats(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+      body: statsAsync.when(
+        loading: () {
+          // #region agent log
+          debugLog('admin_screen.dart:builder', 'adminStats loading', {}, hypothesisId: 'S1');
+          // #endregion
+          return const Center(child: CircularProgressIndicator());
+        },
+        error: (err, _) {
+          // #region agent log
+          debugLog('admin_screen.dart:builder', 'adminStats error', {'error': err.toString()}, hypothesisId: 'S1');
+          // #endregion
+          String message = err.toString();
+          if (err is DioException && err.response?.data != null) {
+            final d = err.response!.data;
+            if (d is Map) {
+              final detail = d['detail'] ?? d['error'];
+              if (detail != null) message = detail.toString();
+            }
           }
-          final stats = snapshot.data!;
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Error: $message', style: TextStyle(color: AppTheme.negativeDislike), textAlign: TextAlign.center),
+                  const SizedBox(height: AppTheme.spacingUnit),
+                  ElevatedButton(
+                    onPressed: () => ref.invalidate(adminStatsProvider),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+        data: (stats) {
+          // #region agent log
+          debugLog('admin_screen.dart:builder', 'adminStats data', {'keys': stats.keys.toList()}, hypothesisId: 'S1');
+          // #endregion
           return ListView(
             padding: const EdgeInsets.all(AppTheme.spacingUnit),
             children: [

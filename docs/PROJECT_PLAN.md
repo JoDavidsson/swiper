@@ -1,0 +1,46 @@
+# Swiper – Project plan
+
+## Current state
+
+MVP shipped: Flutter app (splash, onboarding, deck, detail, likes, compare, profile, shared shortlist, admin), Firebase (Functions, Firestore, Hosting), Supply Engine (feed ingestion, sample feed), device context + event logging, Data & Privacy + opt-out, deck filters, admin items/sources/import.
+
+See [CHANGELOG.md](../CHANGELOG.md) and [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+---
+
+## Next phase
+
+Outcome-focused goals (order is suggested; reorder as needed):
+
+1. **Staging / first real deploy** – Deploy app + API to live Firebase once; run post-deploy smoke from [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md). *Done: [scripts/deploy_staging.sh](../scripts/deploy_staging.sh), runbook updated.*
+2. **Real supply** – At least one non-sample source (CSV/JSON/URL) in admin, ingested into Firestore; deck shows real items. *Done: [config/sources.json](../config/sources.json) has sample_feed + demo_feed (JSON); runbook updated.*
+3. **Language / locale** – Unblock "Swedish / English – coming soon" in profile (e.g. app locale switch or i18n skeleton) so we can use locale in recommendations. *Done: [lib/l10n/app_strings.dart](../apps/Swiper_flutter/lib/l10n/app_strings.dart), locale_provider, profile Language sheet, splash/localised strings.*
+4. **Admin auth** – Replace password gate with Firebase Auth allowlist (see [ASSUMPTIONS.md](ASSUMPTIONS.md), [DECISIONS.md](DECISIONS.md)). *Done: Firebase Auth + adminAllowlist; Sign in with Google on admin login; legacy password for verify only; [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) and [SECURITY.md](SECURITY.md) updated.*
+5. **SSO / social login (optional)** – Optional connection to Instagram/Facebook for personalised feed; keep anonymous flow default. *Done: Data & Privacy "Connect social accounts" tappable with "Coming soon" dialog.*
+
+---
+
+## Backlog
+
+Prioritised list (merge of EVENT_TRACKING, ASSUMPTIONS, DECISIONS; no duplicates):
+
+- **Admin: Firebase Auth allowlist** – Replace env password gate with Firebase Auth allowlist for production.
+- **SSO / social login** – Optional connection to Instagram, Facebook, etc. for personalised feed; anonymous remains default.
+- **Optional user auth** – Signup / login for users later; anonymous-first stays.
+- **Supply Engine: sources from Firestore** – Load sources from Firestore instead of config JSON.
+- **LLM extractor** – Optional; behind `ENABLE_LLM_EXTRACTOR` and `LLM_API_KEY`; MVP runs without it.
+- **Geography / category** – Beyond Sweden-first and sofas-only.
+- **Optional events** – `deck_refresh`, `card_view` or dwell in metadata for ML.
+- **Events hygiene** – Keep every event with sessionId, createdAt, and suggested metadata so ML pipelines can join and featurize cleanly.
+
+---
+
+## Out of scope / later
+
+AR preview, payments, messaging/escrow marketplace, multi-category beyond sofas (per ASSUMPTIONS non-goals).
+
+---
+
+## Maintenance
+
+Update this doc when we close next-phase goals or add/complete backlog items.

@@ -43,7 +43,7 @@ class AdminItemsScreen extends ConsumerWidget {
                 final currency = item['priceCurrency'] as String? ?? 'SEK';
                 final sourceId = item['sourceId'] as String? ?? '';
                 final isActive = item['isActive'] as bool? ?? true;
-                final priceStr = price is num ? (price as num).toStringAsFixed(0) : (price?.toString() ?? '?');
+                final priceStr = price is num ? (price).toStringAsFixed(0) : (price?.toString() ?? '?');
                 return Card(
                   margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
                   child: ListTile(

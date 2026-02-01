@@ -38,6 +38,10 @@ service cloud.firestore {
       allow create: if true;
       allow read, update, delete: if false;
     }
+    // Admin allowlist: only Functions (Admin SDK) can read; used to check Firebase Auth admin access.
+    match /adminAllowlist/{email} {
+      allow read, write: if false;
+    }
     // Ingestion: read for admin; writes only via Admin SDK (Supply Engine).
     match /ingestionRuns/{runId} {
       allow read: if true;

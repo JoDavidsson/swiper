@@ -1,13 +1,22 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
+import { requireAdminAuth } from "./admin_auth";
 
 export async function adminVerifyPost(req: Request, res: Response): Promise<void> {
+  // 1) Firebase Auth: Bearer token + allowlist
+  const adminUser = await requireAdminAuth(req, res);
+  if (adminUser) {
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  // 2) Legacy: password (no token for subsequent admin calls; use Sign in with Google for full access)
   const body = req.body as Record<string, unknown> | undefined;
   const password = body?.password as string;
   const adminPassword = process.env.ADMIN_PASSWORD || "";
 
   if (!adminPassword) {
-    res.status(500).json({ ok: false, error: "Admin not configured" });
+    res.status(401).json({ ok: false, error: "Admin not configured. Use Sign in with Google and add your email to adminAllowlist." });
     return;
   }
 

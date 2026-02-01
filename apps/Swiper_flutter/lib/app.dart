@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme.dart';
 import 'core/router.dart';
+import 'data/locale_provider.dart';
 
 class SwiperApp extends ConsumerWidget {
   const SwiperApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
     return MaterialApp.router(
       title: 'Swiper',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      locale: const Locale('en'),
+      locale: locale,
       supportedLocales: const [
         Locale('en'),
         Locale('sv'),

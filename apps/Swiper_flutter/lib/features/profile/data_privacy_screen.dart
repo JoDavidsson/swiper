@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
+import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
 
@@ -8,10 +9,29 @@ import '../../shared/widgets/app_shell.dart';
 class DataPrivacyScreen extends ConsumerWidget {
   const DataPrivacyScreen({super.key});
 
+  void _showSocialComingSoon(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Connect social accounts'),
+        content: const Text(
+          'Coming soon – we\'ll use this to personalise your feed. Anonymous use remains the default.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final strings = ref.watch(appStringsProvider);
     return AppShell(
-      title: 'Data & Privacy',
+      title: strings.dataAndPrivacy,
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.spacingUnit),
         children: [
@@ -61,8 +81,8 @@ class DataPrivacyScreen extends ConsumerWidget {
           const SizedBox(height: AppTheme.spacingUnit),
           SwitchListTile(
             secondary: Icon(Icons.shield_outlined, color: AppTheme.textCaption),
-            title: const Text('Opt out of analytics'),
-            subtitle: const Text('Stop sending non-essential events (detail views, filters, compare, onboarding, etc.). Swipes and likes still work.'),
+            title: Text(strings.optOutOfAnalytics),
+            subtitle: Text(strings.optOutSubtitle),
             value: ref.watch(analyticsOptOutProvider),
             onChanged: (value) => ref.read(analyticsOptOutProvider.notifier).setOptOut(value),
           ),
@@ -74,13 +94,13 @@ class DataPrivacyScreen extends ConsumerWidget {
           const SizedBox(height: AppTheme.spacingUnit / 2),
           ListTile(
             leading: Icon(Icons.link, color: AppTheme.textCaption),
-            title: const Text('Connect social accounts'),
-            subtitle: const Text('Instagram, Facebook – optional, for personalised feed'),
+            title: Text(strings.connectSocial),
+            subtitle: Text(strings.connectSocialSubtitle),
             trailing: Text(
               'Planned',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textCaption),
             ),
-            enabled: false,
+            onTap: () => _showSocialComingSoon(context),
           ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
         ],

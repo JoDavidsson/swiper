@@ -30,10 +30,10 @@
 
 3. **Terminal 3 – run the Flutter app** (web):
    ```bash
-   cd "/Users/johannesdavidsson/Cursor Projects/Swiper/apps/Swiper_flutter"
-   flutter run -d chrome
+   cd "/Users/johannesdavidsson/Cursor Projects/Swiper"
+   ./scripts/run_flutter_web.sh
    ```
-   The app opens in Chrome and uses the emulator by default (API base: `http://localhost:5002/swiper-95482/europe-west1`).
+   The app runs on **http://localhost:8080** (same port every time – you can bookmark it). **Leave this terminal running:** code changes hot-reload automatically; you don’t need to re-run the command. Admin: **http://localhost:8080/admin**. API base: `http://localhost:5002/swiper-95482/europe-west1`.
 
 You can swipe through the sample sofas, open likes, compare, and use the bottom nav. Admin is at `/admin/login` (password from `.env` `ADMIN_PASSWORD`).
 
