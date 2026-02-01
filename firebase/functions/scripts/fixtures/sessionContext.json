@@ -1,0 +1,9 @@
+{
+  "preferenceWeights": {
+    "modern": 2,
+    "scandinavian": 1,
+    "material:fabric": 1,
+    "color:gray": 1,
+    "size:medium": 1
+  }
+}

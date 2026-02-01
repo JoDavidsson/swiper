@@ -151,6 +151,12 @@ Yes. Mock data lives in **`sample_data/sample_feed.csv`** (5 sofas: titles, pric
 
 **Sample feed contents:** `sample_data/sample_feed.csv` has 5 rows (Scandi 2-seat, Velvet 3-seat, Compact sofa, Leather corner, Boucle armchair) with `title`, `price`, `currency`, `url`, `image_url`, `brand`, `description`, dimensions, `material`, `color`, `new_used`. The Supply Engine normalizes and writes them to Firestore with `isActive: true` so the deck API returns them.
 
+## 7. Synthetic dataset for recommendation evaluation
+
+To test **persona-based ranking** and **offline evaluation** (e.g. liked items in top-K) without production traffic, use the fake database generator. It creates multi-session interaction data (e.g. 1000 users, 1000 interactions per user) in the Firestore emulator.
+
+**Run order:** Start emulators → (optional) ingest items or use `--generate-items N` → run generator from `firebase/functions`. See [TESTING_LOCAL.md](TESTING_LOCAL.md) “Synthetic dataset for persona and offline eval” for the exact commands and options (`--users`, `--interactions-per-user`, `--seed`, `--generate-items`). The script requires `FIRESTORE_EMULATOR_HOST` so it never writes to production.
+
 ## Environment variables
 
 | Var | Where | Description |

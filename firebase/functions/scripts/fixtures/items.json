@@ -1,0 +1,5 @@
+[
+  { "id": "item1", "styleTags": ["modern", "scandinavian"], "material": "fabric", "colorFamily": "gray", "sizeClass": "medium" },
+  { "id": "item2", "styleTags": ["vintage"], "material": "leather", "colorFamily": "brown", "sizeClass": "large" },
+  { "id": "item3", "styleTags": ["modern"], "material": "velvet", "colorFamily": "green", "sizeClass": "small" }
+]

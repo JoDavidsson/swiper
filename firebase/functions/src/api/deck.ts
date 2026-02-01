@@ -1,10 +1,19 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
-import { nanoid } from "nanoid";
+import { applyExploration, PreferenceWeightsRanker } from "../ranker";
+import type { ItemCandidate, SessionContext } from "../ranker";
 
 const DEFAULT_LIMIT = 20;
-const ALGORITHM_VERSION = "preference_weights_v1";
+
+function hashSessionId(sessionId: string): number {
+  let h = 0;
+  for (let i = 0; i < sessionId.length; i++) {
+    h = (h << 5) - h + sessionId.charCodeAt(i);
+    h = h & h;
+  }
+  return Math.abs(h);
+}
 
 export async function deckGet(req: Request, res: Response): Promise<void> {
   const sessionId = req.query.sessionId as string;
@@ -16,72 +25,88 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const rankerRunId = nanoid(12);
   const db = admin.firestore();
 
-  const [swipesSnap, _likesSnap, sessionSnap] = await Promise.all([
+  const [swipesSnap, _likesSnap, sessionSnap, weightsSnap] = await Promise.all([
     db.collection("swipes").where("sessionId", "==", sessionId).orderBy("createdAt", "desc").limit(500).get(),
     db.collection("likes").where("sessionId", "==", sessionId).get(),
     db.collection("anonSessions").doc(sessionId).get(),
+    db.collection("anonSessions").doc(sessionId).collection("preferenceWeights").doc("weights").get(),
   ]);
+
+  const preferenceWeights = weightsSnap.exists
+    ? (weightsSnap.data() as Record<string, number>) || {}
+    : (sessionSnap.exists ? (sessionSnap.data()?.preferenceWeights as Record<string, number> | undefined) : undefined) || {};
 
   const seenItemIds = new Set<string>();
   swipesSnap.docs.forEach((d) => seenItemIds.add((d.data().itemId as string) || ""));
 
   const filters = filtersJson ? (JSON.parse(filtersJson) as Record<string, unknown>) : {};
+  const itemsFetchLimit =
+    process.env.DECK_ITEMS_FETCH_LIMIT != null
+      ? parseInt(String(process.env.DECK_ITEMS_FETCH_LIMIT), 10) || limit * 5
+      : limit * 5;
+  const candidateCap =
+    process.env.DECK_CANDIDATE_CAP != null
+      ? parseInt(String(process.env.DECK_CANDIDATE_CAP), 10) || limit * 2
+      : limit * 2;
+
   const itemsSnap = await db
     .collection("items")
     .where("isActive", "==", true)
     .orderBy("lastUpdatedAt", "desc")
-    .limit(limit * 5)
+    .limit(itemsFetchLimit)
     .get();
 
-  const items: admin.firestore.DocumentSnapshot[] = [];
+  const candidateDocs: admin.firestore.DocumentSnapshot[] = [];
   for (const doc of itemsSnap.docs) {
-    if (items.length >= limit) break;
+    if (candidateDocs.length >= candidateCap) break;
     if (seenItemIds.has(doc.id)) continue;
     const d = doc.data();
     if (filters.sizeClass && d.sizeClass !== filters.sizeClass) continue;
     if (filters.colorFamily && d.colorFamily !== filters.colorFamily) continue;
     if (filters.newUsed && d.newUsed !== filters.newUsed) continue;
-    items.push(doc);
+    candidateDocs.push(doc);
   }
 
-  const preferenceWeights = sessionSnap.exists ? (sessionSnap.data()?.preferenceWeights as Record<string, number> | undefined) || {} : {};
-  items.sort((a, b) => {
-    const ad = a.data()!;
-    const bd = b.data()!;
-    const aScore = scoreItem(ad, preferenceWeights);
-    const bScore = scoreItem(bd, preferenceWeights);
-    return bScore - aScore;
+  const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
+
+  const sessionContext: SessionContext = { preferenceWeights };
+  const rankResult = PreferenceWeightsRanker.rank(sessionContext, candidates, { limit });
+
+  const explorationRate = Math.min(0.1, Math.max(0, parseFloat(String(process.env.RANKER_EXPLORATION_RATE || "0")) || 0));
+  const explorationSeed = process.env.RANKER_EXPLORATION_SEED != null ? parseInt(String(process.env.RANKER_EXPLORATION_SEED), 10) : undefined;
+
+  const exploredIds = applyExploration(rankResult.itemIds, candidates, {
+    explorationRate,
+    limit,
+    seed: explorationSeed,
   });
 
-  const sliced = items.slice(0, limit);
-  const result = sliced.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const idToCandidate = new Map<string | number, ItemCandidate>();
+  candidates.forEach((c) => idToCandidate.set(c.id, c));
+
+  const items = exploredIds
+    .map((id) => idToCandidate.get(id))
+    .filter((c): c is ItemCandidate => c != null)
+    .map((c) => ({ ...c }));
+
   const itemScores: Record<string, number> = {};
-  sliced.forEach((doc) => {
-    const d = doc.data()!;
-    itemScores[doc.id] = scoreItem(d, preferenceWeights);
+  exploredIds.forEach((id) => {
+    if (rankResult.itemScores[id] != null) itemScores[id] = rankResult.itemScores[id];
   });
+
+  const variantBucket = hashSessionId(sessionId) % 100;
+  const variant = explorationRate > 0 ? `personal_only_exploration_${Math.round(explorationRate * 100)}` : "personal_only";
 
   res.status(200).json({
-    items: result,
-    rank: { rankerRunId, algorithmVersion: ALGORITHM_VERSION },
+    items,
+    rank: {
+      rankerRunId: rankResult.runId,
+      algorithmVersion: rankResult.algorithmVersion,
+      variant,
+      variantBucket,
+    },
     itemScores,
   });
-}
-
-function scoreItem(data: admin.firestore.DocumentData, weights: Record<string, number>): number {
-  let score = 0;
-  const tags = (data.styleTags as string[]) || [];
-  tags.forEach((t: string) => {
-    score += weights[t] ?? 0;
-  });
-  const material = data.material as string | undefined;
-  if (material) score += weights[`material:${material}`] ?? 0;
-  const color = data.colorFamily as string | undefined;
-  if (color) score += weights[`color:${color}`] ?? 0;
-  const sizeClass = data.sizeClass as string | undefined;
-  if (sizeClass) score += weights[`size:${sizeClass}`] ?? 0;
-  return score;
 }

@@ -10,7 +10,10 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "jest"
+    "test": "jest",
+    "runRanker": "npm run build && node scripts/runRanker.js",
+    "debugRanker": "npm run build && node scripts/debugRanker.js",
+    "generateFakeDb": "node scripts/generate_fake_db.js"
   },
   "engines": {
     "node": "20"

@@ -32,6 +32,7 @@ Prioritised list (merge of EVENT_TRACKING, ASSUMPTIONS, DECISIONS; no duplicates
 - **Geography / category** – Beyond Sweden-first and sofas-only.
 - **Optional events** – `deck_refresh`, `card_view` or dwell in metadata for ML.
 - **Events hygiene** – Keep every event with sessionId, createdAt, and suggested metadata so ML pipelines can join and featurize cleanly.
+- **Recommendations engine** – Personal and persona-based ranking, exploration, and ML best practices (offline eval, A/B, metrics); tested in isolation. *Done: [firebase/functions/src/ranker/](../firebase/functions/src/ranker/), [docs/RECOMMENDATIONS_ENGINE.md](RECOMMENDATIONS_ENGINE.md).* Persona aggregation pipeline and offline eval pipeline are follow-ups.
 
 ---
 

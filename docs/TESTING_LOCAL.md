@@ -94,10 +94,54 @@ Chrome opens the app. It talks to the emulator by default (`http://localhost:500
 | Emulator UI | `http://localhost:4100` (Firestore, Functions, etc.) |
 | Firestore port | `8180` (for `FIRESTORE_EMULATOR_HOST=localhost:8180`) |
 | Ingest (one-time) | `FIRESTORE_EMULATOR_HOST=localhost:8180 ./scripts/ingest_sample_feed.sh` |
+| Synthetic dataset (fake DB) | See [Synthetic dataset for persona and offline eval](#5-synthetic-dataset-for-persona-and-offline-eval) below. |
 
 ---
 
-## 5. Troubleshooting
+## 5. Synthetic dataset for persona and offline eval
+
+The **fake database** generator creates a synthetic Firestore dataset (e.g. 1000 users, 1000 interactions per user) to support **evaluation of the recommendation algorithm**: persona-based ranking, offline metrics (e.g. liked items in top-K), and A/B. Data is for testing and tuning only; target is the Firestore emulator.
+
+**Run order**
+
+1. Start emulators: `./scripts/run_emulators.sh` (leave running).
+2. **(Option A)** Ingest items first: `FIRESTORE_EMULATOR_HOST=localhost:8180 ./scripts/ingest_sample_feed.sh` so the generator can reference existing item IDs. **(Option B)** Skip ingest and use `--generate-items N` so the generator creates N synthetic items.
+3. From **firebase/functions**, run the generator (set env so the script talks to the emulator):
+
+   ```bash
+   cd firebase/functions
+   export FIRESTORE_EMULATOR_HOST=localhost:8180
+   export GOOGLE_APPLICATION_CREDENTIALS="../../config/emulator-credentials.json"
+   node scripts/generate_fake_db.js [--users 1000] [--interactions-per-user 1000] [--seed 42] [--generate-items N]
+   ```
+
+   Or with npm: `FIRESTORE_EMULATOR_HOST=localhost:8180 GOOGLE_APPLICATION_CREDENTIALS="../../config/emulator-credentials.json" npm run generateFakeDb -- --users 100 --interactions-per-user 100` (smaller run for a quick test).
+
+4. Use the app or deck API against the emulator; deck will read preferenceWeights and swipes from the synthetic sessions (e.g. sessionId `synth_1`, `synth_2`, …).
+
+**Options:** `--users` (default 1000), `--interactions-per-user` (default 1000), `--seed` (default 42), `--generate-items N` (optional; if omitted, items must already exist in Firestore). **Safety:** The script requires `FIRESTORE_EMULATOR_HOST` to be set so it never writes to production.
+
+---
+
+## 6. Stress test
+
+A **stress test** runs a larger synthetic dataset (5,000 products, 100 users, 30 swipes per user), unit tests, and many deck API calls, then writes a **human-readable report** so you can see what ran and what passed.
+
+**Run (from repo root):**
+
+```bash
+./scripts/run_stress_test.sh
+```
+
+**Prereqs:** Start emulators first (`./scripts/run_emulators.sh`). Set `FIRESTORE_EMULATOR_HOST=localhost:8180` if not already set.
+
+**Report:** The script prints a plain-language summary to the console and writes it to [docs/STRESS_TEST_REPORT.md](STRESS_TEST_REPORT.md). The report explains: how many products and users were generated, how long each phase took, whether all deck requests and Jest tests passed, and what that means.
+
+**Large-candidate ranking:** By default the deck API only fetches and ranks a small number of candidates per request. To stress the ranker with many more candidates (e.g. 1,000–2,000 per request), set `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (e.g. `2000`) in the environment **when you start the emulators**, so the Functions process sees them. Then run `./scripts/run_stress_test.sh` again.
+
+---
+
+## 7. Troubleshooting
 
 - **“Backend not available” / 404 on deck:** Emulators not running or wrong port. Start Terminal 1 and wait for “All emulators ready”; Flutter uses port 5002 by default.
 - **No cards in deck:** Run the ingest script (Terminal 2) with `FIRESTORE_EMULATOR_HOST=localhost:8180`.
