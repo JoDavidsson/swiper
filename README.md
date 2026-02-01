@@ -10,6 +10,10 @@ Furniture discovery app (Tinder-like swipe deck). Sweden-first, sofas only.
 - **sample_data/** – Sample feed CSV/JSON and HTML fixtures
 - **docs/** – Architecture, assumptions, decisions, runbooks
 
+## Firebase setup (first time)
+
+See **[docs/SETUP_FIREBASE_AND_SERVICES.md](docs/SETUP_FIREBASE_AND_SERVICES.md)** for what to get from Firebase (project ID, service account key, admin password) and where to add it (`.env`, FlutterFire).
+
 ## Quick start (local)
 
 1. **Emulators**: `./scripts/run_emulators.sh`
