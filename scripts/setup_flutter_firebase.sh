@@ -43,8 +43,10 @@ fi
 cd apps/Swiper_flutter
 echo "Running flutter pub get..."
 flutter pub get
-echo "Running flutterfire configure..."
-flutterfire configure
+# Use project from repo root .firebaserc so configure finds it when run from app dir
+FIREBASE_PROJECT="${FIREBASE_PROJECT:-$(grep -o '"default"[[:space:]]*:[[:space:]]*"[^"]*"' "$REPO_ROOT/.firebaserc" 2>/dev/null | cut -d'"' -f4)}"
+echo "Running flutterfire configure (project: ${FIREBASE_PROJECT:-default})..."
+flutterfire configure ${FIREBASE_PROJECT:+--project "$FIREBASE_PROJECT"}
 
 echo ""
 echo "Done. You can run: flutter run -d chrome"
