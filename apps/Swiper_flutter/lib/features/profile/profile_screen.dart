@@ -16,15 +16,15 @@ class ProfileScreen extends ConsumerWidget {
         children: [
           ListTile(
             title: const Text('Language'),
-            subtitle: const Text('Swedish / English (stub)'),
+            subtitle: const Text('Swedish / English – coming soon'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            enabled: false,
           ),
           ListTile(
-            title: const Text('Privacy'),
-            subtitle: const Text('Export / delete data (stub)'),
+            title: const Text('Data & Privacy'),
+            subtitle: const Text('What we collect, opt-out and social login (coming later)'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            onTap: () => context.push('/profile/data-privacy'),
           ),
           ListTile(
             title: const Text('Edit preferences'),

@@ -18,7 +18,7 @@ See **[docs/SETUP_FIREBASE_AND_SERVICES.md](docs/SETUP_FIREBASE_AND_SERVICES.md)
 
 1. **Emulators**: `./scripts/run_emulators.sh`
 2. **Supply Engine**: `./scripts/run_supply_engine.sh`
-3. **Ingest sample feed**: `FIRESTORE_EMULATOR_HOST=localhost:8080 ./scripts/ingest_sample_feed.sh`
+3. **Ingest sample feed**: `FIRESTORE_EMULATOR_HOST=localhost:8180 ./scripts/ingest_sample_feed.sh`
 4. **Flutter**: `cd apps/Swiper_flutter && flutter pub get && flutter run -d chrome`
 
 See [docs/RUNBOOK_LOCAL_DEV.md](docs/RUNBOOK_LOCAL_DEV.md) for full setup and env vars.

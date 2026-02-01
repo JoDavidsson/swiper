@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
+import '../../data/deck_provider.dart';
+import '../../data/session_provider.dart';
 
 class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
@@ -38,13 +40,19 @@ class SplashScreen extends ConsumerWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () => context.go('/onboarding'),
+                    onPressed: () async {
+                      await ensureSession(ref, ref.read(apiClientProvider));
+                      if (context.mounted) context.go('/onboarding');
+                    },
                     child: const Text('Get started'),
                   ),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit),
                 TextButton(
-                  onPressed: () => context.go('/deck'),
+                  onPressed: () async {
+                    await ensureSession(ref, ref.read(apiClientProvider));
+                    if (context.mounted) context.go('/deck');
+                  },
                   child: const Text('Skip to swipe'),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),

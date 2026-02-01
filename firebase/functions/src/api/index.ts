@@ -14,9 +14,16 @@ import { adminSourcesGet, adminSourcesPost, adminSourceGet, adminSourcePut, admi
 import { adminRunsGet, adminRunGet } from "./admin_runs";
 import { adminRunTriggerPost } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
+import { adminItemsGet } from "./admin_items";
 
 export async function apiHandler(req: Request, res: Response): Promise<void> {
-  const path = (req.path || "").replace(/^\/api\/?/, "").replace(/\/$/, "");
+  // Emulator: path can be /project/region/api/... ; prod/hosted: /api/... or /items/deck. Normalize to e.g. "session" or "items/deck".
+  let path = (req.path || "")
+    .replace(/^\/[^/]+\/[^/]+\/api\/?/, "") // strip /projectId/region/api only
+    .replace(/^\/api\/?/, "")
+    .replace(/^api\/?/, "")
+    .replace(/\/$/, "")
+    .replace(/^\//, "");
   const method = req.method;
 
   const corsHeaders = {
@@ -116,6 +123,10 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "GET" && path === "admin/qa") {
       await adminQaGet(req, res);
+      return;
+    }
+    if (method === "GET" && path === "admin/items") {
+      await adminItemsGet(req, res);
       return;
     }
 

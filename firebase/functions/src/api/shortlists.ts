@@ -2,6 +2,7 @@ import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
 import { nanoid } from "nanoid";
+import { FieldValue } from "../firestore";
 
 export async function shortlistsCreatePost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
@@ -22,12 +23,12 @@ export async function shortlistsCreatePost(req: Request, res: Response): Promise
   batch.set(shortlistRef, {
     ownerSessionId: sessionId,
     shareToken,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   itemIds.forEach((itemId) => {
     batch.set(shortlistRef.collection("items").doc(itemId), {
-      addedAt: admin.firestore.FieldValue.serverTimestamp(),
+      addedAt: FieldValue.serverTimestamp(),
     });
   });
 
@@ -37,7 +38,7 @@ export async function shortlistsCreatePost(req: Request, res: Response): Promise
     sessionId,
     eventType: "share_shortlist",
     metadata: { shortlistId: shortlistRef.id },
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   res.status(200).json({ shortlistId: shortlistRef.id, shareToken });

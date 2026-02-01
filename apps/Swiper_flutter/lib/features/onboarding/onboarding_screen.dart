@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
+import '../../data/deck_provider.dart';
+import '../../data/session_provider.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
 
 class OnboardingScreen extends ConsumerStatefulWidget {
@@ -36,6 +38,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       );
       setState(() => _currentStep++);
     } else {
+      final sessionId = ref.read(sessionIdProvider);
+      if (sessionId != null && !ref.read(analyticsOptOutProvider)) {
+        ref.read(apiClientProvider).logEvent(
+          sessionId: sessionId,
+          eventType: 'onboarding_complete',
+          metadata: {
+            'styles': _selectedStyles,
+            'budgetMin': _budgetMin.round(),
+            'budgetMax': _budgetMax.round(),
+            'ecoOnly': _ecoOnly,
+            'newOnly': _newOnly,
+            'sizeConstraint': _sizeConstraint,
+          },
+        ).ignore();
+      }
       context.go('/deck');
     }
   }

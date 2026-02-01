@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
+import '../../data/session_provider.dart';
 import '../../data/models/item.dart';
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
@@ -19,6 +20,26 @@ class LikesScreen extends ConsumerStatefulWidget {
 class _LikesScreenState extends ConsumerState<LikesScreen> {
   bool _gridView = true;
   final Set<String> _selectedIds = {};
+
+  Future<void> _openDetailWithLogging(BuildContext context, Item item) async {
+    final sessionId = ref.read(sessionIdProvider);
+    final client = ref.read(apiClientProvider);
+    final optOut = ref.read(analyticsOptOutProvider);
+    if (sessionId != null && !optOut) {
+      client.logEvent(sessionId: sessionId, eventType: 'open_detail', itemId: item.id, metadata: {'source': 'likes'}).ignore();
+    }
+    final started = DateTime.now();
+    await showDetailSheet(context, item, goBaseUrl: Uri.base.origin);
+    final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
+    if (context.mounted && sessionId != null && !ref.read(analyticsOptOutProvider)) {
+      client.logEvent(
+        sessionId: sessionId,
+        eventType: 'detail_dismiss',
+        itemId: item.id,
+        metadata: {'timeViewedMs': timeViewedMs, 'source': 'likes'},
+      ).ignore();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +96,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                         itemBuilder: (context, i) => _LikeCard(
                           item: items[i],
                           selected: _selectedIds.contains(items[i].id),
-                          onTap: () => showDetailSheet(context, items[i], goBaseUrl: Uri.base.origin),
+                          onTap: () => _openDetailWithLogging(context, items[i]),
                           onLongPress: () => setState(() {
                             if (_selectedIds.contains(items[i].id)) {
                               _selectedIds.remove(items[i].id);
@@ -91,7 +112,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                         itemBuilder: (context, i) => _LikeCard(
                           item: items[i],
                           selected: _selectedIds.contains(items[i].id),
-                          onTap: () => showDetailSheet(context, items[i], goBaseUrl: Uri.base.origin),
+                          onTap: () => _openDetailWithLogging(context, items[i]),
                           onLongPress: () => setState(() {
                             if (_selectedIds.contains(items[i].id)) {
                               _selectedIds.remove(items[i].id);

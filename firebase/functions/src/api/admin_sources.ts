@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "../firestore";
 
 export async function adminSourcesGet(req: Request, res: Response): Promise<void> {
   const db = admin.firestore();
@@ -18,8 +19,8 @@ export async function adminSourcesPost(req: Request, res: Response): Promise<voi
   const db = admin.firestore();
   const ref = await db.collection("sources").add({
     ...body,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   res.status(200).json({ id: ref.id });
 }
@@ -43,7 +44,7 @@ export async function adminSourcePut(req: Request, res: Response, sourceId: stri
   const db = admin.firestore();
   await db.collection("sources").doc(sourceId).update({
     ...body,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   res.status(200).json({ ok: true });
 }

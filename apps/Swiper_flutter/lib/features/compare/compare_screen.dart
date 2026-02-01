@@ -1,11 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
+import '../../data/api_client.dart';
 import '../../data/deck_provider.dart';
 import '../../data/models/item.dart';
+import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
-import 'package:url_launcher/url_launcher.dart';
+
+/// Wraps compare content and logs compare_open once when built.
+class _CompareBody extends StatefulWidget {
+  const _CompareBody({
+    required this.items,
+    required this.sessionId,
+    required this.client,
+    required this.child,
+    required this.analyticsOptOut,
+  });
+
+  final List<Item> items;
+  final String? sessionId;
+  final ApiClient client;
+  final Widget child;
+  final bool analyticsOptOut;
+
+  @override
+  State<_CompareBody> createState() => _CompareBodyState();
+}
+
+class _CompareBodyState extends State<_CompareBody> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sessionId != null && !widget.analyticsOptOut) {
+      widget.client.logEvent(
+        sessionId: widget.sessionId!,
+        eventType: 'compare_open',
+        metadata: {
+          'itemIds': widget.items.map((e) => e.id).toList(),
+          'count': widget.items.length,
+        },
+      ).ignore();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
 
 class CompareScreen extends ConsumerWidget {
   const CompareScreen({super.key});
@@ -36,6 +78,7 @@ class CompareScreen extends ConsumerWidget {
     }
 
     final client = ref.watch(apiClientProvider);
+    final sessionId = ref.watch(sessionIdProvider);
     return FutureBuilder<List<Item>>(
       future: client.getItemsBatch(ids),
       builder: (context, snapshot) {
@@ -50,9 +93,15 @@ class CompareScreen extends ConsumerWidget {
           );
         }
 
+        final analyticsOptOut = ref.watch(analyticsOptOutProvider);
         return AppShell(
           title: 'Compare',
-          body: SingleChildScrollView(
+          body: _CompareBody(
+            items: items,
+            sessionId: sessionId,
+            client: client,
+            analyticsOptOut: analyticsOptOut,
+            child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppTheme.spacingUnit),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,6 +120,7 @@ class CompareScreen extends ConsumerWidget {
                 )),
               ],
             ),
+          ),
           ),
         );
       },

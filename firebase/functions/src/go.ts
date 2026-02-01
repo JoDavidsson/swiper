@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "./firestore";
 
 const UTM_SOURCE = "Swiper";
 const UTM_MEDIUM = "referral";
@@ -56,7 +57,7 @@ export async function goHandler(req: Request, res: Response): Promise<void> {
     eventType: "outbound_click",
     itemId,
     metadata: { destinationDomain: new URL(outboundUrl).hostname, ref },
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   const finalUrl = appendUtm(outboundUrl, ref);

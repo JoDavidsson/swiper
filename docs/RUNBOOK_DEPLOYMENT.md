@@ -50,3 +50,17 @@ gcloud run deploy swiper-supply-engine --image gcr.io/<project>/supply-engine ..
 1. Ingest seed data: run Supply Engine `POST /run/sample_feed` or use script with production Firestore.
 2. Verify `/go/:itemId` redirect and UTM params.
 3. Verify admin login and QA/stats endpoints.
+
+## Post-deploy smoke test (first production deploy)
+
+Run through this checklist after deploying to confirm the app works end-to-end:
+
+1. **App loads** – Open the Hosting URL in a browser. Splash screen appears; tap "Get started" or "Skip to swipe".
+2. **Session** – Deck or onboarding loads; no "No session" error. (Session is created via POST /api/session.)
+3. **Deck** – If seed data was ingested, cards appear. Swipe left/right; deck updates. Tap filter icon; apply size/color/condition; deck refreshes.
+4. **Detail** – Tap a card; detail sheet opens. Close sheet; no console errors.
+5. **Likes** – Swipe right on an item; go to Likes from nav; item appears. Compare (select 2–4, Compare) works.
+6. **Go redirect** – From detail, tap "View on site"; redirect to outbound URL with UTM (or placeholder). Check network for 302 from `/go/:itemId`.
+7. **Profile** – Profile and Data & Privacy screens load.
+8. **Admin** – Open `/admin`; log in with ADMIN_PASSWORD; dashboard and Sources/Runs/Items/Import/QA load without 500s.
+9. **Shared shortlist** – Create shortlist from Likes (share); open `/s/:token` in new tab; shortlist page loads.

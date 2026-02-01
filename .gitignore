@@ -6,8 +6,10 @@
 *serviceAccount*.json
 *firebase-adminsdk*.json
 GOOGLE_APPLICATION_CREDENTIALS.json
+config/emulator-credentials.json
 
 # Flutter
+apps/Swiper_flutter/chromedriver/
 apps/Swiper_flutter/.dart_tool/
 apps/Swiper_flutter/build/
 apps/Swiper_flutter/.packages

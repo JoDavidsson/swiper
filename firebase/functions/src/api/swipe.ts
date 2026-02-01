@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "../firestore";
 
 export async function swipePost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
@@ -22,7 +23,7 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
     itemId,
     direction,
     positionInDeck,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   batch.set(db.collection("events").doc(), {
@@ -30,7 +31,7 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
     eventType: direction === "right" ? "swipe_right" : "swipe_left",
     itemId,
     metadata: { positionInDeck },
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   if (direction === "right") {
@@ -59,7 +60,7 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
 
   await batch.commit();
   await db.collection("anonSessions").doc(sessionId).update({
-    lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastSeenAt: FieldValue.serverTimestamp(),
   });
 
   res.status(200).json({ ok: true });

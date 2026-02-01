@@ -207,9 +207,9 @@ def _normalize_item(raw: dict, source_id: str) -> dict | None:
             "availabilityStatus": "in_stock",
             "outboundUrl": url,
             "images": images,
-            "lastUpdatedAt": _timestamp(),
-            "firstSeenAt": _timestamp(),
-            "lastSeenAt": _timestamp(),
+            "lastUpdatedAt": None,
+            "firstSeenAt": None,
+            "lastSeenAt": None,
             "isActive": True,
         }
     except Exception:

@@ -4,26 +4,26 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/models/item.dart';
 
-void showDetailSheet(BuildContext context, Item item, {String? goBaseUrl}) {
-  showModalBottomSheet(
+Future<void> showDetailSheet(BuildContext context, Item item, {String? goBaseUrl}) {
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
     ),
-    builder: (context) => DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 1,
-      expand: false,
-      builder: (context, scrollController) => DetailSheetContent(
-        item: item,
-        scrollController: scrollController,
-        goBaseUrl: goBaseUrl,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 1,
+        expand: false,
+        builder: (context, scrollController) => DetailSheetContent(
+          item: item,
+          scrollController: scrollController,
+          goBaseUrl: goBaseUrl,
+        ),
       ),
-    ),
-  );
+    );
 }
 
 class DetailSheetContent extends StatelessWidget {

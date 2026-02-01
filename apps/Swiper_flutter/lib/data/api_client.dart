@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'models/item.dart';
 
@@ -6,23 +8,27 @@ class ApiClient {
   ApiClient({String? baseUrl}) : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl));
 
   static String get _defaultBaseUrl {
-    const env = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:5001');
+    // Emulator: http://localhost:5001/<project>/<region>; prod: set via --dart-define=API_BASE_URL=...
+    const env = String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:5002/swiper-95482/europe-west1',
+    );
     return env;
   }
 
   final Dio _dio;
 
-  /// Create or refresh anonymous session.
-  Future<Map<String, dynamic>> createSession() async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/session');
+  /// Create or refresh anonymous session. Optionally send device context for ML/analytics.
+  Future<Map<String, dynamic>> createSession({Map<String, dynamic>? body}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/session', data: body);
     return r.data ?? {};
   }
 
-  /// Get deck items for session.
+  /// Get deck items for session. Backend expects filters as JSON string.
   Future<List<Item>> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 20}) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
-      if (filters != null) 'filters': filters,
+      if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),
       'limit': limit,
     });
     final list = r.data?['items'] as List? ?? [];
@@ -140,5 +146,11 @@ class ApiClient {
   Future<Map<String, dynamic>> adminGetQa() async {
     final r = await _dio.get<Map<String, dynamic>>('/api/admin/qa');
     return r.data ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> adminGetItems({int limit = 50}) async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/items', queryParameters: {'limit': limit});
+    final list = r.data?['items'] as List? ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 }

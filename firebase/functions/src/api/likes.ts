@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "../firestore";
 
 export async function likesTogglePost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
@@ -20,16 +21,16 @@ export async function likesTogglePost(req: Request, res: Response): Promise<void
     await db.collection("likes").add({
       sessionId,
       itemId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     await db.collection("anonSessions").doc(sessionId).collection("likes").doc(itemId).set({
-      addedAt: admin.firestore.FieldValue.serverTimestamp(),
+      addedAt: FieldValue.serverTimestamp(),
     });
     await db.collection("events").add({
       sessionId,
       eventType: "add_like",
       itemId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     liked = true;
   } else {
@@ -40,13 +41,13 @@ export async function likesTogglePost(req: Request, res: Response): Promise<void
       sessionId,
       eventType: "remove_like",
       itemId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
     liked = false;
   }
 
   await db.collection("anonSessions").doc(sessionId).update({
-    lastSeenAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastSeenAt: FieldValue.serverTimestamp(),
   });
 
   res.status(200).json({ liked });

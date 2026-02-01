@@ -139,6 +139,23 @@ If you tell me your Project ID and where you saved the service account JSON (e.g
 
 ## Troubleshooting
 
+### "Found 0 Firebase projects" / "Failed to list Firebase projects" / 401 Unauthenticated
+
+Your Firebase CLI **stored credentials are invalid** (token refresh returns 400). Fix it by logging out and logging back in so the CLI gets fresh OAuth tokens:
+
+```bash
+firebase logout
+firebase login
+```
+
+Complete the browser sign-in with **johannesdavidsson@gmail.com** (the account that owns project `swiper-95482`). Then run:
+
+```bash
+./scripts/setup_flutter_firebase.sh
+```
+
+If you see the same error after re-login, check `apps/Swiper_flutter/firebase-debug.log` for details. You can also try clearing the Firebase CLI config and logging in again: `rm -rf ~/.config/firebase` then `firebase login` (this removes all stored projects/tokens).
+
 ### "Invalid project selection, please verify project ... exists and you have access"
 
 1. Log in with the Google account that owns the Firebase project:
@@ -177,3 +194,14 @@ flutterfire configure
 ### "command not found: flutter"
 
 Install Flutter and add it to your PATH (see [Flutter install](https://docs.flutter.dev/get-started/install)). On macOS you can use `brew install flutter` or download the SDK and add e.g. `export PATH="$PATH:$HOME/flutter/bin"` to `~/.zshrc`. Then run `./scripts/setup_flutter_firebase.sh` again.
+
+### Manual `firebase_options.dart` (if CLI auth still fails)
+
+If `firebase login` doesn’t fix the 401 and you want to run the app against the real Firebase project:
+
+1. In [Firebase Console](https://console.firebase.google.com/) open project **swiper-95482** → **Project settings** (gear) → **Your apps**.
+2. If there’s no Web app, click **Add app** → **Web** (</>), register the app, and copy the `firebaseConfig` object.
+3. Create `apps/Swiper_flutter/lib/firebase_options.dart` using the template in `docs/firebase_options_template.dart` (in this repo). Fill in `apiKey`, `appId`, `projectId`, `authDomain`, `storageBucket`, etc. from the Console.
+4. In `main.dart` call `await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);` before `runApp`.
+
+Prefer fixing CLI auth with `firebase logout` and `firebase login` so `flutterfire configure` works for all platforms.

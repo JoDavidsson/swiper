@@ -1,0 +1,7 @@
+/* Flutter Web base styles. Flutter may override these at runtime. */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}

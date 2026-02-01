@@ -7,11 +7,11 @@ import 'package:swiper_flutter/shared/widgets/swipe_deck.dart';
 void main() {
   testWidgets('SwipeDeck shows empty state when no items', (tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
+      ProviderScope(
         child: MaterialApp(
           home: Scaffold(
             body: SwipeDeck(
-              items: [],
+              items: const [],
               sessionId: null,
               onSwipeLeft: (_, __) {},
               onSwipeRight: (_, __) {},

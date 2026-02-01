@@ -16,7 +16,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
 
   const db = admin.firestore();
 
-  const [swipesSnap, likesSnap, sessionSnap] = await Promise.all([
+  const [swipesSnap, _likesSnap, sessionSnap] = await Promise.all([
     db.collection("swipes").where("sessionId", "==", sessionId).orderBy("createdAt", "desc").limit(500).get(),
     db.collection("likes").where("sessionId", "==", sessionId).get(),
     db.collection("anonSessions").doc(sessionId).get(),

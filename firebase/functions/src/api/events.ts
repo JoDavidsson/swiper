@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "../firestore";
 
 export async function eventsPost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
@@ -20,7 +21,7 @@ export async function eventsPost(req: Request, res: Response): Promise<void> {
     eventType,
     itemId: itemId || null,
     metadata: metadata || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 
   res.status(200).json({ ok: true });

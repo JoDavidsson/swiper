@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
+import '../../data/session_provider.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});

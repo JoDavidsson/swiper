@@ -1,3 +1,32 @@
+/// Coerce API value to String? (avoids _JsonMap is not a subtype of String when backend sends object).
+String? _string(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value;
+  if (value is num || value is bool) return value.toString();
+  return null;
+}
+
+List<String> _stringList(dynamic value) {
+  if (value == null || value is! List) return [];
+  return value.map((e) => _string(e)).whereType<String>().toList();
+}
+
+/// Parse DateTime from API: String (ISO) or Firestore Timestamp map (seconds/_seconds, nanoseconds/_nanoseconds).
+DateTime? _parseDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return DateTime.tryParse(value);
+  if (value is Map) {
+    final sec = value['seconds'] ?? value['_seconds'];
+    final nano = value['nanoseconds'] ?? value['_nanoseconds'];
+    if (sec != null) {
+      final ms = (sec is int ? sec : (sec as num).toInt()) * 1000;
+      final nanoMs = nano != null ? ((nano is int ? nano : (nano as num).toInt()) / 1000000).round() : 0;
+      return DateTime.fromMillisecondsSinceEpoch(ms + nanoMs);
+    }
+  }
+  return null;
+}
+
 /// Normalized furniture item (sofa) from Firestore/API.
 class Item {
   Item({
@@ -51,27 +80,29 @@ class Item {
   factory Item.fromJson(Map<String, dynamic> json) {
     final imagesRaw = json['images'] as List? ?? [];
     return Item(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
+      id: _string(json['id']) ?? '',
+      title: _string(json['title']) ?? '',
       priceAmount: (json['priceAmount'] as num?)?.toDouble() ?? 0,
-      priceCurrency: json['priceCurrency'] as String? ?? 'SEK',
-      sourceId: json['sourceId'] as String?,
-      sourceUrl: json['sourceUrl'] as String?,
-      outboundUrl: json['outboundUrl'] as String?,
-      brand: json['brand'] as String?,
-      descriptionShort: json['descriptionShort'] as String?,
-      dimensionsCm: json['dimensionsCm'] != null ? Map<String, num>.from((json['dimensionsCm'] as Map).map((k, v) => MapEntry(k.toString(), (v as num)))) : null,
-      sizeClass: json['sizeClass'] as String?,
-      material: json['material'] as String?,
-      colorFamily: json['colorFamily'] as String?,
-      styleTags: List<String>.from(json['styleTags'] as List? ?? []),
-      newUsed: json['newUsed'] as String? ?? 'new',
-      deliveryComplexity: json['deliveryComplexity'] as String?,
-      smallSpaceFriendly: json['smallSpaceFriendly'] as bool? ?? false,
-      modular: json['modular'] as bool? ?? false,
-      ecoTags: List<String>.from(json['ecoTags'] as List? ?? []),
-      images: imagesRaw.map((e) => ItemImage.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
-      lastUpdatedAt: json['lastUpdatedAt'] != null ? DateTime.tryParse(json['lastUpdatedAt'] as String) : null,
+      priceCurrency: _string(json['priceCurrency']) ?? 'SEK',
+      sourceId: _string(json['sourceId']),
+      sourceUrl: _string(json['sourceUrl']),
+      outboundUrl: _string(json['outboundUrl']),
+      brand: _string(json['brand']),
+      descriptionShort: _string(json['descriptionShort']),
+      dimensionsCm: json['dimensionsCm'] != null && json['dimensionsCm'] is Map
+          ? Map<String, num>.from((json['dimensionsCm'] as Map).map((k, v) => MapEntry(k.toString(), (v is num ? v : 0))))
+          : null,
+      sizeClass: _string(json['sizeClass']),
+      material: _string(json['material']),
+      colorFamily: _string(json['colorFamily']),
+      styleTags: _stringList(json['styleTags']),
+      newUsed: _string(json['newUsed']) ?? 'new',
+      deliveryComplexity: _string(json['deliveryComplexity']),
+      smallSpaceFriendly: json['smallSpaceFriendly'] == true,
+      modular: json['modular'] == true,
+      ecoTags: _stringList(json['ecoTags']),
+      images: imagesRaw.map((e) => ItemImage.fromJson(Map<String, dynamic>.from(e is Map ? e : <String, dynamic>{}))).toList(),
+      lastUpdatedAt: _parseDateTime(json['lastUpdatedAt']),
     );
   }
 
@@ -113,11 +144,11 @@ class ItemImage {
 
   factory ItemImage.fromJson(Map<String, dynamic> json) {
     return ItemImage(
-      url: json['url'] as String? ?? '',
-      width: json['width'] as int?,
-      height: json['height'] as int?,
-      alt: json['alt'] as String?,
-      type: json['type'] as String?,
+      url: _string(json['url']) ?? '',
+      width: json['width'] is int ? json['width'] as int : (json['width'] is num ? (json['width'] as num).toInt() : null),
+      height: json['height'] is int ? json['height'] as int : (json['height'] is num ? (json['height'] as num).toInt() : null),
+      alt: _string(json['alt']),
+      type: _string(json['type']),
     );
   }
 

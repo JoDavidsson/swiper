@@ -13,6 +13,7 @@ class SwipeDeck extends StatelessWidget {
     required this.onSwipeLeft,
     required this.onSwipeRight,
     this.goBaseUrl,
+    this.onTapDetail,
   });
 
   final List<Item> items;
@@ -20,6 +21,8 @@ class SwipeDeck extends StatelessWidget {
   final void Function(Item item, int position) onSwipeLeft;
   final void Function(Item item, int position) onSwipeRight;
   final String? goBaseUrl;
+  /// If set, called when user taps card (e.g. to log open_detail, show sheet, log detail_dismiss).
+  final Future<void> Function(Item item)? onTapDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +68,13 @@ class SwipeDeck extends StatelessWidget {
                   item: top,
                   onSwipeLeft: () => onSwipeLeft(top, 0),
                   onSwipeRight: () => onSwipeRight(top, 0),
-                  onTap: () => showDetailSheet(context, top, goBaseUrl: goBaseUrl),
+                  onTap: () async {
+                    if (onTapDetail != null) {
+                      await onTapDetail!(top);
+                    } else {
+                      showDetailSheet(context, top, goBaseUrl: goBaseUrl);
+                    }
+                  },
                 ),
               ),
             ],
