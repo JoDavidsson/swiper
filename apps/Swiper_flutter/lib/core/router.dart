@@ -24,7 +24,6 @@ final routerProvider = Provider<GoRouter>((ref) {
   final adminAuthNotifier = ValueNotifier<bool>(initialAuth);
   ref.listen<bool>(adminAuthProvider, (_, next) {
     adminAuthNotifier.value = next;
-    adminAuthNotifier.notifyListeners();
   });
 
   return GoRouter(
