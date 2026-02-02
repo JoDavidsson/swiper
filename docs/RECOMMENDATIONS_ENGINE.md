@@ -40,7 +40,9 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 To prevent the ranker from over-exploiting the same top items (filter bubble), **exploration** is applied after ranking.
 
-- **Strategy**: Sample-from-top-2K (take top 2×limit by score, randomly sample limit). Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
+- **Strategy**: Probabilistic “explore-inject” from the top-N pool. For each position in the returned slate, with probability = `explorationRate`, pick a random unseen item from the exploration pool; otherwise keep the next unseen item from strict rank order.
+- **Exploration pool**: top **min(2000, rankedIds.length)**, but never smaller than top **2×limit** (when available).
+- **Rate**: Configurable (e.g. 0–10%). Optional `seed` for reproducible tests and deterministic per-session behavior.
 - **Config**: `RANKER_EXPLORATION_RATE` (env, default 0), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
 - **Tests**: With rate 0, output equals ranker order; with fixed seed and rate &gt; 0, output is reproducible.
 

@@ -74,14 +74,16 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
 
   const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
 
-  const sessionContext: SessionContext = { preferenceWeights };
-  const rankResult = PreferenceWeightsRanker.rank(sessionContext, candidates, { limit });
-
   const explorationRate = Math.min(0.1, Math.max(0, parseFloat(String(process.env.RANKER_EXPLORATION_RATE || "0")) || 0));
   const explorationSeed =
     process.env.RANKER_EXPLORATION_SEED != null
       ? parseInt(String(process.env.RANKER_EXPLORATION_SEED), 10)
       : hashSessionId(sessionId);
+
+  const sessionContext: SessionContext = { preferenceWeights };
+  const rankLimitForExploration =
+    explorationRate > 0 ? Math.min(candidates.length, Math.max(2 * limit, 2000)) : limit;
+  const rankResult = PreferenceWeightsRanker.rank(sessionContext, candidates, { limit: rankLimitForExploration });
 
   const exploredIds = applyExploration(rankResult.itemIds, candidates, {
     explorationRate,
@@ -112,6 +114,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       algorithmVersion: rankResult.algorithmVersion,
       variant,
       variantBucket,
+      itemIds: exploredIds,
     },
     itemScores,
   });

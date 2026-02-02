@@ -41,21 +41,23 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
         const data = itemSnap.data()!;
         const sessionRef = db.collection("anonSessions").doc(sessionId);
         const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
-        const weightsSnap = await weightsRef.get();
-        const current = (weightsSnap.data() || {}) as Record<string, number>;
 
+        // Atomic, merge-only increments to avoid read-modify-write races across fast swipes.
+        const increments: Record<string, unknown> = {};
         const styleTags = Array.isArray(data.styleTags) ? data.styleTags : [];
         for (const t of styleTags) {
-          if (typeof t === "string") current[t] = (current[t] || 0) + 1;
+          if (typeof t === "string") increments[t] = FieldValue.increment(1);
         }
         const material = typeof data.material === "string" ? data.material : undefined;
-        if (material) current[`material:${material}`] = (current[`material:${material}`] || 0) + 1;
+        if (material) increments[`material:${material}`] = FieldValue.increment(1);
         const color = typeof data.colorFamily === "string" ? data.colorFamily : undefined;
-        if (color) current[`color:${color}`] = (current[`color:${color}`] || 0) + 1;
+        if (color) increments[`color:${color}`] = FieldValue.increment(1);
         const sizeClass = typeof data.sizeClass === "string" ? data.sizeClass : undefined;
-        if (sizeClass) current[`size:${sizeClass}`] = (current[`size:${sizeClass}`] || 0) + 1;
+        if (sizeClass) increments[`size:${sizeClass}`] = FieldValue.increment(1);
 
-        batch.set(weightsRef, current);
+        if (Object.keys(increments).length > 0) {
+          batch.set(weightsRef, increments, { merge: true });
+        }
       }
     } catch (e) {
       console.warn("swipe: preferenceWeights update skipped", e);

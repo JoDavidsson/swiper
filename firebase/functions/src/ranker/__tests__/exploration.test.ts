@@ -36,12 +36,12 @@ describe("applyExploration", () => {
     expect(a).toEqual(b);
   });
 
-  it("with fixed seed and rate > 0 can differ from strict ranker order", () => {
+  it("with rate = 1 samples within the exploration pool (unique ids)", () => {
     const rankedIds = ["1", "2", "3", "4", "5"];
-    const explored = applyExploration(rankedIds, candidates, { explorationRate: 0.5, limit: 3, seed: 123 });
+    const explored = applyExploration(rankedIds, candidates, { explorationRate: 1, limit: 3, seed: 123 });
     expect(explored).toHaveLength(3);
-    explored.forEach((id) => expect(rankedIds.slice(0, 6)).toContain(id));
     expect(new Set(explored).size).toBe(3);
+    explored.forEach((id) => expect(rankedIds).toContain(id));
   });
 
   it("with rate > 0 returns exactly limit items when pool has at least 2*limit", () => {
