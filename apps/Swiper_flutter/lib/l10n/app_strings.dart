@@ -39,4 +39,6 @@ class AppStrings {
   String get connectSocialSubtitle => isSv
       ? 'Instagram, Facebook – valfritt, för personlig feed'
       : 'Instagram, Facebook – optional, for personalised feed';
+  String get startOver => isSv ? 'Starta om' : 'Start over';
+  String get startOverSubtitle => isSv ? 'Ny session, alla kort visas igen' : 'New session, all cards show again';
 }

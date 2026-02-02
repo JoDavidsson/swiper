@@ -81,7 +81,7 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
           : {});
 
       final stopwatch = Stopwatch()..start();
-      final response = await _client.getDeck(sessionId: sid, filters: filtersParam);
+      final response = await _client.getDeck(sessionId: sid, filters: filtersParam, limit: 500);
       stopwatch.stop();
       if (!mounted) return;
 
@@ -123,10 +123,12 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
     final sid = sessionId;
     final current = state.valueOrNull;
     if (sid == null || current == null) return;
+    // Optimistic update: remove card immediately so the slide completes even if the API fails.
+    final nextList = current.where((i) => i.id != itemId).toList();
+    if (mounted) state = AsyncValue.data(nextList);
+
     try {
       await _client.swipe(sessionId: sid, itemId: itemId, direction: direction, positionInDeck: positionInDeck);
-      if (mounted) state = AsyncValue.data(current.where((i) => i.id != itemId).toList());
-
       final tracker = _ref.read(eventTrackerProvider);
       final eventName = direction == 'right' ? 'swipe_right' : 'swipe_left';
       final rank = _rankContext != null
@@ -160,7 +162,7 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
         if (rank != null) 'rank': rank,
       });
     } catch (_) {
-      // Keep UI; could retry or show snackbar
+      // Card already removed; API failure is non-blocking for the slide
     }
   }
 

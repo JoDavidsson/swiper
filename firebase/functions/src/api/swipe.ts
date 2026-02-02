@@ -35,33 +35,40 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
   });
 
   if (direction === "right") {
-    const itemSnap = await db.collection("items").doc(itemId).get();
-    if (itemSnap.exists) {
-      const data = itemSnap.data()!;
-      const sessionRef = db.collection("anonSessions").doc(sessionId);
-      const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
-      const weightsSnap = await weightsRef.get();
-      const current = (weightsSnap.data() || {}) as Record<string, number>;
+    try {
+      const itemSnap = await db.collection("items").doc(itemId).get();
+      if (itemSnap.exists) {
+        const data = itemSnap.data()!;
+        const sessionRef = db.collection("anonSessions").doc(sessionId);
+        const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
+        const weightsSnap = await weightsRef.get();
+        const current = (weightsSnap.data() || {}) as Record<string, number>;
 
-      const styleTags = (data.styleTags as string[]) || [];
-      styleTags.forEach((t: string) => {
-        current[t] = (current[t] || 0) + 1;
-      });
-      const material = data.material as string | undefined;
-      if (material) current[`material:${material}`] = (current[`material:${material}`] || 0) + 1;
-      const color = data.colorFamily as string | undefined;
-      if (color) current[`color:${color}`] = (current[`color:${color}`] || 0) + 1;
-      const sizeClass = data.sizeClass as string | undefined;
-      if (sizeClass) current[`size:${sizeClass}`] = (current[`size:${sizeClass}`] || 0) + 1;
+        const styleTags = Array.isArray(data.styleTags) ? data.styleTags : [];
+        for (const t of styleTags) {
+          if (typeof t === "string") current[t] = (current[t] || 0) + 1;
+        }
+        const material = typeof data.material === "string" ? data.material : undefined;
+        if (material) current[`material:${material}`] = (current[`material:${material}`] || 0) + 1;
+        const color = typeof data.colorFamily === "string" ? data.colorFamily : undefined;
+        if (color) current[`color:${color}`] = (current[`color:${color}`] || 0) + 1;
+        const sizeClass = typeof data.sizeClass === "string" ? data.sizeClass : undefined;
+        if (sizeClass) current[`size:${sizeClass}`] = (current[`size:${sizeClass}`] || 0) + 1;
 
-      batch.set(weightsRef, current);
+        batch.set(weightsRef, current);
+      }
+    } catch (e) {
+      console.warn("swipe: preferenceWeights update skipped", e);
+      // Swipe and event are still committed below
     }
   }
 
   await batch.commit();
-  await db.collection("anonSessions").doc(sessionId).update({
-    lastSeenAt: FieldValue.serverTimestamp(),
-  });
+  // Use set with merge so we don't throw if the session doc was never created (e.g. emulator restart).
+  await db.collection("anonSessions").doc(sessionId).set(
+    { lastSeenAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  );
 
   res.status(200).json({ ok: true });
 }

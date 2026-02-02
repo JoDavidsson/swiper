@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme.dart';
 import 'core/router.dart';
@@ -21,6 +22,19 @@ class SwiperApp extends ConsumerWidget {
           Locale('en'),
           Locale('sv'),
         ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        localeResolutionCallback: (locale, supportedLocales) {
+          for (final supported in supportedLocales) {
+            if (locale != null && supported.languageCode == locale.languageCode) {
+              return supported;
+            }
+          }
+          return supportedLocales.first;
+        },
         routerConfig: ref.watch(routerProvider),
       ),
     );

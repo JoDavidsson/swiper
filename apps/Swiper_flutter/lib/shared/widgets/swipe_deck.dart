@@ -171,23 +171,29 @@ class _SwipeDeckState extends State<SwipeDeck> {
         ),
         Padding(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _ControlButton(
-                icon: Icons.close,
-                color: AppTheme.negativeDislike,
-                onPressed: _onSwipeLeftButton,
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ControlButton(
+                    icon: Icons.close,
+                    color: AppTheme.negativeDislike,
+                    onPressed: _onSwipeLeftButton,
+                  ),
+                  const SizedBox(width: AppTheme.spacingUnit * 2),
+                  _ControlButton(
+                    icon: Icons.favorite,
+                    color: AppTheme.positiveLike,
+                    onPressed: _onSwipeRightButton,
+                  ),
+                  const SizedBox(width: AppTheme.spacingUnit * 2),
+                  _ControlButton(icon: Icons.undo, color: AppTheme.textSecondary, onPressed: null),
+                ],
               ),
-              const SizedBox(width: AppTheme.spacingUnit * 2),
-              _ControlButton(
-                icon: Icons.favorite,
-                color: AppTheme.positiveLike,
-                onPressed: _onSwipeRightButton,
-              ),
-              const SizedBox(width: AppTheme.spacingUnit * 2),
-              _ControlButton(icon: Icons.undo, color: AppTheme.textSecondary, onPressed: null),
-            ],
+            ),
           ),
         ),
       ],

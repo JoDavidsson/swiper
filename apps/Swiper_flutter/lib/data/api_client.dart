@@ -81,7 +81,7 @@ class ApiClient {
   }
 
   /// Get deck items for session. Backend returns items, rank (rankerRunId, algorithmVersion), and optional itemScores.
-  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 20}) async {
+  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 500}) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
       if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),

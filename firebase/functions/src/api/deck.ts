@@ -15,9 +15,12 @@ function hashSessionId(sessionId: string): number {
   return Math.abs(h);
 }
 
+const MAX_LIMIT = parseInt(String(process.env.DECK_RESPONSE_LIMIT || "500"), 10) || 500;
+
 export async function deckGet(req: Request, res: Response): Promise<void> {
   const sessionId = req.query.sessionId as string;
-  const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, 50);
+  const requested = parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT;
+  const limit = Math.min(Math.max(0, requested), MAX_LIMIT);
   const filtersJson = req.query.filters as string | undefined;
 
   if (!sessionId) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-02-02 – Recommendation ranking normalization and analyzer fixes
+
+- **Ranker:** Improved recommendation ranking normalization in [firebase/functions/src/ranker/](firebase/functions/src/ranker/): shared `normalizeScore(score, signalCount)` (divide by √signalCount) in scoreItem.ts; PreferenceWeightsRanker and PersonalPlusPersonaRanker use it to reduce tag-count bias. New/updated tests in scoreItem.test.ts, preferenceWeightsRanker.test.ts, personalPlusPersonaRanker.test.ts. [docs/RECOMMENDATIONS_ENGINE.md](docs/RECOMMENDATIONS_ENGINE.md) updated.
+- **Flutter analyzer:** Removed redundant `notifyListeners()` in router (ValueNotifier setter already notifies); removed unused `api_client` import in compare_screen so `flutter analyze --no-fatal-infos` passes with no warnings.
+
 ## 2026-02-01 – Swipe-first deck launch and menu consolidation
 
 - **Entry flow:** App opens directly into the deck (no splash). One-time swipe hint overlay stored in Hive.

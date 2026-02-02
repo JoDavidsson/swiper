@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
+import '../../data/api_providers.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
@@ -170,64 +171,96 @@ class DeckScreen extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingUnit),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const _SheetHandle(),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(strings.menu, style: Theme.of(context).textTheme.titleLarge),
+      builder: (sheetContext) => LayoutBuilder(
+        builder: (ctx, constraints) {
+          // #region agent log
+          Dio().post(
+            'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
+            data: {
+              'location': 'deck_screen.dart:_showMenuSheet',
+              'message': 'Menu sheet layout constraints',
+              'data': {'maxHeight': constraints.maxHeight, 'maxWidth': constraints.maxWidth},
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+              'sessionId': 'debug-session',
+              'hypothesisId': 'H3',
+            },
+          ).catchError((_) {});
+          // #endregion
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.spacingUnit),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const _SheetHandle(),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(strings.menu, style: Theme.of(context).textTheme.titleLarge),
+                    ),
+                    const SizedBox(height: AppTheme.spacingUnit),
+                    _MenuTile(
+                      icon: Icons.tune,
+                      title: strings.filters,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        _showFiltersSheet(context, ref);
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.favorite,
+                      title: strings.likes,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        context.push('/likes');
+                      },
+                    ),
+                    const Divider(height: AppTheme.spacingUnit * 2),
+                    _MenuTile(
+                      icon: Icons.settings,
+                      title: strings.preferences,
+                      subtitle: strings.reRunOnboarding,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        context.push('/onboarding');
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.shield_outlined,
+                      title: strings.dataAndPrivacy,
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        context.push('/profile/data-privacy');
+                      },
+                    ),
+                    _MenuTile(
+                      icon: Icons.language,
+                      title: strings.language,
+                      subtitle: '${strings.swedish} / ${strings.english} – $currentLabel',
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        _showLanguageSheet(context, ref);
+                      },
+                    ),
+                    const Divider(height: AppTheme.spacingUnit * 2),
+                    _MenuTile(
+                      icon: Icons.refresh,
+                      title: strings.startOver,
+                      subtitle: strings.startOverSubtitle,
+                      onTap: () async {
+                        Navigator.of(sheetContext).pop();
+                        await clearSessionId();
+                        ref.read(sessionIdProvider.notifier).state = null;
+                        await ensureSession(ref, ref.read(apiClientProvider));
+                        ref.invalidate(deckItemsProvider);
+                      },
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: AppTheme.spacingUnit),
-              _MenuTile(
-                icon: Icons.tune,
-                title: strings.filters,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _showFiltersSheet(context, ref);
-                },
-              ),
-              _MenuTile(
-                icon: Icons.favorite,
-                title: strings.likes,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  context.push('/likes');
-                },
-              ),
-              const Divider(height: AppTheme.spacingUnit * 2),
-              _MenuTile(
-                icon: Icons.settings,
-                title: strings.preferences,
-                subtitle: strings.reRunOnboarding,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  context.push('/onboarding');
-                },
-              ),
-              _MenuTile(
-                icon: Icons.shield_outlined,
-                title: strings.dataAndPrivacy,
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  context.push('/profile/data-privacy');
-                },
-              ),
-              _MenuTile(
-                icon: Icons.language,
-                title: strings.language,
-                subtitle: '${strings.swedish} / ${strings.english} – $currentLabel',
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  _showLanguageSheet(context, ref);
-                },
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
