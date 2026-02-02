@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-02-02 – Data Science & Observability Gaps (offline eval, A/B, retention)
+
+- **deck_response logging:** Client now logs rank.variant, rank.variantBucket, and rank.itemIds (served slate) in deck_response events; swipe events include variant/variantBucket when rank context is present. ApiClient parses variant and variantBucket from deck response; schema and EVENT_SCHEMA_V1/EVENT_TRACKING updated. Required for offline eval (liked-in-top-K) and A/B segmentation.
+- **events_batch chunking:** POST /api/events/batch chunks into Firestore batches of 500 and commits each chunk so large batches no longer fail (Firestore 500-write limit).
+- **Exploration seed:** Deck API uses session-based exploration seed when RANKER_EXPLORATION_SEED is unset (hashSessionId(sessionId)) so exploration order is deterministic per session for A/B.
+- **OFFLINE_EVAL.md:** New doc with primary metric (Liked-in-top-K per session), required event fields, A/B segmentation by variant, position-bias note, and optional statistical significance (95% CI, sample size). RECOMMENDATIONS_ENGINE updated to reference it.
+- **Bias and retention:** RECOMMENDATIONS_ENGINE documents exposure bias (mitigation: exploration, diversity), item cold start (retrieval by lastUpdatedAt, content-based scoring), and persona cold sessions (default bucket or personal-only). events_v1 retention 24 months documented in PRIVACY_GDPR and RUNBOOK_DEPLOYMENT (Data retention: TTL or scheduled purge).
+- **Persona and optional:** Persona pipeline future step includes default bucket for cold sessions; optional diversity (MMR / max per styleTag), weight decay, and score-breakdown explainability documented in RECOMMENDATIONS_ENGINE.
+
+## 2026-02-02 – Deck swipe visual continuity (remove white flash)
+
+- **Card rendering unified:** Introduced [deck_card.dart](apps/Swiper_flutter/lib/shared/widgets/deck_card.dart) and now both the top card and stacked cards render via the same cached image + placeholder strategy (no `Image.network` vs `CachedNetworkImage` mismatch).
+- **No spinner placeholders:** Replaced the swipe-surface spinner placeholder with a stable, non-white designed placeholder to avoid perceived “flash” on image decode.
+- **Stable deck background:** [swipe_deck.dart](apps/Swiper_flutter/lib/shared/widgets/swipe_deck.dart) wraps the deck stack in a `ColoredBox(AppTheme.background)` so there’s never a default white canvas between frames.
+- **Prefetch:** SwipeDeck prefetches `top + next 4` images via `precacheImage(CachedNetworkImageProvider(...))` on deck updates to reduce image pop-in on promotion.
+- **Promotion polish:** Under-stack cards use implicit animations (`AnimatedPadding`/`AnimatedScale`) so the stack advances smoothly when a card is removed.
+
+## 2026-02-02 – New card on top: each top card is a new State, fix _dragDx carry-over and double-commit
+
+- **Top card identity:** [swipe_deck.dart](apps/Swiper_flutter/lib/shared/widgets/swipe_deck.dart) now uses `ValueKey(top.id)` for the top `DraggableSwipeCard` (removed GlobalKey). When the top item changes after a swipe, Flutter disposes the old State and creates a new one for the new item, so each top card is a new widget/State; no state is "inserted" into the previous card.
+- **_dragDx fix:** The next card no longer inherits the previous card's drag offset (new State always has `_dragDx = 0`); button-triggered swipe animates from center.
+- **Button triggers:** Top card registers trigger callbacks and `isAnimating` getter via optional `onRegisterSwipeTriggers`; [draggable_swipe_card.dart](apps/Swiper_flutter/lib/shared/widgets/draggable_swipe_card.dart) calls it in initState and unregisters in dispose. SwipeDeck stores the callbacks and heart/X buttons call them; no GlobalKey.
+- **Double-commit prevention:** Button handlers check `_isAnimatingGetter?.call() == true` before commit + trigger, so double-tap during animation does not duplicate API/tracking. Event data (swipe_left/swipe_right, gesture vs button) unchanged.
+
+## 2026-02-02 – Refetch without loading so card exit animation stays visible
+
+- **Refetch timing:** When remaining deck items fall below 3 after a swipe, [deck_provider.dart](apps/Swiper_flutter/lib/data/deck_provider.dart) now refetches in the background without setting `state = AsyncValue.loading()`. Added `_load({ bool showLoading = true })`; refetch from `removeItemById()` calls `_load(showLoading: false)` so the deck is not replaced by a spinner and the top card’s exit animation stays visible.
+- **Clipping audit:** Confirmed deck parent chain (Scaffold body, Expanded, Stack with `clipBehavior: Clip.none`) does not clip; no change needed for card overflow during swipe.
+
+## 2026-02-02 – Deck stack, swipe transition, likes on swipe right, deck bundles
+
+- **Deck stack:** Capped visible stack at 5 cards in [swipe_deck.dart](apps/Swiper_flutter/lib/shared/widgets/swipe_deck.dart); order and images match “next to show.” Added `ValueKey(item.id)` on stack and top card for widget identity so the next card reuses the same widget (no image reload).
+- **Swipe transition:** Two-phase flow: commit (API + tracking) on swipe start, remove from list only after exit animation completes. [draggable_swipe_card.dart](apps/Swiper_flutter/lib/shared/widgets/draggable_swipe_card.dart) calls `onSwipeRight`/`onSwipeLeft` at commit and `onSwipeAnimationEnd(item)` when animation completes; [deck_provider.dart](apps/Swiper_flutter/lib/data/deck_provider.dart) `swipe()` no longer mutates state; `removeItemById(itemId)` mutates state; deck_screen wires `onSwipeAnimationEnd` to `removeItemById`. Button swipes trigger card animation via `DraggableSwipeCardState.triggerSwipeRight`/`triggerSwipeLeft`. Eliminates white flicker when revealing next card.
+- **Likes on swipe right:** [swipe.ts](firebase/functions/src/api/swipe.ts) writes to top-level `likes` collection (doc id `sessionId_itemId`, merge for idempotency) and `anonSessions/{sessionId}/likes/{itemId}` when `direction === "right"`, so the Likes page shows swiped-right items.
+- **Deck bundles:** Default deck request size reduced to 10; [deck_provider.dart](apps/Swiper_flutter/lib/data/deck_provider.dart) refetches when remaining items &lt; 3 after a swipe.
+
 ## 2026-02-02 – Recommendation ranking normalization and analyzer fixes
 
 - **Ranker:** Improved recommendation ranking normalization in [firebase/functions/src/ranker/](firebase/functions/src/ranker/): shared `normalizeScore(score, signalCount)` (divide by √signalCount) in scoreItem.ts; PreferenceWeightsRanker and PersonalPlusPersonaRanker use it to reduce tag-count bias. New/updated tests in scoreItem.test.ts, preferenceWeightsRanker.test.ts, personalPlusPersonaRanker.test.ts. [docs/RECOMMENDATIONS_ENGINE.md](docs/RECOMMENDATIONS_ENGINE.md) updated.

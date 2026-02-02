@@ -31,8 +31,8 @@ export async function eventsBatchPost(req: Request, res: Response): Promise<void
   }
 
   const db = admin.firestore();
-  const batch = db.batch();
   const collection = db.collection("events_v1");
+  const BATCH_LIMIT = 500; // Firestore max writes per batch
 
   for (let i = 0; i < eventsRaw.length; i++) {
     const raw = eventsRaw[i];
@@ -47,15 +47,23 @@ export async function eventsBatchPost(req: Request, res: Response): Promise<void
       res.status(400).json({ error: `events[${i}] invalid eventId` });
       return;
     }
-
-    const doc = collection.doc(eventId);
-    const docData: Record<string, unknown> = {
-      ...e,
-      createdAtServer: FieldValue.serverTimestamp(),
-    };
-    batch.set(doc, docData, { merge: true });
   }
 
-  await batch.commit();
+  for (let offset = 0; offset < eventsRaw.length; offset += BATCH_LIMIT) {
+    const chunk = eventsRaw.slice(offset, offset + BATCH_LIMIT);
+    const batch = db.batch();
+    for (let i = 0; i < chunk.length; i++) {
+      const e = chunk[i] as Record<string, unknown>;
+      const eventId = e.eventId as string;
+      const doc = collection.doc(eventId);
+      const docData: Record<string, unknown> = {
+        ...e,
+        createdAtServer: FieldValue.serverTimestamp(),
+      };
+      batch.set(doc, docData, { merge: true });
+    }
+    await batch.commit();
+  }
+
   res.status(200).json({ ok: true, count: eventsRaw.length });
 }

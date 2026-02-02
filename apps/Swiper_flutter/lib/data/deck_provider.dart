@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_client.dart';
 import 'api_providers.dart';
@@ -7,6 +9,22 @@ import 'models/item.dart';
 import 'session_provider.dart';
 
 export 'api_providers.dart' show apiClientProvider;
+
+// #region agent log
+void _deckAgentLog(String location, String message, Map<String, dynamic> data, [String? hypothesisId]) {
+  if (!kDebugMode) return;
+  try {
+    final payload = {'location': location, 'message': message, 'data': data, 'timestamp': DateTime.now().millisecondsSinceEpoch, 'sessionId': 'debug-session', 'hypothesisId': hypothesisId ?? 'H6'};
+    Dio()
+        .post(
+          'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
+          data: payload,
+          options: Options(sendTimeout: const Duration(milliseconds: 500), receiveTimeout: const Duration(milliseconds: 500)),
+        )
+        .catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: 'agent_ingest'))));
+  } catch (_) {}
+}
+// #endregion
 
 /// Admin dashboard stats. Cached so rebuilds don't create a new future (avoids infinite spinner).
 final adminStatsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
@@ -40,9 +58,17 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
   DeckRankContext? get rankContext => _rankContext;
   Map<String, double> get itemScores => _itemScores;
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = true}) async {
     if (!mounted) return;
-    state = const AsyncValue.loading();
+    if (showLoading) {
+      state = const AsyncValue.loading();
+    }
+    // #region agent log
+    _deckAgentLog('deck_provider.dart:_load', 'deck_load_start', {'showLoading': showLoading}, 'H-D2');
+    if (!showLoading) {
+      _deckAgentLog('deck_provider.dart:_load', 'load_no_spinner', {'skippedLoading': true}, 'H-D2');
+    }
+    // #endregion
     try {
       String? sid = _ref.read(sessionIdProvider);
       if (sid == null || sid.isEmpty) {
@@ -70,6 +96,9 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
       }
       if (!mounted) return;
       if (sid == null) {
+        // #region agent log
+        _deckAgentLog('deck_provider.dart:_load', 'deck_no_session', {}, 'H8');
+        // #endregion
         if (mounted) state = AsyncValue.error('No session', StackTrace.current);
         return;
       }
@@ -81,7 +110,7 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
           : {});
 
       final stopwatch = Stopwatch()..start();
-      final response = await _client.getDeck(sessionId: sid, filters: filtersParam, limit: 500);
+      final response = await _client.getDeck(sessionId: sid, filters: filtersParam, limit: 10);
       stopwatch.stop();
       if (!mounted) return;
 
@@ -89,12 +118,35 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
       _itemScores = response.itemScores;
 
       if (mounted) {
-        state = AsyncValue.data(response.items);
+        final currentItems = state.valueOrNull;
+        if (!showLoading && currentItems != null && currentItems.isNotEmpty) {
+          final existingIds = currentItems.map((i) => i.id).toSet();
+          final appended = response.items.where((i) => !existingIds.contains(i.id)).toList();
+          final merged = <Item>[...currentItems, ...appended];
+          state = AsyncValue.data(merged);
+        } else {
+          state = AsyncValue.data(response.items);
+          // #region agent log
+          _deckAgentLog(
+            'deck_provider.dart:_load',
+            'deck_load_data',
+            {
+              'itemCount': response.items.length,
+              'wasRefetch': !showLoading,
+              'replaced': true,
+            },
+            showLoading ? 'H8' : 'H-D3',
+          );
+          // #endregion
+        }
         tracker.track('deck_response', {
           if (response.rank != null)
             'rank': {
               'rankerRunId': response.rank!.rankerRunId,
               'algorithmVersion': response.rank!.algorithmVersion,
+              if (response.rank!.variant != null) 'variant': response.rank!.variant,
+              if (response.rank!.variantBucket != null) 'variantBucket': response.rank!.variantBucket,
+              'itemIds': response.items.map((i) => i.id).toList(),
             },
           'perf': {'latencyMs': stopwatch.elapsedMilliseconds},
         });
@@ -106,12 +158,34 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
         }
       }
     } catch (e, st) {
-      if (mounted) state = AsyncValue.error(e, st);
+      if (mounted) {
+        // #region agent log
+        _deckAgentLog('deck_provider.dart:_load', 'deck_load_error', {'errorType': e.runtimeType.toString()}, 'H8');
+        // #endregion
+        final sid = _ref.read(sessionIdProvider) ?? _sessionId;
+        if (sid != null && sid.length >= 8) {
+          _ref.read(eventTrackerProvider).track('client_error', {
+            'error': {'errorType': e.runtimeType.toString()},
+            'surface': {'name': 'deck_card'},
+          });
+        }
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
-  Future<void> refresh() => _load();
+  Future<void> refresh() async {
+    final sid = sessionId;
+    // #region agent log
+    _deckAgentLog('deck_provider.dart:refresh', 'refresh_called', {'sessionIdPresent': sid != null});
+    // #endregion
+    if (sid != null) {
+      _ref.read(eventTrackerProvider).track('deck_refresh', {});
+    }
+    await _load();
+  }
 
+  /// Calls API and tracks the swipe. Does not mutate list; call [removeItemById] after animation completes.
   Future<void> swipe(
     String itemId,
     String direction,
@@ -123,9 +197,6 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
     final sid = sessionId;
     final current = state.valueOrNull;
     if (sid == null || current == null) return;
-    // Optimistic update: remove card immediately so the slide completes even if the API fails.
-    final nextList = current.where((i) => i.id != itemId).toList();
-    if (mounted) state = AsyncValue.data(nextList);
 
     try {
       await _client.swipe(sessionId: sid, itemId: itemId, direction: direction, positionInDeck: positionInDeck);
@@ -135,6 +206,8 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
           ? {
               'rankerRunId': _rankContext!.rankerRunId,
               if (_itemScores.containsKey(itemId)) 'scoreAtRender': _itemScores[itemId],
+              if (_rankContext!.variant != null) 'variant': _rankContext!.variant,
+              if (_rankContext!.variantBucket != null) 'variantBucket': _rankContext!.variantBucket,
             }
           : null;
       final snapshot = item != null
@@ -162,7 +235,26 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
         if (rank != null) 'rank': rank,
       });
     } catch (_) {
-      // Card already removed; API failure is non-blocking for the slide
+      // Non-blocking; removal still happens on animation end
+    }
+  }
+
+  void removeItemById(String itemId) {
+    if (!mounted) return;
+    final current = state.valueOrNull;
+    if (current != null) {
+      final listLengthBefore = current.length;
+      final nextList = current.where((i) => i.id != itemId).toList();
+      // #region agent log
+      _deckAgentLog('deck_provider.dart:removeItemById', 'removeItemById', {'itemId': itemId, 'listLengthBefore': listLengthBefore, 'listLengthAfter': nextList.length}, 'flow');
+      // #endregion
+      state = AsyncValue.data(nextList);
+      if (nextList.length < 3) {
+        // #region agent log
+        _deckAgentLog('deck_provider.dart:removeItemById', 'refetch_triggered', {'nextListLength': nextList.length, 'showLoading': false}, 'H-D1');
+        // #endregion
+        _load(showLoading: false);
+      }
     }
   }
 
@@ -181,3 +273,13 @@ final likesListProvider = FutureProvider<List<Item>>((ref) async {
   if (sessionId == null) return [];
   return client.getLikes(sessionId: sessionId);
 });
+
+/// Toggle like via API and track like_add or like_remove. Use this when adding like/unlike UI (e.g. from Likes or detail).
+Future<bool> toggleLikeWithTracking(Ref ref, {required String sessionId, required String itemId}) async {
+  final client = ref.read(apiClientProvider);
+  final liked = await client.toggleLike(sessionId: sessionId, itemId: itemId);
+  ref.read(eventTrackerProvider).track(liked ? 'like_add' : 'like_remove', {
+    'item': {'itemId': itemId},
+  });
+  return liked;
+}

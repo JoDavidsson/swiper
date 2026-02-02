@@ -120,6 +120,7 @@
         "render_slow",
         "client_error",
         "empty_deck",
+        "deck_refresh",
 
         "session_summary",
         "preference_snapshot",
@@ -219,6 +220,10 @@
         "algorithmVersion": { "type": "string" },
         "modelVersion": { "type": "string" },
         "candidateSetId": { "type": "string" },
+
+        "variant": { "type": "string", "description": "A/B variant label (e.g. personal_only, personal_only_exploration_5)" },
+        "variantBucket": { "type": "integer", "minimum": 0, "maximum": 99, "description": "A/B variant bucket for segmentation" },
+        "itemIds": { "type": "array", "items": { "type": "string" }, "description": "Served item IDs (for offline eval and liked-in-top-K)" },
 
         "scoreAtRender": { "type": "number" },
 

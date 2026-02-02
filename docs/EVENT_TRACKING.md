@@ -19,17 +19,49 @@ This doc lists what we track today and what we should track for a future ML reco
 
 **Swipes collection** (denormalized for deck logic): each swipe row has `sessionId`, `itemId`, `direction` (left|right), `positionInDeck`, `createdAt`. Used to exclude seen items and for sequence data.
 
-**Client-side events (Flutter → POST /api/events):**
+**Client-side events (Flutter → POST /api/events/batch, v1 schema):**
 
 | Event | When | Key fields |
 |-------|------|------------|
-| **open_detail** | User opens item detail sheet (deck or likes) | itemId, metadata.source (deck \| likes) |
-| **detail_dismiss** | User closes detail sheet | itemId, metadata.timeViewedMs, metadata.source |
-| **compare_open** | User opens compare screen with items | metadata.itemIds, metadata.count |
-| **filter_sheet_open** | User opens filter bottom sheet | — |
+| **app_open** | First event with session in app run | — |
 | **session_start** | First deck load for session (or after create) | — |
-| **deck_empty_view** | Deck loads with no items | — |
-| **onboarding_complete** | User finishes onboarding | metadata.styles, budgetMin, budgetMax, ecoOnly, newOnly, sizeConstraint |
+| **session_resume** | App resumed after ≥30s background | — |
+| **session_end** | App backgrounded / hidden | — |
+| **deck_request** | Deck fetch started | filters.active (if any) |
+| **deck_response** | Deck fetch completed | rank.rankerRunId, rank.algorithmVersion, rank.variant, rank.variantBucket, rank.itemIds (required for offline eval and A/B), perf.latencyMs |
+| **deck_refresh** | User refreshes deck (Retry, Apply/Clear filters) | — |
+| **card_render** | Top card built (with impression start) | item, rank |
+| **card_impression_start** | Top card becomes visible | item, impression.impressionId, rank |
+| **card_impression_end** | Top card leaves | item, impression.visibleDurationMs, endReason, bucket |
+| **swipe_left / swipe_right** | User swipes card (or button) | item, interaction.gesture, direction, rank |
+| **swipe_cancel** | User releases card without threshold | item, interaction.gesture |
+| **swipe_undo** | User taps undo (when implemented) | item, interaction.direction |
+| **detail_open / detail_close** | User opens/closes detail (deck, likes, shortlist) | item, source; close: ext.durationMs |
+| **detail_scroll** | User scrolls detail sheet (throttled) | item.itemId |
+| **detail_gallery_interaction** | User swipes image in detail | item.itemId, ext.imageIndex |
+| **outbound_click** | User taps “View on site” | item, outbound.destinationDomain |
+| **outbound_redirect_start / success / fail** | Around launchUrl | item, outbound.destinationDomain |
+| **filters_open** | User opens filter sheet | — |
+| **filters_apply** | User applies filters | filters.active |
+| **filters_clear** | User taps Clear all | — |
+| **filter_change** | User changes a filter control (optional) | filters.change.key, from, to |
+| **compare_open / compare_close** | User opens/leaves compare | items, compare.compareCount |
+| **compare_outbound_click** | Outbound from compare screen | item, outbound.destinationDomain |
+| **likes_open** | User navigates to Likes | — |
+| **like_add / like_remove** | When UI calls toggleLike (use toggleLikeWithTracking) | item.itemId |
+| **shortlist_create** | User creates shared shortlist | items, share.shortlistId |
+| **shortlist_share** | Share sheet shown after create | share |
+| **share_link_landing_view** | User lands on /s/:token | share.linkType, linkId |
+| **deep_link_open** | User lands on /s/:token or /compare?ids= | surface, ext |
+| **onboarding_start** | User enters onboarding | — |
+| **onboarding_step_view** | Each step shown | onboarding.stepName |
+| **onboarding_step_change** | User changes style/budget/toggle | onboarding.stepName, field |
+| **onboarding_complete** | User finishes onboarding | onboarding (preferences) |
+| **onboarding_skip** | User skips to deck | — |
+| **consent_updated** | User toggles analytics opt-out | ext.analyticsOptOut |
+| **client_error** | Caught error (e.g. deck load) | error.errorType, surface |
+| **empty_deck** | Deck loads with no items | — |
+| **surface** | Set per screen via currentSurfaceProvider | surface.name (deck_card, likes, compare, etc.) |
 
 **Session context (POST /api/session body):** Flutter sends `locale`, `platform`, `screenBucket`, `timezoneOffsetMinutes`; backend stores on **anonSessions** and may set `userAgent` from request header.
 
@@ -89,9 +121,9 @@ V1 events are sent by the Flutter tracker to POST /api/events/batch and stored i
 - **Server-added:** createdAtServer.
 - **Optional:** surface, item, rank, impression, interaction, filters, onboarding, compare, share, outbound, perf, error, ext.
 
-**Event names (v1):** session_start, session_resume, session_end, deck_request, deck_response, card_impression_start, card_impression_end, swipe_left, swipe_right, detail_open, detail_close, like_add, like_remove, filters_open, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
+**Event names (v1):** app_open, session_start, session_resume, session_end, deck_request, deck_response, deck_refresh, card_render, card_impression_start, card_impression_end, swipe_left, swipe_right, swipe_cancel, swipe_undo, detail_open, detail_close, detail_scroll, detail_gallery_interaction, outbound_click, outbound_redirect_start, outbound_redirect_success, outbound_redirect_fail, filters_open, filters_apply, filters_clear, filter_change, compare_open, compare_close, compare_outbound_click, likes_open, like_add, like_remove, shortlist_create, shortlist_share, share_link_landing_view, deep_link_open, onboarding_start, onboarding_step_view, onboarding_step_change, onboarding_complete, onboarding_skip, consent_updated, client_error, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
 
-**Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion; card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
+**Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion, and for **offline eval and A/B** rank.variant, rank.variantBucket, rank.itemIds (served slate); card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
 
 ---
 
@@ -123,6 +155,7 @@ Typical inputs for training:
 - Every swipe has itemId and positionInDeck.
 - Every card_impression_end has a matching impressionId from a start.
 - Deck-origin events include rankerRunId when applicable.
+- deck_response includes rank.itemIds, rank.variant, rank.variantBucket for offline eval and A/B segmentation.
 - filters_apply always includes full filters.active snapshot.
 - outbound_click never missing destinationDomain.
 

@@ -143,3 +143,10 @@ Run through this checklist after deploying to confirm the app works end-to-end:
 7. **Data & Privacy** – Open menu → Data & Privacy; screen loads and switch works.
 8. **Admin** – Open `/admin`; log in with ADMIN_PASSWORD; dashboard and Sources/Runs/Items/Import/QA load without 500s.
 9. **Shared shortlist** – Create shortlist from Likes (share); open `/s/:token` in new tab; shortlist page loads.
+
+## Data retention
+
+- **events_v1**: Retention **24 months** (see [PRIVACY_GDPR.md](PRIVACY_GDPR.md)). Enforce by either:
+  - **Firestore TTL**: If your project supports TTL policies, set a TTL on the `events_v1` collection so documents expire 24 months after `createdAtServer`.
+  - **Scheduled job**: Run a scheduled function or script that deletes (or anonymizes) events_v1 documents where `createdAtServer` is older than 24 months. Document the script path and schedule here when implemented.
+- **Other collections**: swipes, likes, anonSessions, etc. – retention policy to be defined; export/deletion stubs are in PRIVACY_GDPR.

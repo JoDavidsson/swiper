@@ -78,7 +78,10 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const rankResult = PreferenceWeightsRanker.rank(sessionContext, candidates, { limit });
 
   const explorationRate = Math.min(0.1, Math.max(0, parseFloat(String(process.env.RANKER_EXPLORATION_RATE || "0")) || 0));
-  const explorationSeed = process.env.RANKER_EXPLORATION_SEED != null ? parseInt(String(process.env.RANKER_EXPLORATION_SEED), 10) : undefined;
+  const explorationSeed =
+    process.env.RANKER_EXPLORATION_SEED != null
+      ? parseInt(String(process.env.RANKER_EXPLORATION_SEED), 10)
+      : hashSessionId(sessionId);
 
   const exploredIds = applyExploration(rankResult.itemIds, candidates, {
     explorationRate,

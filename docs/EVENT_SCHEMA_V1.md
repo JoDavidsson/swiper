@@ -18,9 +18,11 @@ Server adds **createdAtServer** on ingestion.
 
 | Event | Required payload |
 |-------|------------------|
-| **deck_response** | rank.rankerRunId, rank.algorithmVersion; optional perf.latencyMs, ext.deckItemScores |
+| **deck_response** | rank.rankerRunId, rank.algorithmVersion; optional rank.variant, rank.variantBucket, rank.itemIds (for offline eval and A/B), perf.latencyMs, ext.deckItemScores |
 | **card_impression_start** | item.itemId, item.positionInDeck, impression.impressionId |
-| **card_impression_end** | impression.visibleDurationMs, impression.endReason; same impressionId as start |
+| **card_impression_end** | impression.visibleDurationMs, impression.endReason; same impressionId as start; optional impression.bucket (0_1s, 1_3s, 3_8s, 8s_plus) |
+| **deck_refresh** | — (no required payload) |
+| **consent_updated** | optional ext.analyticsOptOut |
 | **swipe_left / swipe_right** | item.itemId, item.positionInDeck, interaction.gesture, interaction.direction; ideally rank.rankerRunId, rank.scoreAtRender |
 | **detail_open / detail_close** | item.itemId; on close include duration (ext.durationMs or impression.visibleDurationMs) |
 | **outbound_click** | item.itemId, outbound.destinationDomain; optional outbound.redirectId |

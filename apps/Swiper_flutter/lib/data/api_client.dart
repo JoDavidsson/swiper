@@ -3,11 +3,20 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'models/item.dart';
 
-/// Rank context returned with deck response (for analytics).
+/// Rank context returned with deck response (for analytics and A/B).
 class DeckRankContext {
-  const DeckRankContext({required this.rankerRunId, required this.algorithmVersion});
+  const DeckRankContext({
+    required this.rankerRunId,
+    required this.algorithmVersion,
+    this.variant,
+    this.variantBucket,
+  });
   final String rankerRunId;
   final String algorithmVersion;
+  /// A/B variant label (e.g. personal_only, personal_only_exploration_5).
+  final String? variant;
+  /// A/B variant bucket (0–99) for segmentation.
+  final int? variantBucket;
 }
 
 /// Deck API response: items plus optional rank context and per-item scores.
@@ -81,7 +90,7 @@ class ApiClient {
   }
 
   /// Get deck items for session. Backend returns items, rank (rankerRunId, algorithmVersion), and optional itemScores.
-  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 500}) async {
+  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 10}) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
       if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),
@@ -94,6 +103,10 @@ class ApiClient {
         ? DeckRankContext(
             rankerRunId: rankMap['rankerRunId'] as String? ?? '',
             algorithmVersion: rankMap['algorithmVersion'] as String? ?? '',
+            variant: rankMap['variant'] as String?,
+            variantBucket: rankMap['variantBucket'] is int
+                ? rankMap['variantBucket'] as int
+                : (rankMap['variantBucket'] is num ? (rankMap['variantBucket'] as num).toInt() : null),
           )
         : null;
     final itemScoresRaw = data['itemScores'] as Map<String, dynamic>?;

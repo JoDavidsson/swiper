@@ -41,8 +41,10 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 To prevent the ranker from over-exploiting the same top items (filter bubble), **exploration** is applied after ranking.
 
 - **Strategy**: Sample-from-top-2K (take top 2×limit by score, randomly sample limit). Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
-- **Config**: `RANKER_EXPLORATION_RATE` (env, default 0), `RANKER_EXPLORATION_SEED` (optional).
+- **Config**: `RANKER_EXPLORATION_RATE` (env, default 0), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
 - **Tests**: With rate 0, output equals ranker order; with fixed seed and rate &gt; 0, output is reproducible.
+
+**Exposure bias:** Items that rank higher get more exposure, hence more right-swipes, hence higher weights. We mitigate with exploration (sample-from-top-2K) and optional diversity; long-term consider exposure-aware or causal approaches.
 
 ---
 
@@ -51,26 +53,29 @@ To prevent the ranker from over-exploiting the same top items (filter bubble), *
 Use historical data to evaluate a ranker without affecting live traffic.
 
 - **Data**: events_v1, likes, swipes (session-scoped feedback: deck_response, swipe_right, like_add, etc.).
-- **Metric**: At least one offline metric, e.g. “For sessions with at least one like, what fraction of liked itemIds appeared in the ranker’s top-K for that deck request?” Requires joining deck_request/deck_response with likes (or replaying with the ranker).
-- **Required logging**: rankerRunId, algorithmVersion, itemIds or itemScores in deck_response / events. Document the chosen metric and required fields here when defined.
+- **Primary metric and required fields**: See [docs/OFFLINE_EVAL.md](OFFLINE_EVAL.md). Primary metric: **Liked-in-top-K** (per session): fraction of a session’s liked item IDs that appeared in the union of served slates; average over sessions with at least one like. Required: deck_response with rank.itemIds, rank.variant, rank.variantBucket; likes (Firestore or like_add).
 
 ---
 
 ## A/B readiness
 
-When comparing algorithms (e.g. personal-only vs personal+persona, or different exploration rates), the **variant** is assigned deterministically (e.g. hash(sessionId) % 100) and included in the deck response (`rank.variant`, `rank.variantBucket`). The client should log variant (and algorithmVersion) in events_v1 so we can segment by variant when analysing likes, swipes, and retention.
+When comparing algorithms (e.g. personal-only vs personal+persona, or different exploration rates), the **variant** is assigned deterministically (e.g. hash(sessionId) % 100) and included in the deck response (`rank.variant`, `rank.variantBucket`). The client logs variant, variantBucket, and itemIds in deck_response (and variant/variantBucket in swipe events when rank context is present) so we can segment by variant when analysing likes, swipes, and retention. See [OFFLINE_EVAL.md](OFFLINE_EVAL.md) for A/B segmentation.
 
 ---
 
 ## Target metrics
 
-Pick 1–2 for MVP; ensure we log the required fields in events_v1.
-
 - **Likes per session** (or per deck request): more likes may indicate better relevance.
-- **Liked items in top-K**: of items the user liked, how many were in the ranker’s top-K when they were shown (supports offline evaluation; requires joining deck_response with likes).
-- **Diversity**: e.g. variety of styleTags/material in top-K (optional).
+- **Liked-in-top-K** (primary offline metric): see [OFFLINE_EVAL.md](OFFLINE_EVAL.md).
+- **Diversity**: e.g. variety of styleTags/material in top-K (optional). **Optional implementation:** Add a diversity constraint or MMR-style re-ranking so top-K is not dominated by one styleTag/material (e.g. max N items per styleTag in top-K, or maximal marginal relevance re-rank after PreferenceWeightsRanker).
 
-**Required fields in events_v1**: sessionId, algorithmVersion, variant (or equivalent), itemIds or scores in deck_response; like/swipe events.
+**Optional – weight decay / normalization:** preferenceWeights grow unbounded on swipe_right; long sessions can over-dominate a few tags. Optional: periodic weight decay (e.g. multiply by 0.99 per day) or normalization of preferenceWeights to avoid runaway dominance.
+
+**Optional – explainability:** Log or return score breakdown (e.g. top 3 attribute contributions) for the top item in deck response (e.g. ext.scoreBreakdown) for debugging and support.
+
+**Required fields in events_v1 for offline eval**: sessionId, deck_response with rank.rankerRunId, rank.algorithmVersion, rank.variant, rank.variantBucket, rank.itemIds; like/swipe events.
+
+**Item cold start:** Retrieval is by `lastUpdatedAt` desc; new/updated items surface first. New items have no swipe history, so persona does not help them. They rely on content-based scoring (preferenceWeights) and optional recency boost. Consider a “default” or global persona bucket for new items when persona is enabled.
 
 ---
 
@@ -128,11 +133,13 @@ From the repo root, run `./scripts/run_stress_test.sh` to generate a larger synt
 
 The deck API (`GET /api/deck`) fetches preferenceWeights from the subcollection `anonSessions/{sessionId}/preferenceWeights/weights` (swipe-learned weights). It builds candidate items (exclude seen, apply filters), calls `PreferenceWeightsRanker.rank(sessionContext, candidates, { limit })`, applies `applyExploration` with configurable rate and seed, assigns A/B variant, and returns items, rank (rankerRunId, algorithmVersion, variant, variantBucket), and itemScores. Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (when set) raise the Firestore fetch and candidate caps for stress testing. When persona-based ranking is enabled, the API will fetch precomputed PersonaSignals and call PersonalPlusPersonaRanker instead (or in addition, via variant).
 
+**Persona cold sessions:** When a session has no preferenceWeights (and no preferences from onboarding), the session cannot be assigned a persona bucket from preference/profile. Use either: (A) a **default** or **global** persona bucket (e.g. `bucketId = "default"` with PersonaSignals aggregated across all sessions), or (B) skip persona for that session and use PreferenceWeightsRanker only. The persona aggregation pipeline should write `personaSignals/default` (or similar) so the deck can fall back when the session’s bucket would otherwise be empty.
+
 ---
 
 ## Future
 
-- **Persona aggregation pipeline**: Group sessions into persona buckets; aggregate item scores or “popular among similar” from likes/swipes (or events_v1); write to `personaSignals/{bucketId}`.
+- **Persona aggregation pipeline**: Group sessions into persona buckets; aggregate item scores or “popular among similar” from likes/swipes (or events_v1); write to `personaSignals/{bucketId}`. Include a **default** bucket (e.g. `personaSignals/default`) for cold sessions (no preferenceWeights/preferences).
 - **Offline eval pipeline**: Replay sessions, compute “liked in top-K” (or other metric).
 - **MLRanker**: Consume events_v1 and/or persona aggregates; same `Ranker` interface.
 
