@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-02-02 – Synthetic dataset completeness for testing
+
+- **Fake DB generator:** Backfills all item and anonSession fields from DATA_MODEL, emits events_v1 (deck_response, swipes, impressions, like_add) plus legacy events, and writes likes/swipes with consistent timestamps for offline eval and A/B testing.
+
 ## 2026-02-02 – Recommendation engine robustness fixes
 
 - **Exploration rate:** applyExploration now replaces roughly `rate × limit` positions (stochastic rounding) instead of treating any non-zero rate as full randomization; rate=0 keeps rank order, rate=1 fully samples from the top-2× pool.

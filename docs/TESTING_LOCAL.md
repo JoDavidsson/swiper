@@ -97,7 +97,7 @@ Chrome opens the app. It talks to the emulator by default (`http://localhost:500
 
 ## 5. Synthetic dataset for persona and offline eval
 
-The **fake database** generator creates a synthetic Firestore dataset (e.g. 1000 users, 1000 interactions per user) to support **evaluation of the recommendation algorithm**: persona-based ranking, offline metrics (e.g. liked items in top-K), and A/B. Data is for testing and tuning only; target is the Firestore emulator.
+The **fake database** generator creates a synthetic Firestore dataset (e.g. 1000 users, 1000 interactions per user) to support **evaluation of the recommendation algorithm**: persona-based ranking, offline metrics (e.g. liked items in top-K), and A/B. Data is for testing and tuning only; target is the Firestore emulator. It now backfills all **items** and **anonSessions** fields from [DATA_MODEL.md](DATA_MODEL.md) and emits **events_v1** (deck_response, swipe_left/right, card_impression_start/end, like_add) plus legacy events so every training-critical data point is present.
 
 **Run order**
 
