@@ -35,14 +35,17 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
 
   DeckRankContext? _rankContext;
   Map<String, double> _itemScores = const {};
+  _LastSwipe? _lastSwipe;
 
   String? get sessionId => _sessionId ?? _ref.read(sessionIdProvider);
   DeckRankContext? get rankContext => _rankContext;
   Map<String, double> get itemScores => _itemScores;
+  bool get canUndo => _lastSwipe != null;
 
   Future<void> _load() async {
     if (!mounted) return;
     state = const AsyncValue.loading();
+    _lastSwipe = null;
     try {
       String? sid = _ref.read(sessionIdProvider);
       if (sid == null || sid.isEmpty) {
@@ -123,10 +126,18 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
     final sid = sessionId;
     final current = state.valueOrNull;
     if (sid == null || current == null) return;
+    final next = current.where((i) => i.id != itemId).toList();
+    if (mounted) state = AsyncValue.data(next);
+    final resolvedItem = item ?? current.firstWhere((i) => i.id == itemId, orElse: () => current.first);
+    _lastSwipe = _LastSwipe(
+      item: resolvedItem,
+      direction: direction,
+      positionInDeck: positionInDeck,
+      gesture: gesture,
+      rankContext: _rankContext,
+      scoreAtRender: _itemScores[itemId],
+    );
     try {
-      await _client.swipe(sessionId: sid, itemId: itemId, direction: direction, positionInDeck: positionInDeck);
-      if (mounted) state = AsyncValue.data(current.where((i) => i.id != itemId).toList());
-
       final tracker = _ref.read(eventTrackerProvider);
       final eventName = direction == 'right' ? 'swipe_right' : 'swipe_left';
       final rank = _rankContext != null
@@ -135,22 +146,20 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
               if (_itemScores.containsKey(itemId)) 'scoreAtRender': _itemScores[itemId],
             }
           : null;
-      final snapshot = item != null
-          ? {
-              if (item.brand != null) 'brand': item.brand,
-              'newUsed': item.newUsed,
-              if (item.sizeClass != null) 'sizeClass': item.sizeClass,
-              if (item.material != null) 'material': item.material,
-              if (item.colorFamily != null) 'colorFamily': item.colorFamily,
-              'styleTags': item.styleTags,
-            }
-          : null;
+      final snapshot = {
+        if (resolvedItem.brand != null) 'brand': resolvedItem.brand,
+        'newUsed': resolvedItem.newUsed,
+        if (resolvedItem.sizeClass != null) 'sizeClass': resolvedItem.sizeClass,
+        if (resolvedItem.material != null) 'material': resolvedItem.material,
+        if (resolvedItem.colorFamily != null) 'colorFamily': resolvedItem.colorFamily,
+        'styleTags': resolvedItem.styleTags,
+      };
       tracker.track(eventName, {
         'item': {
           'itemId': itemId,
           'positionInDeck': positionInDeck,
           'source': 'deck',
-          if (snapshot != null) 'snapshot': snapshot,
+          'snapshot': snapshot,
         },
         'interaction': {
           'gesture': gesture,
@@ -159,9 +168,40 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
         },
         if (rank != null) 'rank': rank,
       });
+      await _client.swipe(sessionId: sid, itemId: itemId, direction: direction, positionInDeck: positionInDeck);
     } catch (_) {
-      // Keep UI; could retry or show snackbar
+      if (mounted) state = AsyncValue.data(current);
+      _lastSwipe = null;
     }
+  }
+
+  Future<void> undoLastSwipe() async {
+    final last = _lastSwipe;
+    if (last == null) return;
+    final current = state.valueOrNull ?? <Item>[];
+    if (current.any((i) => i.id == last.item.id)) {
+      _lastSwipe = null;
+      return;
+    }
+    if (mounted) state = AsyncValue.data([last.item, ...current]);
+    _lastSwipe = null;
+    final tracker = _ref.read(eventTrackerProvider);
+    tracker.track('swipe_undo', {
+      'item': {
+        'itemId': last.item.id,
+        'positionInDeck': 0,
+        'source': 'deck',
+      },
+      'interaction': {
+        'direction': last.direction,
+        'gesture': last.gesture,
+      },
+      if (last.rankContext != null)
+        'rank': {
+          'rankerRunId': last.rankContext!.rankerRunId,
+          if (last.scoreAtRender != null) 'scoreAtRender': last.scoreAtRender,
+        },
+    });
   }
 
   void removeTop() {
@@ -171,6 +211,24 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
       state = AsyncValue.data(current.sublist(1));
     }
   }
+}
+
+class _LastSwipe {
+  _LastSwipe({
+    required this.item,
+    required this.direction,
+    required this.positionInDeck,
+    required this.gesture,
+    this.rankContext,
+    this.scoreAtRender,
+  });
+
+  final Item item;
+  final String direction;
+  final int positionInDeck;
+  final String gesture;
+  final DeckRankContext? rankContext;
+  final double? scoreAtRender;
 }
 
 final likesListProvider = FutureProvider<List<Item>>((ref) async {

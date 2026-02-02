@@ -148,7 +148,7 @@ Canonical v1 events (client → POST /api/events/batch). Document ID = eventId (
 |-------|------|-------------|
 | schemaVersion | string | "1.0" |
 | eventId | string | UUID v4 (also doc ID) |
-| eventName | string | session_start, deck_response, swipe_left, swipe_right, card_impression_start, card_impression_end, detail_open, detail_close, like_add, like_remove, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, … |
+| eventName | string | session_start, deck_response, swipe_left, swipe_right, swipe_undo, card_impression_start, card_impression_end, detail_open, detail_close, like_add, like_remove, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, … |
 | sessionId | string | Opaque ID (min 8 chars) |
 | clientSeq | number | Monotonic per session |
 | createdAtClient | string | ISO 8601 |

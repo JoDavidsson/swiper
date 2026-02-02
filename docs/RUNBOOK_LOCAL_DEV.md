@@ -147,7 +147,7 @@ Yes. Mock data lives in **`sample_data/sample_feed.csv`** (5 sofas: titles, pric
    ```  
    The app uses the Functions emulator by default.
 
-4. **In the app:** The deck opens immediately with the 5 sample sofas. Swipe **left** (pass) or **right** (like). Open the hamburger menu → **Likes** to see liked items. Swiped items disappear from the deck; you can keep swiping until the deck is empty.
+4. **In the app:** The deck opens immediately with the 5 sample sofas. Swipe **left** (pass) or **right** (like). Tap **Undo** to restore the last swiped card. Open the hamburger menu → **Likes** to see liked items. Swiped items disappear from the deck; you can keep swiping until the deck is empty.
 
 **Sample feed contents:** `sample_data/sample_feed.csv` has 5 rows (Scandi 2-seat, Velvet 3-seat, Compact sofa, Leather corner, Boucle armchair) with `title`, `price`, `currency`, `url`, `image_url`, `brand`, `description`, dimensions, `material`, `color`, `new_used`. The Supply Engine normalizes and writes them to Firestore with `isActive: true` so the deck API returns them.
 

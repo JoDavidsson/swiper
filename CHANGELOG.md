@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-02-01 – Swipe interaction polish (stack motion, feedback, undo)
+
+- **Swipe motion:** Animated stack promotion, unified card rendering, and button-triggered swipe animation (no flash).
+- **Feedback:** Like/Nope overlays, subtle tint, and haptic feedback on threshold and swipe.
+- **Undo:** Reintroduce last swiped card with event logging (`swipe_undo`).
+
 ## 2026-02-01 – Swipe-first deck launch and menu consolidation
 
 - **Entry flow:** App opens directly into the deck (no splash). One-time swipe hint overlay stored in Hive.

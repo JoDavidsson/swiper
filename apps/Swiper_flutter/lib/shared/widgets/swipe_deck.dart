@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme.dart';
 import '../../data/models/item.dart';
 import 'draggable_swipe_card.dart';
 import 'detail_sheet.dart';
+import 'swipe_card.dart';
 
 const _minImpressionDurationMs = 150;
 const _uuid = Uuid();
@@ -20,6 +22,8 @@ class SwipeDeck extends StatefulWidget {
     this.onTapDetail,
     this.onCardImpressionStart,
     this.onCardImpressionEnd,
+    this.onUndo,
+    this.canUndo = false,
   });
 
   final List<Item> items;
@@ -33,6 +37,8 @@ class SwipeDeck extends StatefulWidget {
   final void Function(Item item, String impressionId)? onCardImpressionStart;
   /// Called when top card leaves (for card_impression_end). Only called if visibleDurationMs >= 150. [itemId] is the card that left.
   final void Function(String impressionId, int visibleDurationMs, String endReason, String itemId)? onCardImpressionEnd;
+  final VoidCallback? onUndo;
+  final bool canUndo;
 
   @override
   State<SwipeDeck> createState() => _SwipeDeckState();
@@ -42,11 +48,18 @@ class _SwipeDeckState extends State<SwipeDeck> {
   String? _currentTopId;
   String? _impressionId;
   DateTime? _impressionStartedAt;
+  final SwipeCardController _cardController = SwipeCardController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
+  }
+
+  @override
+  void dispose() {
+    _cardController.dispose();
+    super.dispose();
   }
 
   @override
@@ -80,32 +93,18 @@ class _SwipeDeckState extends State<SwipeDeck> {
     widget.onCardImpressionStart?.call(top, _impressionId!);
   }
 
-  void _onSwipeLeft() {
+  void _onSwipeLeft(String gesture) {
     if (widget.items.isEmpty) return;
     final top = widget.items.first;
-    _endImpressionIfAny('swipe');
-    widget.onSwipeLeft(top, 0);
+    _endImpressionIfAny(gesture == 'button' ? 'button' : 'swipe');
+    widget.onSwipeLeft(top, 0, gesture: gesture);
   }
 
-  void _onSwipeRight() {
+  void _onSwipeRight(String gesture) {
     if (widget.items.isEmpty) return;
     final top = widget.items.first;
-    _endImpressionIfAny('swipe');
-    widget.onSwipeRight(top, 0);
-  }
-
-  void _onSwipeLeftButton() {
-    if (widget.items.isEmpty) return;
-    final top = widget.items.first;
-    _endImpressionIfAny('swipe');
-    widget.onSwipeLeft(top, 0, gesture: 'button');
-  }
-
-  void _onSwipeRightButton() {
-    if (widget.items.isEmpty) return;
-    final top = widget.items.first;
-    _endImpressionIfAny('swipe');
-    widget.onSwipeRight(top, 0, gesture: 'button');
+    _endImpressionIfAny(gesture == 'button' ? 'button' : 'swipe');
+    widget.onSwipeRight(top, 0, gesture: gesture);
   }
 
   Future<void> _onTapDetail() async {
@@ -146,24 +145,31 @@ class _SwipeDeckState extends State<SwipeDeck> {
             clipBehavior: Clip.none,
             children: [
               for (int i = rest.length - 1; i >= 0; i--)
-                Positioned.fill(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      top: 8.0 * (rest.length - 1 - i),
-                      left: 8.0 * (rest.length - 1 - i),
-                    ),
-                    child: Transform.scale(
-                      scale: 1.0 - 0.05 * (rest.length - 1 - i),
-                      child: _CardContent(item: rest[i]),
-                    ),
-                  ),
+                _StackedCard(
+                  key: ValueKey(rest[i].id),
+                  item: rest[i],
+                  depth: rest.length - 1 - i,
                 ),
               Positioned.fill(
-                child: DraggableSwipeCard(
-                  item: top,
-                  onSwipeLeft: _onSwipeLeft,
-                  onSwipeRight: _onSwipeRight,
-                  onTap: _onTapDetail,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    final scale = Tween<double>(begin: 0.98, end: 1.0).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(scale: scale, child: child),
+                    );
+                  },
+                  child: DraggableSwipeCard(
+                    key: ValueKey(top.id),
+                    controller: _cardController,
+                    item: top,
+                    onSwipeLeft: _onSwipeLeft,
+                    onSwipeRight: _onSwipeRight,
+                    onTap: _onTapDetail,
+                  ),
                 ),
               ),
             ],
@@ -177,16 +183,32 @@ class _SwipeDeckState extends State<SwipeDeck> {
               _ControlButton(
                 icon: Icons.close,
                 color: AppTheme.negativeDislike,
-                onPressed: _onSwipeLeftButton,
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _cardController.swipeLeft();
+                },
               ),
               const SizedBox(width: AppTheme.spacingUnit * 2),
               _ControlButton(
                 icon: Icons.favorite,
                 color: AppTheme.positiveLike,
-                onPressed: _onSwipeRightButton,
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _cardController.swipeRight();
+                },
               ),
               const SizedBox(width: AppTheme.spacingUnit * 2),
-              _ControlButton(icon: Icons.undo, color: AppTheme.textSecondary, onPressed: null),
+              _ControlButton(
+                icon: Icons.undo,
+                color: AppTheme.textSecondary,
+                onPressed: widget.canUndo
+                    ? () {
+                        HapticFeedback.lightImpact();
+                        _endImpressionIfAny('undo');
+                        widget.onUndo?.call();
+                      }
+                    : null,
+              ),
             ],
           ),
         ),
@@ -195,44 +217,28 @@ class _SwipeDeckState extends State<SwipeDeck> {
   }
 }
 
-class _CardContent extends StatelessWidget {
-  const _CardContent({required this.item});
+class _StackedCard extends StatelessWidget {
+  const _StackedCard({super.key, required this.item, required this.depth});
 
   final Item item;
+  final int depth;
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = item.firstImageUrl;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (imageUrl != null && imageUrl.isNotEmpty)
-            Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.image_not_supported, size: 64, color: AppTheme.textCaption))
-          else
-            Container(color: AppTheme.background, child: Icon(Icons.image_not_supported, size: 64, color: AppTheme.textCaption)),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(AppTheme.spacingUnit),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black54, Colors.transparent]),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(item.title, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.white), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  Text('${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70)),
-                ],
-              ),
-            ),
-          ),
-        ],
+    final offset = 8.0 * depth;
+    final scale = 1.0 - 0.05 * depth;
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      top: offset,
+      left: offset,
+      right: 0,
+      bottom: 0,
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        scale: scale,
+        child: SwipeCard(item: item),
       ),
     );
   }

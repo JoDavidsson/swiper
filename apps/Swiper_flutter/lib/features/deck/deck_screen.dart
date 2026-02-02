@@ -64,6 +64,7 @@ class DeckScreen extends ConsumerWidget {
           final swipeHintNotifier = ref.read(swipeHintSeenProvider.notifier);
           final rank = notifier.rankContext;
           final itemScores = notifier.itemScores;
+          final canUndo = notifier.canUndo;
           final showSwipeHint = items.isNotEmpty && !swipeHintSeen;
           return Stack(
             children: [
@@ -71,6 +72,8 @@ class DeckScreen extends ConsumerWidget {
                 items: items,
                 sessionId: sessionId,
                 goBaseUrl: Uri.base.origin,
+                canUndo: canUndo,
+                onUndo: () => notifier.undoLastSwipe(),
                 onSwipeLeft: (item, position, {gesture = 'swipe'}) {
                   swipeHintNotifier.markSeen();
                   notifier.swipe(item.id, 'left', position, item: item, gesture: gesture);

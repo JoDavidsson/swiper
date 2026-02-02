@@ -136,7 +136,7 @@ Run through this checklist after deploying to confirm the app works end-to-end:
 
 1. **App loads** – Open the Hosting URL in a browser. Deck appears immediately with swipe hint.
 2. **Session** – Deck loads; no "No session" error. (Session is created via POST /api/session.)
-3. **Deck** – If seed data was ingested, cards appear. Swipe left/right; deck updates. Open menu → Filters; apply size/color/condition; deck refreshes.
+3. **Deck** – If seed data was ingested, cards appear. Swipe left/right; deck updates. Tap Undo to restore the last card. Open menu → Filters; apply size/color/condition; deck refreshes.
 4. **Detail** – Tap a card; detail sheet opens. Close sheet; no console errors.
 5. **Likes** – Swipe right on an item; open menu → Likes; item appears.
 6. **Go redirect** – From detail, tap "View on site"; redirect to outbound URL with UTM (or placeholder). Check network for 302 from `/go/:itemId`.

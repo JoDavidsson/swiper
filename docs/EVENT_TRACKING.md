@@ -25,6 +25,7 @@ This doc lists what we track today and what we should track for a future ML reco
 |-------|------|------------|
 | **open_detail** | User opens item detail sheet (deck or likes) | itemId, metadata.source (deck \| likes) |
 | **detail_dismiss** | User closes detail sheet | itemId, metadata.timeViewedMs, metadata.source |
+| **swipe_undo** | User taps undo to restore last swiped card | itemId, metadata.direction |
 | **compare_open** | User opens compare screen with items | metadata.itemIds, metadata.count |
 | **filter_sheet_open** | User opens filter bottom sheet | — |
 | **session_start** | First deck load for session (or after create) | — |
@@ -89,7 +90,7 @@ V1 events are sent by the Flutter tracker to POST /api/events/batch and stored i
 - **Server-added:** createdAtServer.
 - **Optional:** surface, item, rank, impression, interaction, filters, onboarding, compare, share, outbound, perf, error, ext.
 
-**Event names (v1):** session_start, session_resume, session_end, deck_request, deck_response, card_impression_start, card_impression_end, swipe_left, swipe_right, detail_open, detail_close, like_add, like_remove, filters_open, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
+**Event names (v1):** session_start, session_resume, session_end, deck_request, deck_response, card_impression_start, card_impression_end, swipe_left, swipe_right, swipe_undo, detail_open, detail_close, like_add, like_remove, filters_open, filters_apply, compare_open, shortlist_create, outbound_click, onboarding_complete, onboarding_skip, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
 
 **Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion; card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
 

@@ -64,14 +64,15 @@ Use this when testing the main app with emulators + Flutter app running.
 |---|------|----------------|
 | 1 | **Deck launch** | App opens directly to deck with one-time swipe hint. Path-based URL: `/admin` shows admin login, not deck. |
 | 2 | **Deck** | Cards from ingested items. Swipe left (X) / right (heart). Deck updates. Menu → Filters (size, color, condition) → Apply / Clear → deck refreshes. |
-| 3 | **Detail** | Tap card → detail sheet (images, title, price, "View on site"). Close sheet. No dispose errors in console. |
-| 4 | **Likes** | Swipe right on items → menu → Likes list. Tap item → detail. |
-| 5 | **Share shortlist** | In Likes, select items → Share → get link. Open `/s/:token` in new tab → shared shortlist page. |
-| 6 | **Preferences** | Menu → Preferences → onboarding (3 steps: style, budget, preferences) → "Building your deck…" → deck. |
-| 7 | **Data & Privacy** | Opt-out switch (stops non-essential events). "Connect social accounts" → "Coming soon" dialog. |
-| 8 | **Locale** | Menu → Language → pick Swedish or English → app strings update. |
-| 9 | **Go redirect** | Detail → "View on site" → 302 from `/go/:itemId` → outbound URL with UTM. |
-| 10 | **Empty deck** | Swipe all or strict filters with no match → "No more items" / adjust filters. |
+| 3 | **Undo** | After a swipe, tap Undo → last card returns to the top. |
+| 4 | **Detail** | Tap card → detail sheet (images, title, price, "View on site"). Close sheet. No dispose errors in console. |
+| 5 | **Likes** | Swipe right on items → menu → Likes list. Tap item → detail. |
+| 6 | **Share shortlist** | In Likes, select items → Share → get link. Open `/s/:token` in new tab → shared shortlist page. |
+| 7 | **Preferences** | Menu → Preferences → onboarding (3 steps: style, budget, preferences) → "Building your deck…" → deck. |
+| 8 | **Data & Privacy** | Opt-out switch (stops non-essential events). "Connect social accounts" → "Coming soon" dialog. |
+| 9 | **Locale** | Menu → Language → pick Swedish or English → app strings update. |
+| 10 | **Go redirect** | Detail → "View on site" → 302 from `/go/:itemId` → outbound URL with UTM. |
+| 11 | **Empty deck** | Swipe all or strict filters with no match → "No more items" / adjust filters. |
 
 **Reference:** [TESTING_LOCAL.md](TESTING_LOCAL.md), [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) post-deploy smoke test.
 
