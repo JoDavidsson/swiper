@@ -5,8 +5,8 @@
 - **`app_test.dart`** – Integration test that:
   1. Starts the app (Hive + ProviderScope + SwiperApp).
   2. On **web**, installs console capture (`window.onerror` and `unhandledrejection`).
-  3. Taps “Skip to swipe” to go to the deck (starts session + deck load).
-  4. Quickly taps “Likes” in the bottom nav (navigate away before load completes).
+  3. Opens the hamburger menu on the deck (starts session + deck load).
+  4. Quickly taps “Likes” in the menu (navigate away before load completes).
   5. Waits 2 seconds.
   6. Asserts that no captured console message contains “dispose” or “tried to use” (e.g. DeckNotifier-after-dispose).
 

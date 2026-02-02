@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
+import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
@@ -45,77 +46,97 @@ class DeckScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final deckState = ref.watch(deckItemsProvider);
     final sessionId = ref.watch(sessionIdProvider);
+    final strings = ref.watch(appStringsProvider);
+    final swipeHintSeen = ref.watch(swipeHintSeenProvider);
 
     return AppShell(
       title: AppConstants.appName,
-      showBottomNav: true,
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        onPressed: () => _showMenuSheet(context, ref),
+        tooltip: strings.menu,
+      ),
+      automaticallyImplyLeading: false,
       body: deckState.when(
         data: (items) {
           final notifier = ref.read(deckItemsProvider.notifier);
-          final client = ref.read(apiClientProvider);
           final tracker = ref.read(eventTrackerProvider);
+          final swipeHintNotifier = ref.read(swipeHintSeenProvider.notifier);
           final rank = notifier.rankContext;
           final itemScores = notifier.itemScores;
-          return SwipeDeck(
-            items: items,
-            sessionId: sessionId,
-            goBaseUrl: Uri.base.origin,
-            onSwipeLeft: (item, position, {gesture = 'swipe'}) => notifier.swipe(item.id, 'left', position, item: item, gesture: gesture),
-            onSwipeRight: (item, position, {gesture = 'swipe'}) => notifier.swipe(item.id, 'right', position, item: item, gesture: gesture),
-            onCardImpressionStart: (item, impressionId) {
-              tracker.track('card_impression_start', {
-                'item': {
-                  'itemId': item.id,
-                  'positionInDeck': 0,
-                  'source': 'deck',
-                  if (rank != null) 'snapshot': _itemSnapshot(item),
+          final showSwipeHint = items.isNotEmpty && !swipeHintSeen;
+          return Stack(
+            children: [
+              SwipeDeck(
+                items: items,
+                sessionId: sessionId,
+                goBaseUrl: Uri.base.origin,
+                onSwipeLeft: (item, position, {gesture = 'swipe'}) {
+                  swipeHintNotifier.markSeen();
+                  notifier.swipe(item.id, 'left', position, item: item, gesture: gesture);
                 },
-                'impression': {'impressionId': impressionId},
-                if (rank != null) 'rank': {
-                  'rankerRunId': rank.rankerRunId,
-                  'algorithmVersion': rank.algorithmVersion,
-                  if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
+                onSwipeRight: (item, position, {gesture = 'swipe'}) {
+                  swipeHintNotifier.markSeen();
+                  notifier.swipe(item.id, 'right', position, item: item, gesture: gesture);
                 },
-              });
-            },
-            onCardImpressionEnd: (impressionId, visibleDurationMs, endReason, itemId) {
-              tracker.track('card_impression_end', {
-                'item': {'itemId': itemId, 'positionInDeck': 0},
-                'impression': {
-                  'impressionId': impressionId,
-                  'visibleDurationMs': visibleDurationMs,
-                  'endReason': endReason,
+                onCardImpressionStart: (item, impressionId) {
+                  tracker.track('card_impression_start', {
+                    'item': {
+                      'itemId': item.id,
+                      'positionInDeck': 0,
+                      'source': 'deck',
+                      if (rank != null) 'snapshot': _itemSnapshot(item),
+                    },
+                    'impression': {'impressionId': impressionId},
+                    if (rank != null) 'rank': {
+                      'rankerRunId': rank.rankerRunId,
+                      'algorithmVersion': rank.algorithmVersion,
+                      if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
+                    },
+                  });
                 },
-              });
-            },
-            onTapDetail: sessionId != null
-                ? (item) async {
-                    tracker.track('detail_open', {
-                      'item': {'itemId': item.id, 'source': 'deck'},
-                      'surface': {'name': 'detail'},
-                    });
-                    final started = DateTime.now();
-                    await showDetailSheet(
-                      context,
-                      item,
-                      goBaseUrl: Uri.base.origin,
-                      onOutboundClick: (i) {
-                        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
-                        tracker.track('outbound_click', {
-                          'item': {'itemId': i.id},
-                          'outbound': {'destinationDomain': domain ?? 'unknown'},
+                onCardImpressionEnd: (impressionId, visibleDurationMs, endReason, itemId) {
+                  tracker.track('card_impression_end', {
+                    'item': {'itemId': itemId, 'positionInDeck': 0},
+                    'impression': {
+                      'impressionId': impressionId,
+                      'visibleDurationMs': visibleDurationMs,
+                      'endReason': endReason,
+                    },
+                  });
+                },
+                onTapDetail: sessionId != null
+                    ? (item) async {
+                        swipeHintNotifier.markSeen();
+                        tracker.track('detail_open', {
+                          'item': {'itemId': item.id, 'source': 'deck'},
+                          'surface': {'name': 'detail'},
                         });
-                      },
-                    );
-                    final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
-                    if (context.mounted) {
-                      tracker.track('detail_close', {
-                        'item': {'itemId': item.id},
-                        'ext': {'durationMs': timeViewedMs},
-                      });
-                    }
-                  }
-                : null,
+                        final started = DateTime.now();
+                        await showDetailSheet(
+                          context,
+                          item,
+                          goBaseUrl: Uri.base.origin,
+                          onOutboundClick: (i) {
+                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            tracker.track('outbound_click', {
+                              'item': {'itemId': i.id},
+                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                            });
+                          },
+                        );
+                        final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
+                        if (context.mounted) {
+                          tracker.track('detail_close', {
+                            'item': {'itemId': item.id},
+                            'ext': {'durationMs': timeViewedMs},
+                          });
+                        }
+                      }
+                    : null,
+              ),
+              if (showSwipeHint) SwipeHintOverlay(text: strings.swipeHint),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -136,23 +157,106 @@ class DeckScreen extends ConsumerWidget {
           ),
         ),
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune),
-          onPressed: () => _showFiltersSheet(context, ref),
-          tooltip: 'Filters',
+    );
+  }
+
+  void _showMenuSheet(BuildContext context, WidgetRef ref) {
+    final strings = ref.read(appStringsProvider);
+    final locale = ref.read(localeProvider);
+    final currentLabel = locale.languageCode == 'sv' ? strings.swedish : strings.english;
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spacingUnit),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _SheetHandle(),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(strings.menu, style: Theme.of(context).textTheme.titleLarge),
+              ),
+              const SizedBox(height: AppTheme.spacingUnit),
+              _MenuTile(
+                icon: Icons.tune,
+                title: strings.filters,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showFiltersSheet(context, ref);
+                },
+              ),
+              _MenuTile(
+                icon: Icons.favorite,
+                title: strings.likes,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  context.push('/likes');
+                },
+              ),
+              const Divider(height: AppTheme.spacingUnit * 2),
+              _MenuTile(
+                icon: Icons.settings,
+                title: strings.preferences,
+                subtitle: strings.reRunOnboarding,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  context.push('/onboarding');
+                },
+              ),
+              _MenuTile(
+                icon: Icons.shield_outlined,
+                title: strings.dataAndPrivacy,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  context.push('/profile/data-privacy');
+                },
+              ),
+              _MenuTile(
+                icon: Icons.language,
+                title: strings.language,
+                subtitle: '${strings.swedish} / ${strings.english} – $currentLabel',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showLanguageSheet(context, ref);
+                },
+              ),
+            ],
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.favorite_border),
-          onPressed: () => context.push('/likes'),
-          tooltip: 'Likes',
+      ),
+    );
+  }
+
+  void _showLanguageSheet(BuildContext context, WidgetRef ref) {
+    final strings = ref.read(appStringsProvider);
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(strings.swedish),
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(const Locale('sv'));
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+            ),
+            ListTile(
+              title: Text(strings.english),
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(const Locale('en'));
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+            ),
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.person_outline),
-          onPressed: () => context.push('/profile'),
-          tooltip: 'Profile',
-        ),
-      ],
+      ),
     );
   }
 
@@ -190,6 +294,112 @@ class DeckScreen extends ConsumerWidget {
       active['colorFamilies'] = [colorFamily];
     }
     ref.read(eventTrackerProvider).track('filters_apply', {'filters': {'active': active}});
+  }
+}
+
+class SwipeHintOverlay extends StatefulWidget {
+  const SwipeHintOverlay({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<SwipeHintOverlay> createState() => _SwipeHintOverlayState();
+}
+
+class _SwipeHintOverlayState extends State<SwipeHintOverlay> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _slide = Tween<Offset>(begin: const Offset(-0.2, 0), end: const Offset(0.2, 0)).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: true,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingUnit * 1.5, vertical: AppTheme.spacingUnit),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(AppTheme.radiusChip),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SlideTransition(
+                  position: _slide,
+                  child: const Icon(Icons.arrow_forward, color: Colors.white, size: 36),
+                ),
+                const SizedBox(height: AppTheme.spacingUnit / 2),
+                Text(
+                  widget.text,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 4,
+        margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
+        decoration: BoxDecoration(
+          color: AppTheme.textCaption.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuTile extends StatelessWidget {
+  const _MenuTile({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle != null ? Text(subtitle!) : null,
+      onTap: onTap,
+    );
   }
 }
 

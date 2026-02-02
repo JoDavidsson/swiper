@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-02-01 – Swipe-first deck launch and menu consolidation
+
+- **Entry flow:** App opens directly into the deck (no splash). One-time swipe hint overlay stored in Hive.
+- **Navigation:** Added hamburger menu on deck (Filters, Likes, Preferences, Data & Privacy, Language). Bottom nav removed from the deck surface.
+- **Detail modal:** Near full-screen sheet with handle, dimmed backdrop, and fast spring scale-in.
+- **Likes:** Compare action removed from the UI; shortlist sharing remains.
+- **QA/docs:** Integration test and runbooks updated to match the new deck-first flow.
+
 ## 2025-01-31 – Admin login redirect fix (no more kick-back to splash)
 
 - **Router:** Stopped recreating `GoRouter` when `adminAuthProvider` changes. Recreating the router reset to `initialLocation: '/'` and sent the user back to the splash screen after login. Now the router is built once; admin auth is mirrored in a `ValueNotifier` and passed as `refreshListenable`. A single top-level `redirect` reads the notifier and sends unauthenticated admin routes to `/admin/login` and authenticated `/admin` or `/admin/login` to `/admin/dashboard`. Login no longer kicks the user back.

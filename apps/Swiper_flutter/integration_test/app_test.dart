@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -17,13 +18,11 @@ void main() {
 
       await Hive.initFlutter();
       await tester.pumpWidget(const ProviderScope(child: SwiperApp()));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
-      // Go to deck (starts session + deck load).
-      await tester.tap(find.text('Skip to swipe'));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      // Navigate away before deck load completes (Likes in bottom nav).
+      // Navigate away before deck load completes (Likes in menu).
+      await tester.tap(find.byIcon(Icons.menu));
+      await tester.pumpAndSettle(const Duration(milliseconds: 200));
       await tester.tap(find.text('Likes'));
       await tester.pump(const Duration(seconds: 2));
 

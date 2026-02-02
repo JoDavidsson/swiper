@@ -62,19 +62,16 @@ Use this when testing the main app with emulators + Flutter app running.
 
 | # | Flow | What to verify |
 |---|------|----------------|
-| 1 | **Splash** | "Swiper", tagline, "Get started", "Skip to swipe". Path-based URL: `/admin` shows admin login, not splash. |
-| 2 | **Get started** | Tap "Get started" → onboarding (3 steps: style, budget, preferences) → "Building your deck…" → deck. |
-| 3 | **Skip to swipe** | Tap "Skip to swipe" → deck (no onboarding). Session created; deck loads. |
-| 4 | **Deck** | Cards from ingested items. Swipe left (X) / right (heart). Deck updates. Filter icon → filter sheet (size, color, condition) → Apply / Clear → deck refreshes. |
-| 5 | **Detail** | Tap card → detail sheet (images, title, price, "View on site"). Close sheet. No dispose errors in console. |
-| 6 | **Likes** | Swipe right on items → heart icon → Likes list. Tap item → detail. |
-| 7 | **Compare** | In Likes, select 2–4 items → Compare → compare screen. "View on site" per item. |
-| 8 | **Share shortlist** | In Likes, select items → Share → get link. Open `/s/:token` in new tab → shared shortlist page. |
-| 9 | **Profile** | Profile → Language (sheet: Swedish/English), Data & Privacy, Edit preferences (onboarding). |
-| 10 | **Data & Privacy** | Opt-out switch (stops non-essential events). "Connect social accounts" → "Coming soon" dialog. |
-| 11 | **Go redirect** | Detail → "View on site" → 302 from `/go/:itemId` → outbound URL with UTM. |
-| 12 | **Locale** | Profile → Language → pick Swedish or English → app strings (splash, profile, Data & Privacy) update. |
-| 13 | **Empty deck** | Swipe all or strict filters with no match → "No more items" / adjust filters. |
+| 1 | **Deck launch** | App opens directly to deck with one-time swipe hint. Path-based URL: `/admin` shows admin login, not deck. |
+| 2 | **Deck** | Cards from ingested items. Swipe left (X) / right (heart). Deck updates. Menu → Filters (size, color, condition) → Apply / Clear → deck refreshes. |
+| 3 | **Detail** | Tap card → detail sheet (images, title, price, "View on site"). Close sheet. No dispose errors in console. |
+| 4 | **Likes** | Swipe right on items → menu → Likes list. Tap item → detail. |
+| 5 | **Share shortlist** | In Likes, select items → Share → get link. Open `/s/:token` in new tab → shared shortlist page. |
+| 6 | **Preferences** | Menu → Preferences → onboarding (3 steps: style, budget, preferences) → "Building your deck…" → deck. |
+| 7 | **Data & Privacy** | Opt-out switch (stops non-essential events). "Connect social accounts" → "Coming soon" dialog. |
+| 8 | **Locale** | Menu → Language → pick Swedish or English → app strings update. |
+| 9 | **Go redirect** | Detail → "View on site" → 302 from `/go/:itemId` → outbound URL with UTM. |
+| 10 | **Empty deck** | Swipe all or strict filters with no match → "No more items" / adjust filters. |
 
 **Reference:** [TESTING_LOCAL.md](TESTING_LOCAL.md), [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) post-deploy smoke test.
 

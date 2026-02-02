@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../features/splash/splash_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/deck/deck_screen.dart';
 import '../features/likes/likes_screen.dart';
@@ -29,7 +28,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   });
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/deck',
     debugLogDiagnostics: true,
     refreshListenable: adminAuthNotifier,
     redirect: (context, state) {
@@ -48,7 +47,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const SplashScreen(),
+        builder: (context, state) => const DeckScreen(),
       ),
       GoRoute(
         path: '/onboarding',

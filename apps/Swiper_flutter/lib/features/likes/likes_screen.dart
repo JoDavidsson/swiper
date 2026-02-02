@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
-import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/session_provider.dart';
@@ -132,23 +131,12 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
               if (_selectedIds.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.all(AppTheme.spacingUnit),
-                  child: Row(
-                    children: [
-                      if (_selectedIds.length >= AppConstants.minCompareItems && _selectedIds.length <= AppConstants.maxCompareItems)
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => context.push(Uri(path: '/compare', queryParameters: {'ids': _selectedIds.join(',')}).toString()),
-                            child: const Text('Compare'),
-                          ),
-                        ),
-                      if (_selectedIds.length >= AppConstants.minCompareItems) const SizedBox(width: AppTheme.spacingUnit),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: sessionId != null ? () => _shareShortlist(context, sessionId, _selectedIds.toList()) : null,
-                          child: const Text('Share shortlist'),
-                        ),
-                      ),
-                    ],
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: sessionId != null ? () => _shareShortlist(context, sessionId, _selectedIds.toList()) : null,
+                      child: const Text('Share shortlist'),
+                    ),
                   ),
                 ),
             ],
