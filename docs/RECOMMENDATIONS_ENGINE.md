@@ -30,8 +30,8 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Implementations**:
 
-- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` (styleTags, material, colorFamily, sizeClass). algorithmVersion: `preference_weights_v1`.
-- **PersonalPlusPersonaRanker** – Blends personal score and persona score (configurable alpha). algorithmVersion: `personal_plus_persona_v1`. Falls back to personal-only when `personaSignals` is missing or empty.
+- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` (styleTags, material, colorFamily, sizeClass), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. algorithmVersion: `preference_weights_v1`.
+- **PersonalPlusPersonaRanker** – Blends personal score and persona score (configurable alpha). Personal scores use the same normalization; persona scores are normalized to the max persona score in the candidate set for scale alignment. When the session has no personal weights, alpha falls back to 0 (persona-only); when an item has no personal signals, alpha is capped to favor persona. algorithmVersion: `personal_plus_persona_v1`. Falls back to personal-only when `personaSignals` is missing or empty.
 - **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, uses “sample-from-top-2K” strategy; optional `seed` for reproducibility.
 
 ---

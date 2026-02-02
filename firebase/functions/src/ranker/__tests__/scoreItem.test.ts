@@ -1,4 +1,4 @@
-import { scoreItem } from "../scoreItem";
+import { normalizeScore, scoreItem, scoreItemWithSignals } from "../scoreItem";
 import type { ItemCandidate } from "../types";
 
 describe("scoreItem", () => {
@@ -68,5 +68,30 @@ describe("scoreItem", () => {
   it("handles undefined styleTags", () => {
     const item: ItemCandidate = { id: "i1" };
     expect(scoreItem(item, {})).toBe(0);
+  });
+
+  it("returns signal count for matched weights", () => {
+    const item: ItemCandidate = {
+      id: "i1",
+      styleTags: ["modern", "scandinavian"],
+      material: "fabric",
+      colorFamily: "gray",
+      sizeClass: "medium",
+    };
+    const weights = {
+      modern: 1,
+      scandinavian: 0,
+      "material:fabric": 2,
+      "color:gray": 0.5,
+      "size:medium": 0,
+    };
+    const result = scoreItemWithSignals(item, weights);
+    expect(result.score).toBe(3.5);
+    expect(result.signalCount).toBe(3);
+  });
+
+  it("normalizes score by sqrt of signal count", () => {
+    const normalized = normalizeScore(9, 4);
+    expect(normalized).toBe(4.5);
   });
 });

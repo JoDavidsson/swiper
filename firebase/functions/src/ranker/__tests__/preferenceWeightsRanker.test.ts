@@ -50,7 +50,7 @@ describe("PreferenceWeightsRanker", () => {
   it("single candidate returns one item", () => {
     const result = PreferenceWeightsRanker.rank(session, [candidates[0]], { limit: 5 });
     expect(result.itemIds).toEqual(["a"]);
-    expect(result.itemScores["a"]).toBe(2 + 1 + 1 + 1);
+    expect(result.itemScores["a"]).toBeCloseTo(2.5, 5);
   });
 
   it("ties broken deterministically by id", () => {

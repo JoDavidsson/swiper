@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { scoreItem } from "./scoreItem";
+import { normalizeScore, scoreItemWithSignals } from "./scoreItem";
 import type { ItemCandidate, PersonaSignals, RankOptions, RankResult, Ranker, SessionContext } from "./types";
 
 const ALGORITHM_VERSION = "preference_weights_v1";
@@ -19,10 +19,13 @@ export const PreferenceWeightsRanker: Ranker = {
     const algorithmVersion = options.algorithmVersion ?? ALGORITHM_VERSION;
     const runId = nanoid(12);
 
-    const scored = candidates.map((c) => ({
-      candidate: c,
-      score: scoreItem(c, session.preferenceWeights),
-    }));
+    const scored = candidates.map((c) => {
+      const { score, signalCount } = scoreItemWithSignals(c, session.preferenceWeights);
+      return {
+        candidate: c,
+        score: normalizeScore(score, signalCount),
+      };
+    });
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
