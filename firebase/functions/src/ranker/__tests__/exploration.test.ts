@@ -36,18 +36,45 @@ describe("applyExploration", () => {
     expect(a).toEqual(b);
   });
 
-  it("with fixed seed and rate > 0 can differ from strict ranker order", () => {
-    const rankedIds = ["1", "2", "3", "4", "5"];
-    const explored = applyExploration(rankedIds, candidates, { explorationRate: 0.5, limit: 3, seed: 123 });
-    expect(explored).toHaveLength(3);
-    explored.forEach((id) => expect(rankedIds.slice(0, 6)).toContain(id));
-    expect(new Set(explored).size).toBe(3);
+  it("with fixed seed and rate > 0 replaces a proportion of the top list", () => {
+    const rankedIds = [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18",
+      "19",
+      "20",
+    ];
+    const explored = applyExploration(rankedIds, candidates, { explorationRate: 0.3, limit: 10, seed: 123 });
+    expect(explored).toHaveLength(10);
+    const base = rankedIds.slice(0, 10);
+    const replacedCount = explored.filter((id) => !base.includes(id)).length;
+    expect(replacedCount).toBe(3);
+    expect(new Set(explored).size).toBe(10);
   });
 
-  it("with rate > 0 returns exactly limit items when pool has at least 2*limit", () => {
+  it("with rate 1 replaces all positions from the exploration pool", () => {
     const rankedIds = ["a", "b", "c", "d", "e", "f"];
-    const result = applyExploration(rankedIds, candidates, { explorationRate: 0.1, limit: 3, seed: 1 });
+    const result = applyExploration(rankedIds, candidates, { explorationRate: 1, limit: 3, seed: 1 });
+    const base = rankedIds.slice(0, 3);
+    const pool = rankedIds.slice(0, 6);
     expect(result).toHaveLength(3);
-    expect(result.every((id) => rankedIds.includes(id))).toBe(true);
+    expect(result.every((id) => pool.includes(id))).toBe(true);
+    expect(result.some((id) => !base.includes(id))).toBe(true);
+    expect(new Set(result).size).toBe(3);
   });
 });

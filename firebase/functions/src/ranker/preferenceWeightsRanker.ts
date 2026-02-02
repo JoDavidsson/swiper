@@ -19,17 +19,18 @@ export const PreferenceWeightsRanker: Ranker = {
     const algorithmVersion = options.algorithmVersion ?? ALGORITHM_VERSION;
     const runId = nanoid(12);
 
-    const scored = candidates.map((c) => {
+    const scored = candidates.map((c, index) => {
       const { score, signalCount } = scoreItemWithSignals(c, session.preferenceWeights);
       return {
         candidate: c,
         score: normalizeScore(score, signalCount),
+        index,
       };
     });
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      return (a.candidate.id as string).localeCompare(b.candidate.id as string);
+      return a.index - b.index;
     });
 
     const sliced = scored.slice(0, limit);

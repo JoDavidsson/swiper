@@ -53,14 +53,13 @@ describe("PreferenceWeightsRanker", () => {
     expect(result.itemScores["a"]).toBeCloseTo(2.5, 5);
   });
 
-  it("ties broken deterministically by id", () => {
+  it("ties preserve input order (recency order)", () => {
     const tied: ItemCandidate[] = [
-      { id: "x", styleTags: [], material: "wood", colorFamily: "brown", sizeClass: "small" },
       { id: "y", styleTags: [], material: "wood", colorFamily: "brown", sizeClass: "small" },
+      { id: "x", styleTags: [], material: "wood", colorFamily: "brown", sizeClass: "small" },
     ];
     const result = PreferenceWeightsRanker.rank(session, tied, { limit: 2 });
-    expect(result.itemIds).toHaveLength(2);
-    expect(result.itemIds.sort()).toEqual(["x", "y"]);
+    expect(result.itemIds).toEqual(["y", "x"]);
   });
 
   it("uses custom algorithmVersion when provided", () => {

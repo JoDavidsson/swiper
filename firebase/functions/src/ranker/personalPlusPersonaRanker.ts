@@ -39,7 +39,9 @@ export function createPersonalPlusPersonaRanker(alpha: number = DEFAULT_ALPHA): 
       const personaScores = personaSignals?.itemScoresFromSimilarSessions ?? {};
       const popularAmongSimilar = personaSignals?.popularAmongSimilar ?? [];
       const hasPersona = Object.keys(personaScores).length > 0 || popularAmongSimilar.length > 0;
-      const hasAnyPersonalWeights = Object.keys(session.preferenceWeights).length > 0;
+      const hasAnyPersonalWeights = Object.values(session.preferenceWeights).some(
+        (value) => typeof value === "number" && value !== 0
+      );
 
       const rawPersonaScores = candidates.map((c) =>
         getPersonaScore(c.id as string, personaScores, popularAmongSimilar)

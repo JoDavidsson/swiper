@@ -30,14 +30,36 @@ export function applyExploration(
   if (pool.length <= limit) return pool;
 
   const random = seed !== undefined ? createSeededRandom(seed) : Math.random;
-  const result: string[] = [];
-  const used = new Set<number>();
+  const base = rankedIds.slice(0, limit);
+  const available = pool.slice(limit);
+  if (available.length === 0) return base;
 
-  while (result.length < limit && used.size < pool.length) {
-    const idx = Math.floor(random() * pool.length);
-    if (used.has(idx)) continue;
-    used.add(idx);
-    result.push(pool[idx]);
+  const clampedRate = Math.min(1, Math.max(0, explorationRate));
+  const desired = clampedRate * base.length;
+  let numExplore = Math.floor(desired);
+  const remainder = desired - numExplore;
+  if (remainder > 0 && random() < remainder) numExplore += 1;
+  numExplore = Math.min(numExplore, available.length);
+  if (numExplore <= 0) return base;
+
+  const pickUniqueIndices = (count: number, maxExclusive: number): number[] => {
+    const picks: number[] = [];
+    const used = new Set<number>();
+    while (picks.length < count && used.size < maxExclusive) {
+      const idx = Math.floor(random() * maxExclusive);
+      if (used.has(idx)) continue;
+      used.add(idx);
+      picks.push(idx);
+    }
+    return picks;
+  };
+
+  const replacePositions = pickUniqueIndices(numExplore, base.length);
+  const explorePositions = pickUniqueIndices(numExplore, available.length);
+  const result = base.slice();
+
+  for (let i = 0; i < numExplore; i += 1) {
+    result[replacePositions[i]] = available[explorePositions[i]];
   }
 
   return result;

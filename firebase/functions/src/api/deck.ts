@@ -44,7 +44,15 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const seenItemIds = new Set<string>();
   swipesSnap.docs.forEach((d) => seenItemIds.add((d.data().itemId as string) || ""));
 
-  const filters = filtersJson ? (JSON.parse(filtersJson) as Record<string, unknown>) : {};
+  let filters: Record<string, unknown> = {};
+  if (filtersJson) {
+    try {
+      filters = JSON.parse(filtersJson) as Record<string, unknown>;
+    } catch (e) {
+      res.status(400).json({ error: "filters must be valid JSON" });
+      return;
+    }
+  }
   const itemsFetchLimit =
     process.env.DECK_ITEMS_FETCH_LIMIT != null
       ? parseInt(String(process.env.DECK_ITEMS_FETCH_LIMIT), 10) || limit * 5

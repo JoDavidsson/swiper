@@ -30,9 +30,9 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Implementations**:
 
-- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` (styleTags, material, colorFamily, sizeClass), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. algorithmVersion: `preference_weights_v1`.
+- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` (styleTags, material, colorFamily, sizeClass), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. Ties preserve input order (recency order from deck candidates). algorithmVersion: `preference_weights_v1`.
 - **PersonalPlusPersonaRanker** – Blends personal score and persona score (configurable alpha). Personal scores use the same normalization; persona scores are normalized to the max persona score in the candidate set for scale alignment. When the session has no personal weights, alpha falls back to 0 (persona-only); when an item has no personal signals, alpha is capped to favor persona. algorithmVersion: `personal_plus_persona_v1`. Falls back to personal-only when `personaSignals` is missing or empty.
-- **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, uses “sample-from-top-2K” strategy; optional `seed` for reproducibility.
+- **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, replaces roughly `rate × limit` positions by sampling from the top 2×limit pool (stochastic rounding), with optional `seed` for reproducibility.
 
 ---
 
@@ -40,7 +40,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 To prevent the ranker from over-exploiting the same top items (filter bubble), **exploration** is applied after ranking.
 
-- **Strategy**: Sample-from-top-2K (take top 2×limit by score, randomly sample limit). Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
+- **Strategy**: Sample-from-top-2K (take top 2×limit by score). Replace roughly `rate × limit` positions in the top list with items sampled from the pool. Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
 - **Config**: `RANKER_EXPLORATION_RATE` (env, default 0), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
 - **Tests**: With rate 0, output equals ranker order; with fixed seed and rate &gt; 0, output is reproducible.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-02-02 – Recommendation engine robustness fixes
+
+- **Exploration rate:** applyExploration now replaces roughly `rate × limit` positions (stochastic rounding) instead of treating any non-zero rate as full randomization; rate=0 keeps rank order, rate=1 fully samples from the top-2× pool.
+- **Recency-preserving ties:** PreferenceWeightsRanker now keeps candidate input order on score ties (preserves recency when all scores are equal).
+- **Atomic preference updates:** swipe-right updates preferenceWeights via Firestore atomic increments to avoid lost updates under concurrency.
+- **Persona cold weights:** PersonalPlusPersonaRanker treats all-zero weights as “no personal signal,” allowing persona scores to dominate.
+- **Filter parsing guard:** deck filters JSON is validated and returns 400 on invalid input.
+
 ## 2026-02-02 – Data Science & Observability Gaps (offline eval, A/B, retention)
 
 - **deck_response logging:** Client now logs rank.variant, rank.variantBucket, and rank.itemIds (served slate) in deck_response events; swipe events include variant/variantBucket when rank context is present. ApiClient parses variant and variantBucket from deck response; schema and EVENT_SCHEMA_V1/EVENT_TRACKING updated. Required for offline eval (liked-in-top-K) and A/B segmentation.
