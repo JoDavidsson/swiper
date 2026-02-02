@@ -72,4 +72,13 @@ describe("PersonalPlusPersonaRanker", () => {
       expect(result.itemScores[id]).toBeDefined();
     }
   });
+
+  it("uses persona scores when session has no personal weights", () => {
+    const personaSignals: PersonaSignals = {
+      itemScoresFromSimilarSessions: { high_persona: 10, high_personal: 1 },
+    };
+    const ranker = createPersonalPlusPersonaRanker(0.7);
+    const result = ranker.rank({ preferenceWeights: {} }, candidates, { limit: 3 }, personaSignals);
+    expect(result.itemIds[0]).toBe("high_persona");
+  });
 });
