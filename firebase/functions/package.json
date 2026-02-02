@@ -13,7 +13,8 @@
     "test": "jest",
     "runRanker": "npm run build && node scripts/runRanker.js",
     "debugRanker": "npm run build && node scripts/debugRanker.js",
-    "generateFakeDb": "node scripts/generate_fake_db.js"
+    "generateFakeDb": "node scripts/generate_fake_db.js",
+    "offlineEval": "node scripts/offlineEval.js"
   },
   "engines": {
     "node": "20"

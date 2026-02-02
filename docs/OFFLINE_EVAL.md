@@ -68,5 +68,22 @@ When comparing variants:
 ## 5. How to run offline eval
 
 - **Data source:** events_v1 (deck_response with rank.itemIds, rank.variant, rank.variantBucket), Firestore likes (or like_add in events_v1).
-- **Script:** See main roadmap Phase 7 (offline eval pipeline). Script path to be added to runbook (e.g. firebase/functions/scripts/offlineEval.js or similar).
-- **Schedule:** Weekly or on-demand.
+- **Script:** `firebase/functions/scripts/offlineEval.js`
+- **Usage:** 
+  ```bash
+  cd firebase/functions
+  node scripts/offlineEval.js [--days N] [--variant VARIANT] [--min-likes N] [--emulator]
+  ```
+  Or with npm:
+  ```bash
+  npm run offlineEval -- --days 7
+  ```
+- **Options:**
+  - `--days N`: Only consider events from the last N days (default: 7)
+  - `--variant VARIANT`: Filter by specific variant (default: all variants)
+  - `--min-likes N`: Only include sessions with at least N likes (default: 1)
+  - `--emulator`: Use Firestore emulator (reads FIRESTORE_EMULATOR_HOST)
+- **Output:** 
+  - Console: Summary stats (sessions, avg Liked-in-top-K, by-variant breakdown)
+  - JSON: Detailed results in `.cursor/offline_eval_results.json`
+- **Schedule:** Weekly or on-demand after collecting sufficient event data.
