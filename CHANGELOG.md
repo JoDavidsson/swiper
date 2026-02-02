@@ -9,6 +9,12 @@
 - **Bias and retention:** RECOMMENDATIONS_ENGINE documents exposure bias (mitigation: exploration, diversity), item cold start (retrieval by lastUpdatedAt, content-based scoring), and persona cold sessions (default bucket or personal-only). events_v1 retention 24 months documented in PRIVACY_GDPR and RUNBOOK_DEPLOYMENT (Data retention: TTL or scheduled purge).
 - **Persona and optional:** Persona pipeline future step includes default bucket for cold sessions; optional diversity (MMR / max per styleTag), weight decay, and score-breakdown explainability documented in RECOMMENDATIONS_ENGINE.
 
+## 2026-02-02 – Recommendations engine: exploration + offline-eval shape fixes
+
+- **Exploration behavior:** Exploration now respects `RANKER_EXPLORATION_RATE` (probabilistic “explore-inject” from a top-N pool) and remains reproducible with a seed.
+- **Deck rank context:** `GET /api/deck` now returns `rank.itemIds` (served slate) and ranks a larger pool when exploration is enabled, so exploration can actually surface alternative items.
+- **Preference weight updates:** `POST /api/swipe` updates preference weights via atomic `FieldValue.increment(..., merge: true)` to avoid read-modify-write races on fast swipes.
+
 ## 2026-02-02 – Deck swipe visual continuity (remove white flash)
 
 - **Card rendering unified:** Introduced [deck_card.dart](apps/Swiper_flutter/lib/shared/widgets/deck_card.dart) and now both the top card and stacked cards render via the same cached image + placeholder strategy (no `Image.network` vs `CachedNetworkImage` mismatch).
