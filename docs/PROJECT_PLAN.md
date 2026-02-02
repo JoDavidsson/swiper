@@ -2,7 +2,7 @@
 
 ## Current state
 
-MVP shipped: Flutter app (deck-first entry, onboarding, deck, detail, likes, compare screen, profile, shared shortlist, admin), Firebase (Functions, Firestore, Hosting), Supply Engine (feed ingestion, sample feed), device context + event logging, Data & Privacy + opt-out, deck filters, admin items/sources/import.
+MVP shipped: Flutter app (deck-first entry, onboarding, deck, detail, likes, compare screen, profile, shared shortlist, admin), Firebase (Functions, Firestore, Hosting), Supply Engine (feed ingestion, sample feed), device context + event logging, Data & Privacy + opt-out, deck filters, admin items/sources/import. Ranker robustness fixes completed (exploration rate control, recency-preserving ties, atomic preference updates, persona zero-weight handling).
 
 See [CHANGELOG.md](../CHANGELOG.md) and [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 

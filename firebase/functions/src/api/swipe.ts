@@ -41,21 +41,29 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
         const data = itemSnap.data()!;
         const sessionRef = db.collection("anonSessions").doc(sessionId);
         const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
-        const weightsSnap = await weightsRef.get();
-        const current = (weightsSnap.data() || {}) as Record<string, number>;
+        const counts: Record<string, number> = {};
+        const addCount = (key: string, amount: number = 1) => {
+          counts[key] = (counts[key] || 0) + amount;
+        };
 
         const styleTags = Array.isArray(data.styleTags) ? data.styleTags : [];
         for (const t of styleTags) {
-          if (typeof t === "string") current[t] = (current[t] || 0) + 1;
+          if (typeof t === "string") addCount(t);
         }
         const material = typeof data.material === "string" ? data.material : undefined;
-        if (material) current[`material:${material}`] = (current[`material:${material}`] || 0) + 1;
+        if (material) addCount(`material:${material}`);
         const color = typeof data.colorFamily === "string" ? data.colorFamily : undefined;
-        if (color) current[`color:${color}`] = (current[`color:${color}`] || 0) + 1;
+        if (color) addCount(`color:${color}`);
         const sizeClass = typeof data.sizeClass === "string" ? data.sizeClass : undefined;
-        if (sizeClass) current[`size:${sizeClass}`] = (current[`size:${sizeClass}`] || 0) + 1;
+        if (sizeClass) addCount(`size:${sizeClass}`);
 
-        batch.set(weightsRef, current);
+        const updates: Record<string, ReturnType<typeof FieldValue.increment>> = {};
+        for (const [key, amount] of Object.entries(counts)) {
+          updates[key] = FieldValue.increment(amount);
+        }
+        if (Object.keys(updates).length > 0) {
+          batch.set(weightsRef, updates, { merge: true });
+        }
       }
     } catch (e) {
       console.warn("swipe: preferenceWeights update skipped", e);
