@@ -15,13 +15,13 @@ if [ -f .env ]; then
   echo "Loaded .env (ADMIN_PASSWORD and other vars available to Functions)."
 fi
 
-echo "Starting Firebase emulators (Firestore, Functions, Hosting, Auth, UI)..."
+# Start only Firestore + Functions so the deck API works. Avoids UI/Auth/Hosting port conflicts.
+# For full emulators (UI, Auth, Hosting) run: firebase emulators:start --only firestore,functions,hosting,auth,ui
+echo "Starting Firebase emulators (Firestore, Functions)..."
 echo "Firestore: http://localhost:8180"
 echo "Functions: http://localhost:5002"
-echo "Hosting:   http://localhost:5010"
-echo "UI:        http://localhost:4100"
 echo ""
 echo "For ingest script use: export FIRESTORE_EMULATOR_HOST=localhost:8180"
 echo ""
 
-firebase emulators:start --only firestore,functions,hosting,auth,ui
+firebase emulators:start --only firestore,functions

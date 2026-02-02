@@ -22,6 +22,9 @@ const String kAdminAuthKey = 'swiper_admin_auth';
 const String kAnalyticsOptOutKey = 'swiper_analytics_opt_out';
 const String kSwipeHintSeenKey = 'swiper_swipe_hint_seen';
 
+/// Current surface (route context) for event tracking. Set by each screen so events carry surface.name when not explicitly provided.
+final currentSurfaceProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
+
 /// Analytics opt-out: when true, skip non-essential event logging (open_detail, filter_change, etc.).
 final analyticsOptOutProvider = StateNotifierProvider<AnalyticsOptOutNotifier, bool>((ref) => AnalyticsOptOutNotifier());
 final swipeHintSeenProvider = StateNotifierProvider<SwipeHintSeenNotifier, bool>((ref) => SwipeHintSeenNotifier());

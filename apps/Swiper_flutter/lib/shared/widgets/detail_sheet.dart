@@ -9,6 +9,11 @@ Future<void> showDetailSheet(
   Item item, {
   String? goBaseUrl,
   void Function(Item item)? onOutboundClick,
+  void Function()? onScroll,
+  void Function(int imageIndex)? onGalleryPageChange,
+  void Function(Item item)? onOutboundRedirectStart,
+  void Function(Item item)? onOutboundRedirectSuccess,
+  void Function(Item item, Object error)? onOutboundRedirectFail,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -29,6 +34,11 @@ Future<void> showDetailSheet(
         scrollController: scrollController,
         goBaseUrl: goBaseUrl,
         onOutboundClick: onOutboundClick,
+        onScroll: onScroll,
+        onGalleryPageChange: onGalleryPageChange,
+        onOutboundRedirectStart: onOutboundRedirectStart,
+        onOutboundRedirectSuccess: onOutboundRedirectSuccess,
+        onOutboundRedirectFail: onOutboundRedirectFail,
       ),
     ),
   );
@@ -41,12 +51,22 @@ class DetailSheetContent extends StatefulWidget {
     required this.scrollController,
     this.goBaseUrl,
     this.onOutboundClick,
+    this.onScroll,
+    this.onGalleryPageChange,
+    this.onOutboundRedirectStart,
+    this.onOutboundRedirectSuccess,
+    this.onOutboundRedirectFail,
   });
 
   final Item item;
   final ScrollController scrollController;
   final String? goBaseUrl;
   final void Function(Item item)? onOutboundClick;
+  final void Function()? onScroll;
+  final void Function(int imageIndex)? onGalleryPageChange;
+  final void Function(Item item)? onOutboundRedirectStart;
+  final void Function(Item item)? onOutboundRedirectSuccess;
+  final void Function(Item item, Object error)? onOutboundRedirectFail;
 
   @override
   State<DetailSheetContent> createState() => _DetailSheetContentState();
@@ -54,13 +74,34 @@ class DetailSheetContent extends StatefulWidget {
 
 class _DetailSheetContentState extends State<DetailSheetContent> {
   bool _animateIn = false;
+  int _lastScrollEmitMs = 0;
+  static const _scrollThrottleMs = 500;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
+    widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _animateIn = true);
     });
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_onScroll);
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (widget.onScroll == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastScrollEmitMs >= _scrollThrottleMs) {
+      _lastScrollEmitMs = now;
+      widget.onScroll!();
+    }
   }
 
   @override
@@ -97,7 +138,9 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
               SizedBox(
                 height: imageHeight,
                 child: PageView.builder(
+                  controller: _pageController,
                   itemCount: imageUrls.length,
+                  onPageChanged: widget.onGalleryPageChange,
                   itemBuilder: (context, i) {
                     final url = imageUrls[i];
                     if (url.isEmpty) {
@@ -158,10 +201,18 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
 
   Future<void> _openOutbound(BuildContext context) async {
     Navigator.of(context).pop();
+    widget.onOutboundRedirectStart?.call(widget.item);
     final base = widget.goBaseUrl ?? Uri.base.origin;
     final url = Uri.parse('$base/go/${widget.item.id}');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+        widget.onOutboundRedirectSuccess?.call(widget.item);
+      } else {
+        widget.onOutboundRedirectFail?.call(widget.item, 'canLaunchUrl returned false');
+      }
+    } catch (e) {
+      widget.onOutboundRedirectFail?.call(widget.item, e);
     }
   }
 }

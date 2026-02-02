@@ -35,6 +35,18 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
   });
 
   if (direction === "right") {
+    const likeId = `${sessionId}_${itemId}`;
+    batch.set(
+      db.collection("likes").doc(likeId),
+      { sessionId, itemId, createdAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    batch.set(
+      db.collection("anonSessions").doc(sessionId).collection("likes").doc(itemId),
+      { addedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+
     try {
       const itemSnap = await db.collection("items").doc(itemId).get();
       if (itemSnap.exists) {
@@ -67,7 +79,7 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
       }
     } catch (e) {
       console.warn("swipe: preferenceWeights update skipped", e);
-      // Swipe and event are still committed below
+      // Swipe, event, and likes are still committed below
     }
   }
 

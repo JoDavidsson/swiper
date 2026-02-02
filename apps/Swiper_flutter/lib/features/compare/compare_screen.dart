@@ -6,7 +6,7 @@ import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/models/item.dart';
-import '../../data/session_provider.dart';
+import '../../data/session_provider.dart' show sessionIdProvider, analyticsOptOutProvider, currentSurfaceProvider;
 import '../../shared/widgets/app_shell.dart';
 
 /// Wraps compare content and logs compare_open once when built.
@@ -34,6 +34,10 @@ class _CompareBodyState extends State<_CompareBody> {
   void initState() {
     super.initState();
     if (widget.sessionId != null && !widget.analyticsOptOut) {
+      widget.tracker.track('deep_link_open', {
+        'surface': {'name': 'compare'},
+        'ext': {'itemIds': widget.items.map((e) => e.id).toList(), 'count': widget.items.length},
+      });
       widget.tracker.track('compare_open', {
         'items': {
           'itemIds': widget.items.map((e) => e.id).toList(),
@@ -45,6 +49,20 @@ class _CompareBodyState extends State<_CompareBody> {
   }
 
   @override
+  void dispose() {
+    if (widget.sessionId != null && !widget.analyticsOptOut) {
+      widget.tracker.track('compare_close', {
+        'items': {
+          'itemIds': widget.items.map((e) => e.id).toList(),
+          'count': widget.items.length,
+        },
+        'compare': {'compareCount': widget.items.length},
+      });
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => widget.child;
 }
 
@@ -53,6 +71,9 @@ class CompareScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'compare'};
+    });
     final uri = GoRouterState.of(context).uri;
     final idsParam = uri.queryParameters['ids'] ?? '';
     final ids = idsParam.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
@@ -115,7 +136,7 @@ class CompareScreen extends ConsumerWidget {
                   child: OutlinedButton.icon(
                     onPressed: () {
                       final domain = item.outboundUrl != null ? Uri.tryParse(item.outboundUrl!)?.host : null;
-                      tracker.track('outbound_click', {
+                      tracker.track('compare_outbound_click', {
                         'item': {'itemId': item.id},
                         'outbound': {'destinationDomain': domain ?? 'unknown'},
                       });

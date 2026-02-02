@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
+import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart';
 import '../../shared/widgets/app_shell.dart';
@@ -84,7 +85,12 @@ class DataPrivacyScreen extends ConsumerWidget {
             title: Text(strings.optOutOfAnalytics),
             subtitle: Text(strings.optOutSubtitle),
             value: ref.watch(analyticsOptOutProvider),
-            onChanged: (value) => ref.read(analyticsOptOutProvider.notifier).setOptOut(value),
+            onChanged: (value) {
+              ref.read(analyticsOptOutProvider.notifier).setOptOut(value);
+              ref.read(eventTrackerProvider).track('consent_updated', {
+                'ext': {'analyticsOptOut': value},
+              });
+            },
           ),
           const SizedBox(height: AppTheme.spacingUnit),
           Text(

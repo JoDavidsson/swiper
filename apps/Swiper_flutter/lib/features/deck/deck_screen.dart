@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
-import '../../data/api_providers.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
-import '../../data/session_provider.dart';
+import '../../data/session_provider.dart' show sessionIdProvider, swipeHintSeenProvider, ensureSession, clearSessionId, currentSurfaceProvider;
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
@@ -45,6 +44,9 @@ class DeckScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'deck_card'};
+    });
     final deckState = ref.watch(deckItemsProvider);
     final sessionId = ref.watch(sessionIdProvider);
     final strings = ref.watch(appStringsProvider);
@@ -59,6 +61,9 @@ class DeckScreen extends ConsumerWidget {
       ),
       automaticallyImplyLeading: false,
       body: deckState.when(
+        loading: () {
+          return const Center(child: CircularProgressIndicator());
+        },
         data: (items) {
           final notifier = ref.read(deckItemsProvider.notifier);
           final tracker = ref.read(eventTrackerProvider);
@@ -80,7 +85,23 @@ class DeckScreen extends ConsumerWidget {
                   swipeHintNotifier.markSeen();
                   notifier.swipe(item.id, 'right', position, item: item, gesture: gesture);
                 },
+                onSwipeAnimationEnd: (item) {
+                  notifier.removeItemById(item.id);
+                },
                 onCardImpressionStart: (item, impressionId) {
+                  tracker.track('card_render', {
+                    'item': {
+                      'itemId': item.id,
+                      'positionInDeck': 0,
+                      'source': 'deck',
+                      if (rank != null) 'snapshot': _itemSnapshot(item),
+                    },
+                    if (rank != null) 'rank': {
+                      'rankerRunId': rank.rankerRunId,
+                      'algorithmVersion': rank.algorithmVersion,
+                      if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
+                    },
+                  });
                   tracker.track('card_impression_start', {
                     'item': {
                       'itemId': item.id,
@@ -97,14 +118,35 @@ class DeckScreen extends ConsumerWidget {
                   });
                 },
                 onCardImpressionEnd: (impressionId, visibleDurationMs, endReason, itemId) {
+                  final bucket = visibleDurationMs < 1000
+                      ? '0_1s'
+                      : visibleDurationMs < 3000
+                          ? '1_3s'
+                          : visibleDurationMs < 8000
+                              ? '3_8s'
+                              : '8s_plus';
                   tracker.track('card_impression_end', {
                     'item': {'itemId': itemId, 'positionInDeck': 0},
                     'impression': {
                       'impressionId': impressionId,
                       'visibleDurationMs': visibleDurationMs,
                       'endReason': endReason,
+                      'bucket': bucket,
                     },
                   });
+                },
+                onSwipeCancel: (item, position) {
+                  tracker.track('swipe_cancel', {
+                    'item': {'itemId': item.id, 'positionInDeck': position, 'source': 'deck'},
+                    'interaction': {'gesture': 'swipe'},
+                  });
+                },
+                onSwipeUndo: (item, direction) {
+                  tracker.track('swipe_undo', {
+                    'item': {'itemId': item.id, 'source': 'deck'},
+                    'interaction': {'direction': direction},
+                  });
+                  // TODO: when full undo is implemented, call notifier to re-add last swiped item
                 },
                 onTapDetail: sessionId != null
                     ? (item) async {
@@ -125,6 +167,33 @@ class DeckScreen extends ConsumerWidget {
                               'outbound': {'destinationDomain': domain ?? 'unknown'},
                             });
                           },
+                          onScroll: () => tracker.track('detail_scroll', {'item': {'itemId': item.id}}),
+                          onGalleryPageChange: (i) => tracker.track('detail_gallery_interaction', {
+                            'item': {'itemId': item.id},
+                            'ext': {'imageIndex': i},
+                          }),
+                          onOutboundRedirectStart: (i) {
+                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            tracker.track('outbound_redirect_start', {
+                              'item': {'itemId': i.id},
+                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                            });
+                          },
+                          onOutboundRedirectSuccess: (i) {
+                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            tracker.track('outbound_redirect_success', {
+                              'item': {'itemId': i.id},
+                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                            });
+                          },
+                          onOutboundRedirectFail: (i, e) {
+                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            tracker.track('outbound_redirect_fail', {
+                              'item': {'itemId': i.id},
+                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                              'error': {'errorType': e.runtimeType.toString()},
+                            });
+                          },
                         );
                         final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
                         if (context.mounted) {
@@ -140,23 +209,24 @@ class DeckScreen extends ConsumerWidget {
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(_userFriendlyError(e), style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-                const SizedBox(height: AppTheme.spacingUnit),
-                ElevatedButton(
-                  onPressed: () => ref.read(deckItemsProvider.notifier).refresh(),
-                  child: const Text('Retry'),
-                ),
-              ],
+        error: (e, st) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_userFriendlyError(e), style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                  const SizedBox(height: AppTheme.spacingUnit),
+                  ElevatedButton(
+                    onPressed: () => ref.read(deckItemsProvider.notifier).refresh(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -173,19 +243,6 @@ class DeckScreen extends ConsumerWidget {
       ),
       builder: (sheetContext) => LayoutBuilder(
         builder: (ctx, constraints) {
-          // #region agent log
-          Dio().post(
-            'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
-            data: {
-              'location': 'deck_screen.dart:_showMenuSheet',
-              'message': 'Menu sheet layout constraints',
-              'data': {'maxHeight': constraints.maxHeight, 'maxWidth': constraints.maxWidth},
-              'timestamp': DateTime.now().millisecondsSinceEpoch,
-              'sessionId': 'debug-session',
-              'hypothesisId': 'H3',
-            },
-          ).catchError((_) {});
-          // #endregion
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(AppTheme.spacingUnit),
@@ -302,6 +359,11 @@ class DeckScreen extends ConsumerWidget {
       ),
       builder: (context) => _DeckFiltersSheet(
         currentFilters: ref.read(deckFiltersProvider),
+        onFilterChange: (key, from, to) {
+          ref.read(eventTrackerProvider).track('filter_change', {
+            'filters': {'change': {'key': key, 'from': from, 'to': to}},
+          });
+        },
         onApply: (filters) {
           ref.read(deckFiltersProvider.notifier).state = Map<String, dynamic>.from(filters);
           ref.read(deckItemsProvider.notifier).refresh();
@@ -309,6 +371,7 @@ class DeckScreen extends ConsumerWidget {
           Navigator.of(context).pop();
         },
         onClear: () {
+          ref.read(eventTrackerProvider).track('filters_clear', {});
           ref.read(deckFiltersProvider.notifier).state = <String, dynamic>{};
           ref.read(deckItemsProvider.notifier).refresh();
           _trackFiltersApply(ref, <String, dynamic>{});
@@ -452,11 +515,13 @@ class _DeckFiltersSheet extends StatefulWidget {
     required this.currentFilters,
     required this.onApply,
     required this.onClear,
+    this.onFilterChange,
   });
 
   final Map<String, dynamic> currentFilters;
   final void Function(Map<String, dynamic> filters) onApply;
   final VoidCallback onClear;
+  final void Function(String key, Object? from, Object? to)? onFilterChange;
 
   @override
   State<_DeckFiltersSheet> createState() => _DeckFiltersSheetState();
@@ -507,12 +572,18 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
               AppFilterChip(
                 label: const Text('Any'),
                 selected: _sizeClass == null,
-                onSelected: (_) => setState(() => _sizeClass = null),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('smallSpaceOnly', _sizeClass, null);
+                  setState(() => _sizeClass = null);
+                },
               ),
               ..._sizeClassOptions.map((v) => AppFilterChip(
                 label: Text(v == 'small' ? 'Small' : v == 'medium' ? 'Medium' : 'Large'),
                 selected: _sizeClass == v,
-                onSelected: (_) => setState(() => _sizeClass = _sizeClass == v ? null : v),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('smallSpaceOnly', _sizeClass, _sizeClass == v ? null : v);
+                  setState(() => _sizeClass = _sizeClass == v ? null : v);
+                },
               )),
             ],
           ),
@@ -526,12 +597,18 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
               AppFilterChip(
                 label: const Text('Any'),
                 selected: _colorFamily == null,
-                onSelected: (_) => setState(() => _colorFamily = null),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('colorFamilies', _colorFamily, null);
+                  setState(() => _colorFamily = null);
+                },
               ),
               ..._colorFamilyOptions.map((v) => AppFilterChip(
                 label: Text(v[0].toUpperCase() + v.substring(1)),
                 selected: _colorFamily == v,
-                onSelected: (_) => setState(() => _colorFamily = _colorFamily == v ? null : v),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('colorFamilies', _colorFamily, _colorFamily == v ? null : v);
+                  setState(() => _colorFamily = _colorFamily == v ? null : v);
+                },
               )),
             ],
           ),
@@ -545,12 +622,18 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
               AppFilterChip(
                 label: const Text('Any'),
                 selected: _newUsed == null,
-                onSelected: (_) => setState(() => _newUsed = null),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('newOnly', _newUsed == 'new', null);
+                  setState(() => _newUsed = null);
+                },
               ),
               ..._newUsedOptions.map((v) => AppFilterChip(
                 label: Text(v == 'new' ? 'New' : 'Used'),
                 selected: _newUsed == v,
-                onSelected: (_) => setState(() => _newUsed = _newUsed == v ? null : v),
+                onSelected: (_) {
+                  widget.onFilterChange?.call('newOnly', _newUsed == 'new', _newUsed == v ? null : v == 'new');
+                  setState(() => _newUsed = _newUsed == v ? null : v);
+                },
               )),
             ],
           ),

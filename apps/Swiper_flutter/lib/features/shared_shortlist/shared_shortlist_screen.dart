@@ -5,19 +5,27 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
+import '../../data/session_provider.dart' show currentSurfaceProvider;
 import '../../data/models/item.dart';
 import '../../shared/widgets/detail_sheet.dart';
 
-class SharedShortlistScreen extends ConsumerWidget {
+class SharedShortlistScreen extends ConsumerStatefulWidget {
   const SharedShortlistScreen({super.key, required this.shareToken});
 
   final String shareToken;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SharedShortlistScreen> createState() => _SharedShortlistScreenState();
+}
+
+class _SharedShortlistScreenState extends ConsumerState<SharedShortlistScreen> {
+  bool _didEmitShareLinkLandingView = false;
+
+  @override
+  Widget build(BuildContext context) {
     final client = ref.watch(apiClientProvider);
     return FutureBuilder<Map<String, dynamic>>(
-      future: client.getShortlistByToken(shareToken),
+      future: client.getShortlistByToken(widget.shareToken),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return Scaffold(
@@ -38,6 +46,25 @@ class SharedShortlistScreen extends ConsumerWidget {
           );
         }
 
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'shortlist'};
+        });
+        if (!_didEmitShareLinkLandingView) {
+          _didEmitShareLinkLandingView = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              final tracker = ref.read(eventTrackerProvider);
+              tracker.track('share_link_landing_view', {
+                'share': {'linkType': 'shortlist', 'linkId': widget.shareToken},
+              });
+              tracker.track('deep_link_open', {
+                'surface': {'name': 'share'},
+                'ext': {'linkType': 'shortlist', 'linkId': widget.shareToken},
+              });
+            }
+          });
+        }
+
         return Scaffold(
           backgroundColor: AppTheme.background,
           appBar: AppBar(title: const Text('Shared shortlist')),
@@ -53,9 +80,14 @@ class SharedShortlistScreen extends ConsumerWidget {
                   clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
                   child: InkWell(
-                    onTap: () {
+                    onTap: () async {
                       final tracker = ref.read(eventTrackerProvider);
-                      showDetailSheet(
+                      tracker.track('detail_open', {
+                        'item': {'itemId': item.id, 'source': 'shortlist'},
+                        'surface': {'name': 'detail'},
+                      });
+                      final started = DateTime.now();
+                      await showDetailSheet(
                         context,
                         item,
                         goBaseUrl: Uri.base.origin,
@@ -66,7 +98,41 @@ class SharedShortlistScreen extends ConsumerWidget {
                             'outbound': {'destinationDomain': domain ?? 'unknown'},
                           });
                         },
+                        onScroll: () => tracker.track('detail_scroll', {'item': {'itemId': item.id}}),
+                        onGalleryPageChange: (i) => tracker.track('detail_gallery_interaction', {
+                          'item': {'itemId': item.id},
+                          'ext': {'imageIndex': i},
+                        }),
+                        onOutboundRedirectStart: (i) {
+                          final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                          tracker.track('outbound_redirect_start', {
+                            'item': {'itemId': i.id},
+                            'outbound': {'destinationDomain': domain ?? 'unknown'},
+                          });
+                        },
+                        onOutboundRedirectSuccess: (i) {
+                          final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                          tracker.track('outbound_redirect_success', {
+                            'item': {'itemId': i.id},
+                            'outbound': {'destinationDomain': domain ?? 'unknown'},
+                          });
+                        },
+                        onOutboundRedirectFail: (i, e) {
+                          final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                          tracker.track('outbound_redirect_fail', {
+                            'item': {'itemId': i.id},
+                            'outbound': {'destinationDomain': domain ?? 'unknown'},
+                            'error': {'errorType': e.runtimeType.toString()},
+                          });
+                        },
                       );
+                      final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
+                      if (context.mounted) {
+                        tracker.track('detail_close', {
+                          'item': {'itemId': item.id},
+                          'ext': {'durationMs': timeViewedMs},
+                        });
+                      }
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(AppTheme.spacingUnit),

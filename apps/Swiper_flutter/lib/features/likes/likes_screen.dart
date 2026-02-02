@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,10 +7,26 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
-import '../../data/session_provider.dart';
+import '../../data/session_provider.dart' show sessionIdProvider, currentSurfaceProvider;
 import '../../data/models/item.dart';
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
+
+// #region agent log
+void _agentLogLikes(String location, String message, Map<String, dynamic> data) {
+  if (!kDebugMode) return;
+  try {
+    final payload = {'location': location, 'message': message, 'data': data, 'timestamp': DateTime.now().millisecondsSinceEpoch, 'sessionId': 'debug-session', 'hypothesisId': 'H7'};
+    Dio()
+        .post(
+          'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
+          data: payload,
+          options: Options(sendTimeout: const Duration(milliseconds: 500), receiveTimeout: const Duration(milliseconds: 500)),
+        )
+        .catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: 'agent_ingest'))));
+  } catch (_) {}
+}
+// #endregion
 
 class LikesScreen extends ConsumerStatefulWidget {
   const LikesScreen({super.key});
@@ -20,6 +38,7 @@ class LikesScreen extends ConsumerStatefulWidget {
 class _LikesScreenState extends ConsumerState<LikesScreen> {
   bool _gridView = true;
   final Set<String> _selectedIds = {};
+  bool _didEmitLikesOpen = false;
 
   Future<void> _openDetailWithLogging(BuildContext context, Item item) async {
     final tracker = ref.read(eventTrackerProvider);
@@ -28,7 +47,39 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       'surface': {'name': 'detail'},
     });
     final started = DateTime.now();
-    await showDetailSheet(context, item, goBaseUrl: Uri.base.origin, onOutboundClick: (i) => _trackOutbound(tracker, i));
+    await showDetailSheet(
+      context,
+      item,
+      goBaseUrl: Uri.base.origin,
+      onOutboundClick: (i) => _trackOutbound(tracker, i),
+      onScroll: () => tracker.track('detail_scroll', {'item': {'itemId': item.id}}),
+      onGalleryPageChange: (i) => tracker.track('detail_gallery_interaction', {
+        'item': {'itemId': item.id},
+        'ext': {'imageIndex': i},
+      }),
+      onOutboundRedirectStart: (i) {
+        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        tracker.track('outbound_redirect_start', {
+          'item': {'itemId': i.id},
+          'outbound': {'destinationDomain': domain ?? 'unknown'},
+        });
+      },
+      onOutboundRedirectSuccess: (i) {
+        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        tracker.track('outbound_redirect_success', {
+          'item': {'itemId': i.id},
+          'outbound': {'destinationDomain': domain ?? 'unknown'},
+        });
+      },
+      onOutboundRedirectFail: (i, e) {
+        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        tracker.track('outbound_redirect_fail', {
+          'item': {'itemId': i.id},
+          'outbound': {'destinationDomain': domain ?? 'unknown'},
+          'error': {'errorType': e.runtimeType.toString()},
+        });
+      },
+    );
     final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
     if (context.mounted) {
       tracker.track('detail_close', {
@@ -48,8 +99,23 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'likes'};
+    });
     final likesAsync = ref.watch(likesListProvider);
     final sessionId = ref.watch(sessionIdProvider);
+
+    if (sessionId != null && !_didEmitLikesOpen) {
+      _didEmitLikesOpen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          // #region agent log
+          _agentLogLikes('likes_screen.dart:build', 'likes_open_emitting', {});
+          // #endregion
+          ref.read(eventTrackerProvider).track('likes_open', {});
+        }
+      });
+    }
 
     return AppShell(
       title: 'Likes',
@@ -161,6 +227,9 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
         'share': {'shortlistId': shortlistId ?? token, 'method': 'native_share'},
       });
       final url = '${Uri.base.origin}/s/$token';
+      tracker.track('shortlist_share', {
+        'share': {'shortlistId': shortlistId ?? token, 'method': 'native_share'},
+      });
       await Share.share('Check out my shortlist: $url', subject: 'Swiper shortlist');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Share link: $url')));
