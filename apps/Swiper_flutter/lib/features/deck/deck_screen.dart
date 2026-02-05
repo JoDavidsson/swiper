@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
+import '../../data/gold_card_provider.dart';
 import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart' show sessionIdProvider, swipeHintSeenProvider, ensureSession, clearSessionId, currentSurfaceProvider;
 import '../../shared/widgets/app_shell.dart';
@@ -13,6 +14,8 @@ import '../../shared/widgets/detail_sheet.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
 import '../../data/models/item.dart';
 import '../../shared/widgets/swipe_deck.dart';
+import 'widgets/gold_card_visual.dart';
+import 'widgets/gold_card_budget.dart';
 
 Map<String, dynamic> _itemSnapshot(Item item) {
   return {
@@ -39,11 +42,21 @@ String _userFriendlyError(Object e) {
   return e.toString();
 }
 
-class DeckScreen extends ConsumerWidget {
+class DeckScreen extends ConsumerStatefulWidget {
   const DeckScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DeckScreen> createState() => _DeckScreenState();
+}
+
+class _DeckScreenState extends ConsumerState<DeckScreen> {
+  // Track if we're showing a gold card to prevent duplicate insertions
+  bool _showingGoldCard = false;
+  // Key for the gold card visual widget to access its state
+  final GlobalKey<GoldCardVisualState> _goldCardVisualKey = GlobalKey<GoldCardVisualState>();
+
+  @override
+  Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (context.mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'deck_card'};
     });
@@ -51,6 +64,8 @@ class DeckScreen extends ConsumerWidget {
     final sessionId = ref.watch(sessionIdProvider);
     final strings = ref.watch(appStringsProvider);
     final swipeHintSeen = ref.watch(swipeHintSeenProvider);
+    final goldCardState = ref.watch(goldCardProvider);
+    final curatedSofasAsync = ref.watch(curatedSofasProvider);
 
     return AppShell(
       title: AppConstants.appName,
@@ -68,8 +83,50 @@ class DeckScreen extends ConsumerWidget {
           final notifier = ref.read(deckItemsProvider.notifier);
           final tracker = ref.read(eventTrackerProvider);
           final swipeHintNotifier = ref.read(swipeHintSeenProvider.notifier);
+          final goldCardNotifier = ref.read(goldCardProvider.notifier);
           final rank = notifier.rankContext;
           final itemScores = notifier.itemScores;
+          
+          // Determine if we should show a gold card
+          final shouldShowVisualCard = goldCardState.shouldShowVisualCard && !_showingGoldCard;
+          final shouldShowBudgetCard = goldCardState.shouldShowBudgetCard && !_showingGoldCard;
+          final curatedSofas = curatedSofasAsync.valueOrNull ?? [];
+          
+          // Show gold card as overlay if conditions are met
+          if (shouldShowVisualCard && curatedSofas.isNotEmpty && items.isNotEmpty) {
+            return _buildGoldCardVisualOverlay(
+              context,
+              curatedSofas,
+              goldCardNotifier,
+              tracker,
+              sessionId,
+              items,
+              notifier,
+              swipeHintNotifier,
+              rank,
+              itemScores,
+              swipeHintSeen,
+              strings,
+            );
+          }
+          
+          if (shouldShowBudgetCard) {
+            return _buildGoldCardBudgetOverlay(
+              context,
+              goldCardNotifier,
+              goldCardState,
+              tracker,
+              sessionId,
+              items,
+              notifier,
+              swipeHintNotifier,
+              rank,
+              itemScores,
+              swipeHintSeen,
+              strings,
+            );
+          }
+          
           final showSwipeHint = items.isNotEmpty && !swipeHintSeen;
           return Stack(
             children: [
@@ -84,6 +141,8 @@ class DeckScreen extends ConsumerWidget {
                 onSwipeRight: (item, position, {gesture = 'swipe'}) {
                   swipeHintNotifier.markSeen();
                   notifier.swipe(item.id, 'right', position, item: item, gesture: gesture);
+                  // Increment right swipe count for gold card triggering
+                  goldCardNotifier.incrementRightSwipes();
                 },
                 onSwipeAnimationEnd: (item) {
                   notifier.removeItemById(item.id);
@@ -146,7 +205,8 @@ class DeckScreen extends ConsumerWidget {
                     'item': {'itemId': item.id, 'source': 'deck'},
                     'interaction': {'direction': direction},
                   });
-                  // TODO: when full undo is implemented, call notifier to re-add last swiped item
+                  // Restore the item to the front of the deck
+                  notifier.restoreItem(item);
                 },
                 onTapDetail: sessionId != null
                     ? (item) async {
@@ -204,6 +264,14 @@ class DeckScreen extends ConsumerWidget {
                         }
                       }
                     : null,
+                // Empty deck UX improvements
+                hasFiltersApplied: ref.read(deckFiltersProvider).isNotEmpty,
+                onClearFilters: () {
+                  ref.read(eventTrackerProvider).track('filters_clear', {});
+                  ref.read(deckFiltersProvider.notifier).state = <String, dynamic>{};
+                  ref.read(deckItemsProvider.notifier).refresh();
+                },
+                onRefresh: () => ref.read(deckItemsProvider.notifier).refresh(),
               ),
               if (showSwipeHint) SwipeHintOverlay(text: strings.swipeHint),
             ],
@@ -228,6 +296,161 @@ class DeckScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildGoldCardVisualOverlay(
+    BuildContext context,
+    List<CuratedSofa> curatedSofas,
+    GoldCardNotifier goldCardNotifier,
+    dynamic tracker,
+    String? sessionId,
+    List<Item> items,
+    DeckNotifier deckNotifier,
+    dynamic swipeHintNotifier,
+    DeckRankContext? rank,
+    Map<String, double> itemScores,
+    bool swipeHintSeen,
+    dynamic strings,
+  ) {
+    final startTime = DateTime.now();
+    
+    // Track gold card shown
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      tracker.track('gold_card_visual_shown', {
+        'goldCard': {'swipeNumber': ref.read(goldCardProvider).totalRightSwipes},
+      });
+    });
+    
+    return _GoldCardSwipeWrapper(
+      child: GoldCardVisual(
+        key: _goldCardVisualKey,
+        sofas: curatedSofas,
+        onComplete: (pickedItemIds) async {
+          final durationMs = DateTime.now().difference(startTime).inMilliseconds;
+          tracker.track('gold_card_visual_complete', {
+            'goldCard': {
+              'pickedItemIds': pickedItemIds,
+              'durationMs': durationMs,
+            },
+          });
+          await goldCardNotifier.completeVisualCard(pickedItemIds);
+          // Submit to API
+          if (sessionId != null) {
+            try {
+              await ref.read(apiClientProvider).submitOnboardingPicks(
+                sessionId: sessionId,
+                pickedItemIds: pickedItemIds,
+              );
+            } catch (_) {
+              // Non-blocking - picks are stored locally regardless
+            }
+          }
+        },
+        onSkip: () {
+          tracker.track('gold_card_visual_skip', {
+            'goldCard': {
+              'swipeNumber': ref.read(goldCardProvider).totalRightSwipes,
+              'skipCount': ref.read(goldCardProvider).visualSkipCount + 1,
+            },
+          });
+          goldCardNotifier.skipVisualCard();
+        },
+      ),
+      onSwipeRight: () {
+        // Only allow swipe right if 3 items selected
+        final state = _goldCardVisualKey.currentState;
+        if (state != null && state.isSelectionComplete) {
+          state.submitSelection();
+        }
+      },
+      onSwipeLeft: () {
+        goldCardNotifier.skipVisualCard();
+        tracker.track('gold_card_visual_skip', {
+          'goldCard': {
+            'swipeNumber': ref.read(goldCardProvider).totalRightSwipes,
+            'skipCount': ref.read(goldCardProvider).visualSkipCount + 1,
+          },
+        });
+      },
+      canSwipeRight: () {
+        final state = _goldCardVisualKey.currentState;
+        return state?.isSelectionComplete ?? false;
+      },
+    );
+  }
+
+  Widget _buildGoldCardBudgetOverlay(
+    BuildContext context,
+    GoldCardNotifier goldCardNotifier,
+    GoldCardState goldCardState,
+    dynamic tracker,
+    String? sessionId,
+    List<Item> items,
+    DeckNotifier deckNotifier,
+    dynamic swipeHintNotifier,
+    DeckRankContext? rank,
+    Map<String, double> itemScores,
+    bool swipeHintSeen,
+    dynamic strings,
+  ) {
+    final startTime = DateTime.now();
+    final budgetKey = GlobalKey<GoldCardBudgetState>();
+    
+    // Track gold card shown
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      tracker.track('gold_card_budget_shown', {});
+    });
+    
+    return _GoldCardSwipeWrapper(
+      child: GoldCardBudget(
+        key: budgetKey,
+        initialMin: goldCardState.budgetMin,
+        initialMax: goldCardState.budgetMax,
+        onComplete: (budgetMin, budgetMax) async {
+          final durationMs = DateTime.now().difference(startTime).inMilliseconds;
+          tracker.track('gold_card_budget_complete', {
+            'goldCard': {
+              'budgetMin': budgetMin,
+              'budgetMax': budgetMax,
+              'durationMs': durationMs,
+            },
+          });
+          await goldCardNotifier.completeBudgetCard(budgetMin, budgetMax);
+          // Update API with budget
+          if (sessionId != null && goldCardState.pickedItemIds.isNotEmpty) {
+            try {
+              await ref.read(apiClientProvider).submitOnboardingPicks(
+                sessionId: sessionId,
+                pickedItemIds: goldCardState.pickedItemIds,
+                budgetMin: budgetMin,
+                budgetMax: budgetMax,
+              );
+            } catch (_) {
+              // Non-blocking
+            }
+          }
+        },
+        onSkip: () {
+          tracker.track('gold_card_budget_skip', {
+            'goldCard': {'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1},
+          });
+          goldCardNotifier.skipBudgetCard();
+        },
+      ),
+      onSwipeRight: () {
+        final state = budgetKey.currentState;
+        if (state != null) {
+          state.widget.onComplete(state.budgetMin, state.budgetMax);
+        }
+      },
+      onSwipeLeft: () {
+        goldCardNotifier.skipBudgetCard();
+        tracker.track('gold_card_budget_skip', {
+          'goldCard': {'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1},
+        });
+      },
+      canSwipeRight: () => true, // Budget card can always be submitted
     );
   }
 
@@ -655,6 +878,213 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Wrapper widget that makes gold cards swipeable like regular cards
+class _GoldCardSwipeWrapper extends StatefulWidget {
+  const _GoldCardSwipeWrapper({
+    required this.child,
+    required this.onSwipeRight,
+    required this.onSwipeLeft,
+    this.canSwipeRight,
+  });
+
+  final Widget child;
+  final VoidCallback onSwipeRight;
+  final VoidCallback onSwipeLeft;
+  final bool Function()? canSwipeRight;
+
+  @override
+  State<_GoldCardSwipeWrapper> createState() => _GoldCardSwipeWrapperState();
+}
+
+class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
+    with SingleTickerProviderStateMixin {
+  double _dragDx = 0;
+  double _dragDy = 0;
+  late AnimationController _animationController;
+  Animation<Offset>? _exitAnimation;
+  bool _isAnimatingOut = false;
+
+  static const double _swipeThreshold = 100;
+  static const double _velocityThreshold = 800;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _onPanStart(DragStartDetails details) {
+    if (_isAnimatingOut) return;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (_isAnimatingOut) return;
+    setState(() {
+      _dragDx += details.delta.dx;
+      _dragDy += details.delta.dy;
+    });
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    if (_isAnimatingOut) return;
+    final velocity = details.velocity.pixelsPerSecond.dx;
+    final shouldSwipeRight = (_dragDx > _swipeThreshold || velocity > _velocityThreshold) &&
+        (widget.canSwipeRight?.call() ?? true);
+    final shouldSwipeLeft = _dragDx < -_swipeThreshold || velocity < -_velocityThreshold;
+
+    if (shouldSwipeRight) {
+      _animateOut(toRight: true);
+    } else if (shouldSwipeLeft) {
+      _animateOut(toRight: false);
+    } else {
+      _snapBack();
+    }
+  }
+
+  void _animateOut({required bool toRight}) {
+    _isAnimatingOut = true;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final endX = toRight ? screenWidth * 1.5 : -screenWidth * 1.5;
+    
+    _exitAnimation = Tween<Offset>(
+      begin: Offset(_dragDx, _dragDy),
+      end: Offset(endX, _dragDy),
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    ));
+
+    _animationController.forward(from: 0).then((_) {
+      if (toRight) {
+        widget.onSwipeRight();
+      } else {
+        widget.onSwipeLeft();
+      }
+    });
+  }
+
+  void _snapBack() {
+    setState(() {
+      _dragDx = 0;
+      _dragDy = 0;
+    });
+  }
+
+  double get _rotation => _dragDx / 1000;
+
+  Color? get _overlayColor {
+    if (_dragDx > 30) {
+      return AppTheme.positiveLike.withValues(alpha: (_dragDx / 200).clamp(0, 0.3));
+    } else if (_dragDx < -30) {
+      return AppTheme.negativeDislike.withValues(alpha: (-_dragDx / 200).clamp(0, 0.3));
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: ColoredBox(
+            color: AppTheme.background,
+            child: GestureDetector(
+              onPanStart: _onPanStart,
+              onPanUpdate: _onPanUpdate,
+              onPanEnd: _onPanEnd,
+              child: AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  final offset = _isAnimatingOut
+                      ? _exitAnimation?.value ?? Offset(_dragDx, _dragDy)
+                      : Offset(_dragDx, _dragDy);
+                  
+                  return Transform(
+                    transform: Matrix4.identity()
+                      ..translate(offset.dx, offset.dy)
+                      ..rotateZ(_isAnimatingOut ? _dragDx / 1000 : _rotation),
+                    alignment: Alignment.center,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        widget.child,
+                        if (_overlayColor != null && !_isAnimatingOut)
+                          IgnorePointer(
+                            child: Container(
+                              margin: const EdgeInsets.all(AppTheme.spacingUnit),
+                              decoration: BoxDecoration(
+                                color: _overlayColor,
+                                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        // Control buttons
+        Padding(
+          padding: const EdgeInsets.all(AppTheme.spacingUnit),
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ControlButton(
+                    icon: Icons.close,
+                    color: AppTheme.negativeDislike,
+                    onPressed: () => _animateOut(toRight: false),
+                  ),
+                  const SizedBox(width: AppTheme.spacingUnit * 2),
+                  _ControlButton(
+                    icon: Icons.favorite,
+                    color: AppTheme.positiveLike,
+                    onPressed: (widget.canSwipeRight?.call() ?? true)
+                        ? () => _animateOut(toRight: true)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ControlButton extends StatelessWidget {
+  const _ControlButton({required this.icon, required this.color, required this.onPressed});
+
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filled(
+      icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
+      onPressed: onPressed,
+      style: IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
     );
   }
 }

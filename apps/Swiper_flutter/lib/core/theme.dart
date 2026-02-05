@@ -17,6 +17,12 @@ class AppTheme {
   static const Color textPrimary = Color(0xFF333333);
   static const Color textSecondary = Color(0xFF666666);
   static const Color textCaption = Color(0xFF888888);
+  
+  // Semantic colors for status indicators
+  static const Color success = Color(0xFF4CAF50);
+  static const Color warning = Color(0xFFFFC107);
+  static const Color error = Color(0xFFFF3B30);
+  static const Color surfaceVariant = Color(0xFFE0E0E0);
 
   static ThemeData get light {
     return ThemeData(

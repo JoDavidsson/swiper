@@ -9,6 +9,7 @@ import 'models/item.dart';
 import 'session_provider.dart';
 
 export 'api_providers.dart' show apiClientProvider;
+export 'api_client.dart' show DeckRankContext;
 
 // #region agent log
 void _deckAgentLog(String location, String message, Map<String, dynamic> data, [String? hypothesisId]) {
@@ -265,6 +266,17 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
       state = AsyncValue.data(current.sublist(1));
     }
   }
+
+  /// Restore an item to the front of the deck (for undo functionality)
+  void restoreItem(Item item) {
+    if (!mounted) return;
+    final current = state.valueOrNull ?? [];
+    // Only restore if item isn't already in the deck
+    if (!current.any((i) => i.id == item.id)) {
+      state = AsyncValue.data([item, ...current]);
+      _deckAgentLog('deck_provider.dart:restoreItem', 'item_restored', {'itemId': item.id}, 'undo');
+    }
+  }
 }
 
 final likesListProvider = FutureProvider<List<Item>>((ref) async {
@@ -275,7 +287,7 @@ final likesListProvider = FutureProvider<List<Item>>((ref) async {
 });
 
 /// Toggle like via API and track like_add or like_remove. Use this when adding like/unlike UI (e.g. from Likes or detail).
-Future<bool> toggleLikeWithTracking(Ref ref, {required String sessionId, required String itemId}) async {
+Future<bool> toggleLikeWithTracking(WidgetRef ref, {required String sessionId, required String itemId}) async {
   final client = ref.read(apiClientProvider);
   final liked = await client.toggleLike(sessionId: sessionId, itemId: itemId);
   ref.read(eventTrackerProvider).track(liked ? 'like_add' : 'like_remove', {

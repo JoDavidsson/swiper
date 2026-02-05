@@ -1,5 +1,350 @@
 # Changelog
 
+## 2026-02-05 – Smart Crawler Auto-Discovery
+
+### Major Feature: Automated Source Configuration
+Users can now add retailer sources with just a URL - the system automatically discovers:
+- Domain root and robots.txt location
+- Available sitemaps (including sitemap indexes)
+- Product URL counts and category patterns
+- Recommended crawl strategy (sitemap vs category crawl)
+
+### Backend Changes
+- **URL Normalization** (`services/supply_engine/app/normalization.py`):
+  - Added `normalize_source_url()` for parsing user input URLs
+  - Added `extract_domain_root()` for proper robots.txt discovery
+  - Fixed bug where robots.txt was fetched from subpath instead of domain root
+
+- **Auto-Discovery Module** (`services/supply_engine/app/discovery.py`):
+  - New `discover_from_url()` function for URL analysis
+  - Samples sitemaps to estimate product counts
+  - Returns strategy recommendation (sitemap vs crawl)
+
+- **Supply Engine API** (`services/supply_engine/app/main.py`):
+  - New `/discover` endpoint for preview without saving
+
+- **Crawl Ingestion** (`services/supply_engine/app/crawl_ingestion.py`):
+  - Updated to support new `derived` config structure
+  - Backward compatible with legacy source fields
+  - Path pattern filtering for sitemap URLs
+
+- **Firebase Functions** (`firebase/functions/src/api/admin_sources.ts`):
+  - New `POST /api/admin/sources/preview` endpoint
+  - New `POST /api/admin/sources/create-with-discovery` endpoint
+  - Stores both user input and derived configuration
+
+### Frontend Changes
+- **API Client** (`apps/Swiper_flutter/lib/data/api_client.dart`):
+  - Added `adminPreviewSource()` method
+  - Added `adminCreateSourceWithDiscovery()` method
+
+- **Admin Sources Screen** (`apps/Swiper_flutter/lib/features/admin/admin_sources_screen.dart`):
+  - Redesigned "Add Retailer" dialog with simplified workflow
+  - Single URL input with "Detect" button
+  - Visual preview of discovery results before saving
+  - Collapsible advanced settings (rate limit, enabled flag)
+
+### Bug Fixes
+- Fixed robots.txt discovery to always use domain root (RFC compliance)
+- Fixed sitemap URL construction in `sitemap.py` and `fetcher.py`
+
+---
+
+## 2026-02-05 – Bug Fixes & UX Improvements (Testing Round)
+
+### P0 Critical Fixes
+- **Gold Card Empty Page Bug**: Fixed budget card not appearing after visual card completion when deck is empty (removed `items.isNotEmpty` check)
+- **Auth Screens Missing Back Button**: Added explicit close buttons to login and signup screens for proper navigation
+- **Likes Screen List View Broken**: Created separate `_LikeListTile` widget with fixed height for ListView rendering (fixes Expanded constraint issue)
+- **Compare Button Missing**: Added Compare button to Likes screen that appears when 2-4 items are selected
+
+### P1 High Priority Fixes
+- **Unlike/Remove Functionality**: Added like toggle button to detail sheet with visual feedback and proper state management
+- **Admin Run Now Error Handling**: Improved error messages with specific guidance when Supply Engine is unreachable (503 with helpful hints)
+- **Admin Items Screen Enhancement**: Complete rewrite with search bar, source/status filters, item detail modal with raw JSON view
+
+### P2 UX Improvements
+- **Admin Runs Screen Enhancement**: Added source name/domain display, timestamps with relative time, duration calculation, stats chips, and detailed job listings
+- **Empty Deck UX**: Contextual messaging based on filter state with "Clear Filters" button when filters are active
+
+### Files Changed
+- `apps/Swiper_flutter/lib/features/deck/deck_screen.dart`: Gold card fix, empty deck UX
+- `apps/Swiper_flutter/lib/features/auth/login_screen.dart`: Close button
+- `apps/Swiper_flutter/lib/features/auth/signup_screen.dart`: Close button
+- `apps/Swiper_flutter/lib/features/likes/likes_screen.dart`: List view fix, compare button, unlike integration
+- `apps/Swiper_flutter/lib/shared/widgets/detail_sheet.dart`: Like toggle button
+- `apps/Swiper_flutter/lib/shared/widgets/swipe_deck.dart`: Empty state widget with filter awareness
+- `apps/Swiper_flutter/lib/features/admin/admin_items_screen.dart`: Full rewrite with search/filters
+- `apps/Swiper_flutter/lib/features/admin/admin_runs_screen.dart`: Enhanced with more context
+- `firebase/functions/src/api/admin_run_trigger.ts`: Better error handling
+
+---
+
+## 2026-02-05 – Code Quality Fixes (Post-Phase 11 QA)
+
+### Flutter Fixes
+- Removed unused imports in `router.dart`, `auth_provider.dart`, `decision_room_screen.dart`
+- Removed unused `_shareShortlist` method from `likes_screen.dart`
+- Removed unused `_isDragging` field from `deck_screen.dart`
+- Fixed unnecessary casts in `admin_catalog_preview_screen.dart` by using typed `Future.wait<T>`
+- Fixed widget test timer cleanup issue in `swipe_deck_test.dart` with proper `pumpAndSettle`
+- Added ignore comments for intentionally reserved fields in `swipe_deck.dart`
+
+### Test Results
+- All 11 Flutter unit tests passing
+- TypeScript backend compiles cleanly
+- All 36 Firebase Functions tests passing
+
+---
+
+## 2026-02-05 – Phase 11: Retailer Data Model + Confidence Score (Complete)
+
+Full implementation of retailer data infrastructure, segment targeting, campaigns, and the Confidence Score system.
+
+### Retailer Data Model (Backend)
+- **Retailers collection** (`retailers.ts`): Full CRUD API for retailer management
+  - `POST /api/admin/retailers`: Create retailer (admin only)
+  - `GET /api/admin/retailers`: List all retailers (admin only)
+  - `GET /api/retailers/:id`: Get retailer details (public)
+  - `PATCH /api/admin/retailers/:id`: Update retailer (admin only)
+  - `POST /api/retailers/:id/claim`: Claim retailer ownership (requires auth)
+  - `GET /api/retailer/me`: Get current user's retailer (requires auth)
+
+### Segments Collection (Backend)
+- **Segments API** (`segments.ts`): Targeting definitions with system templates
+  - 6 system segment templates for Sweden launch (budget-modern, premium-scandinavian, compact-urban, family-friendly, luxury-design, all-sweden)
+  - `GET /api/segments/templates`: List system templates (public)
+  - `POST /api/segments`: Create custom segment (requires auth)
+  - `GET /api/segments`: List segments for retailer (requires auth)
+  - `GET /api/segments/:id`: Get segment by ID
+  - `PATCH /api/segments/:id`: Update custom segment (requires auth)
+  - `DELETE /api/segments/:id`: Delete custom segment (requires auth)
+
+### Campaigns Collection (Backend)
+- **Campaigns API** (`campaigns.ts`): Featured distribution campaigns
+  - `POST /api/retailer/campaigns`: Create campaign (requires retailer auth)
+  - `GET /api/retailer/campaigns`: List campaigns (requires auth)
+  - `GET /api/retailer/campaigns/:id`: Get campaign details (requires auth)
+  - `PATCH /api/retailer/campaigns/:id`: Update campaign (requires auth)
+  - `POST /api/retailer/campaigns/:id/pause`: Pause active campaign
+  - `POST /api/retailer/campaigns/:id/activate`: Activate draft/paused campaign
+  - `DELETE /api/retailer/campaigns/:id`: Delete draft campaign
+
+### Confidence Score System (Backend)
+- **Scores API** (`scores.ts`): Score query endpoints
+  - `GET /api/scores?segmentId=&timeWindow=&band=`: Query scores with filters
+  - `GET /api/scores/:productId`: Get product scores across segments
+  - `GET /api/admin/scores/summary`: Aggregate score statistics (admin)
+  - `POST /api/admin/scores/recalculate`: Trigger recalculation (admin)
+- **Score Calculation Job** (`confidence_score.ts`): Scheduled hourly function
+  - Bayesian smoothing for low-volume items
+  - Weighted scoring: saveRate (50%), clickRate (15%), volume (15%), creative (20%)
+  - Time windows: 7d, 30d, 90d
+  - Score banding: green (60+), yellow (30-59), red (0-29)
+
+### Reason Codes
+- Dynamic reason code generation based on metrics:
+  - `STRONG_SAVES` / `GOOD_SAVES` / `LOW_SAVES`: Save rate signals
+  - `HIGH_CLICKS` / `LOW_CLICKS`: Click rate signals
+  - `HIGH_SKIP`: Frequently skipped items
+  - `LOW_VOLUME` / `HIGH_CONFIDENCE`: Impression volume signals
+  - `EXCELLENT_CREATIVE` / `CREATIVE_ISSUES`: Image quality signals
+
+### Firestore Updates
+- **Security rules**: Added rules for `retailers`, `segments`, `campaigns`, `scores`, `scoreCalculationLogs`, `scoreRecalculationJobs`
+- **Composite indexes**: Added 12 new indexes for efficient querying
+
+### Scripts
+- **Segment template seeder** (`seed_segment_templates.js`): Seeds system segment templates
+
+---
+
+## 2026-02-05 – Phase 10: Premium Image Display + Brand Trust (Complete)
+
+Full implementation of premium image rendering, CDN pipeline, and Creative Health scoring.
+
+### Premium Image Card (Flutter)
+- **PremiumImageCard widget** (`premium_image_card.dart`): Reusable component with contain + blurred background pattern
+- **DeckCard upgrade**: Now uses premium rendering by default with two-layer approach
+  - Background: Blurred cover image (lower resolution for performance)
+  - Foreground: Contained image showing full product without distortion
+- **Shimmer placeholder**: Animated loading state for premium cards
+
+### CDN Image Pipeline (Backend)
+- **Image proxy enhancement** (`image_proxy.ts`): Extended with Sharp library for server-side processing
+  - Width parameter: Resize to 400w, 800w, or 1200w
+  - Format parameter: WebP, JPEG, or PNG output
+  - Quality parameter: 1-100 quality control
+  - Auto WebP: Serves WebP when browser supports it via Accept header
+- **Image metadata endpoint** (`GET /api/image-meta`): Validates images without full download
+  - Returns dimensions, aspect ratio, format, file size
+  - Classifies aspect ratio (portrait, landscape, square, etc.)
+  - Lists validation issues
+
+### Image Validation & Creative Health
+- **Python validation module** (`image_validation.py`): Async image validation for Supply Engine
+  - Resolution checks (min 400x400)
+  - Aspect ratio classification
+  - File size validation
+  - Creative Health score calculation (0-100)
+- **Admin validation API** (`admin_image_validation.ts`):
+  - `POST /api/admin/validate-images`: Batch validate items
+  - `GET /api/admin/creative-health-stats`: Aggregate health statistics
+- **Item schema update**: Added `imageValidation` and `creativeHealth` fields to items collection
+
+### Catalog Preview UI (Flutter)
+- **AdminCatalogPreviewScreen**: New admin screen for image quality review
+  - Grid view with Creative Health badges (green/yellow/red)
+  - Comparison view: Side-by-side legacy vs premium rendering
+  - Health statistics header showing band distribution
+  - Trigger validation button for batch processing
+
+### API Client Updates
+- Added `ImageWidth` enum (thumbnail: 400, card: 800, detail: 1200)
+- Added `ImageFormat` enum (webp, jpeg, png)
+- Updated `proxyImageUrl()` to support width/format/quality params
+- New admin methods: `adminValidateImages()`, `adminGetCreativeHealthStats()`
+
+### Dependencies
+- Added `sharp@0.33.2` to Firebase Functions for image processing
+- Added `Pillow==10.2.0` to Supply Engine for Python image validation
+
+---
+
+## 2026-02-05 – Phase 9: User Accounts + Decision Room (Complete)
+
+Full implementation of user authentication and collaborative Decision Room feature.
+
+### Backend (Firebase Functions)
+- **User authentication middleware** (`require_user_auth.ts`): Firebase ID token verification for regular users
+- **Auth API endpoints** (`auth.ts`): `POST /api/auth/link-session` (migrate anonymous data), `GET /api/auth/me` (user profile)
+- **Decision Room API** (`decision_rooms.ts`): Full CRUD + participation endpoints
+  - `POST /api/decision-rooms`: Create room (requires auth)
+  - `GET /api/decision-rooms/:roomId`: View room (public)
+  - `POST /api/decision-rooms/:roomId/vote`: Cast vote (requires auth)
+  - `POST /api/decision-rooms/:roomId/comments`: Add comment (requires auth)
+  - `GET /api/decision-rooms/:roomId/comments`: List comments (public)
+  - `POST /api/decision-rooms/:roomId/suggest`: Suggest alternative product (requires auth)
+  - `POST /api/decision-rooms/:roomId/finalists`: Set final 2 items (creator only)
+- **Firestore rules**: Added rules for `users`, `decisionRooms`, `votes`, `comments` collections
+- **Firestore indexes**: Added composite indexes for efficient queries
+
+### Frontend (Flutter)
+- **Auth provider** (`auth_provider.dart`): Firebase Auth state management with Riverpod
+  - Email/password sign-up and sign-in
+  - Google Sign-In integration
+  - Automatic session linking on authentication
+  - Password reset functionality
+- **Login screen** (`login_screen.dart`): Email + Google sign-in UI with redirect support
+- **Sign-up screen** (`signup_screen.dart`): Account creation UI with validation
+- **Decision Room screen** (`decision_room_screen.dart`): Full collaborative experience
+  - Item grid with vote buttons (up/down)
+  - Real-time vote counts
+  - Comment section with input
+  - "Suggest alternative" dialog with URL input
+  - "Pick finalists" for room creator
+  - Share functionality
+- **Likes screen update**: Replaced "Share shortlist" with "Create Decision Room" flow
+- **Router updates**: Added `/auth/login`, `/auth/signup`, `/r/:roomId` routes
+- **API client extensions**: Methods for all new auth and Decision Room endpoints
+
+### Analytics Events
+- `decisionroom_create`: When room is created
+- `decisionroom_view`: When room is viewed
+- `decisionroom_vote`: When user votes on an item
+- `decisionroom_comment`: When user adds a comment
+- `finalists_set`: When creator picks final 2
+- `suggest_alternative`: When user suggests a product URL
+
+### Deferred
+- Push notifications (9.10) deferred to future iteration
+
+---
+
+## 2026-02-05 – Commercial Platform Build Spec v1 → v2
+
+Comprehensive documentation update integrating the full Retailer Platform build specification across all project documentation.
+
+### COMMERCIAL_STRATEGY.md (Major Update)
+- **Product north star:** Added honest value props (more appearances to target personas, high-intent consideration behaviors)
+- **Non-negotiables (trust):** Documented ad-free Decision Room, labeled/capped/relevance-gated Featured
+- **Retailer target audience:** Economic buyers (Head of Marketing, E-com Director, CEO), day-to-day users (performance marketers, merchandisers, agencies)
+- **Confidence Score:** Replaced HIS terminology with Confidence Score (0–100) for retailer UI; includes calculation overview, color bands (green/yellow/red), reason codes
+- **Roadmap framing:** v1 (Monetizable MVP), v2 (Close-Rate Proof + Pixel), v3 (Retention Engine + Inspiration Deck), v4 (Creative Lab)
+- **Definition of done for v1:** Invoice-ready criteria
+
+### PRD.md (Major Update)
+- **Decision Room features:** Vote per product, comment threads, "Final 2" mode, suggest alternative
+- **Featured Distribution specs:** Labeled, frequency capped (1 in 12), relevance-gated, diversity constraints
+- **Confidence Score specs:** 0–100 per product × segment, inputs (saves, shares, compares, returns, dwell), Bayesian smoothing, banding, reason codes
+- **Retailer Console user stories:** Insights Feed, Campaign Builder, Catalog Control, Reports
+- **Commercial success criteria:** Retailer activation, campaign fill rate, CPScore benchmark
+
+### IMPLEMENTATION_PLAN.md (Major Update)
+- **Phase 9:** User Accounts + Decision Room (11 tasks)
+- **Phase 10:** Premium Image Display + Brand Trust (7 tasks)
+- **Phase 11:** Retailer Data Model + Confidence Score (10 tasks)
+- **Phase 12:** Featured Distribution (11 tasks)
+- **Phase 13:** Retailer Console v1 (13 tasks)
+- **Phase 14:** Admin Governance + v1 Launch (6 tasks)
+- **v2 roadmap:** Click ID, Pixel SDK, conversion reporting, audience tools, geo granularity (13 tasks)
+- **v3 roadmap:** Inspiration Deck, Sponsored Themes, Email/SMS (9 tasks)
+- **v4 roadmap:** Creative Lab (4 tasks)
+- **Engineering checklist:** New collections (users, decisionRooms, votes, comments, retailers, segments, campaigns, scores) and event schema additions
+
+### APP_FLOW.md (Major Update)
+- **Decision Room flows:** Create (auth required), view (public), participate (vote/comment/suggest), finalists
+- **Retailer Console flows:** Insights Feed, Campaign Builder, Catalog Control, Trends, Reports
+- **Featured card handling:** Badge display, logging with campaign_id
+- **New screen inventory:** Decision Room, Auth screens, Retailer Console (10 screens)
+- **State transitions:** Decision Room lifecycle, Campaign lifecycle
+
+### BACKEND_STRUCTURE.md (Major Update)
+- **New collections:** `users`, `decisionRooms`, `decisionRoomItems`, `votes`, `comments`, `retailers`, `segments`, `campaigns`, `scores`
+- **Decision Room API:** Create, view, vote, comment, suggest, finalists endpoints
+- **Retailer Console API:** Campaigns CRUD, catalog control, insights feed, trends, reports
+- **Confidence Score spec (Appendix):** Full calculation including time windows, rate calculation, weighted intent rate, Bayesian smoothing, 0–100 mapping, banding, reason codes
+- **Featured serving algorithm:** Slot determination, eligibility filtering, ranking, constraints, logging
+- **Click ID + Pixel spec (v2):** Outbound format, pixel behavior, audience enablement, GTM recipes
+
+### FRONTEND_GUIDELINES.md (Major Update)
+- **Premium Image Display spec:** Contain + blurred background pattern for furniture images
+- **Flutter implementation:** `PremiumImageCard` widget with two-layer rendering
+- **CSS equivalent:** For web reference
+- **Image CDN:** Size variants (400w, 800w, 1200w), WebP + JPEG fallback
+- **Featured Badge component:** Styling and positioning
+- **Confidence Score Badge component:** Color-coded by band
+- **Insight Feed Card component:** Retailer console pattern
+
+## 2026-02-05 – Commercial Strategy documentation
+
+- **COMMERCIAL_STRATEGY.md:** Added comprehensive commercial strategy document covering retailer-first monetization approach. Includes Featured Distribution (Product Deck), Retailer Console, Sponsored Themes, Swiper Pixel + Audience Retargeting, Lifecycle Messaging, and Affiliate revenue streams. Defines High-Intent Save (HIS) as the core sellable metric. Documents Decision Room ethical boundaries (no paid placement in share/compare). Outlines short/medium/long-term roadmap for monetization features.
+
+## 2026-02-02 – Documentation consolidation: 6-document knowledge base
+
+- **PRD.md:** Consolidated product requirements from existing docs (ASSUMPTIONS, PROJECT_PLAN, CARD_INTERACTION, RECOMMENDATIONS_ENGINE, INGESTION_COMPLIANCE, PRIVACY_GDPR, SECURITY, TAG_TAXONOMY). Contains product overview, scope (in/out), user stories, success criteria, feature specs, constraints, risks, and glossary.
+- **APP_FLOW.md:** Complete screen inventory, navigation flows, error handling, deep links, state transitions, and analytics events per flow. Combines ARCHITECTURE, TESTING_LOCAL, EVENT_TRACKING, and Flutter app analysis.
+- **TECH_STACK.md:** Locked dependencies with exact versions for Flutter (Riverpod 2.4.9, go_router 13.0.0, etc.), Firebase Functions (Node 20, TS 5.3.3), and Supply Engine (FastAPI 0.109.0, httpx 0.26.0). Environment variables and config files documented.
+- **FRONTEND_GUIDELINES.md:** Complete design system: color palette (hex codes), typography scale (Inter, sizes, weights), spacing scale (4px multiples), responsive breakpoints, component patterns (swipe card, buttons, list tiles), animation guidelines, accessibility requirements, folder structure, and code style.
+- **BACKEND_STRUCTURE.md:** Full Firestore schema (10 collections with field types), security rules, API endpoint contracts (public and admin), ranker interface, data flow diagrams, error codes, and environment configuration.
+- **IMPLEMENTATION_PLAN.md:** Step-by-step build sequence with completed phases (0-7), upcoming phases (8-12), implementation guidelines, branching strategy, risk register, and decision log.
+
+## 2026-02-02 – P1 Recommendation Backbone: extract material, color, dimensions from crawl
+
+- **NormalizedProduct extended:** Added `dimensions_raw`, `material_raw`, `color_raw` so crawl items can be ranked and filtered like feed items.
+- **JSON-LD extraction:** Parses `width`, `height`, `depth` (including Schema.org QuantitativeValue), `color`, `material`, and `additionalProperty` (Bredd/Höjd/Djup/Färg/Material).
+- **Embedded JSON extraction:** Extracts dimensions, material, color from product-like nodes (width/height/depth, dimensionsCm, material, colorFamily, etc.).
+- **Recipe pass-through:** Dimensions, material, color from recipe output flow into items.
+- **Title color inference:** `infer_color_from_title()` scans titles for color tokens (e.g. "svart", "grå"); used when DOM fallback has no structured color.
+- **Crawl ingestion:** Replaces hardcoded `dimensionsCm`, `sizeClass`, `material`, `colorFamily` with normalized extracted values. Size class derived from width via `size_class_from_width_cm()`.
+
+## 2026-02-02 – Supply Engine crawl locator + self-healing-ready extractor (Sweden-first)
+
+- **Crawl ingestion implemented:** `mode:"crawl"` sources now run URL discovery (robots/sitemaps + bounded category crawl) and write operational state to Firestore (`crawlUrls`, `productSnapshots`, `extractionFailures`, `metricsDaily`, `crawlRecipes`).
+- **Extraction cascade:** Deterministic extractor prioritizes JSON-LD, then embedded JSON (Next.js + generic blobs), then optional per-retailer recipe runner, then semantic DOM fallbacks (canonical/og/meta); includes Swedish money parsing and completeness scoring.
+- **Recipe system (deterministic):** Added recipe JSON validation + runner (minimal JSONPath, DOM selectors, transforms) and promotion gate evaluation (success rate + completeness thresholds).
+- **Monitoring + drift triggers:** Daily metrics are persisted and basic drift detection records alerts into `extractionFailures` when success/completeness drops.
+
 ## 2026-02-02 – Recommendation engine robustness fixes
 
 - **Exploration rate:** applyExploration now replaces roughly `rate × limit` positions (stochastic rounding) instead of treating any non-zero rate as full randomization; rate=0 keeps rank order, rate=1 fully samples from the top-2× pool.

@@ -51,5 +51,89 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // Curated onboarding sofas: public read; writes only via Admin SDK.
+    match /curatedOnboardingSofas/{itemId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Onboarding picks: reads via API; writes only via Admin SDK (Functions).
+    match /onboardingPicks/{sessionId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Sessions: public read; writes only via Admin SDK (Functions).
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Persona signals for collaborative filtering: public read; writes only via Admin SDK.
+    match /personaSignals/{signalId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Users: authenticated users can read own; writes only via Admin SDK (Functions).
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Decision Rooms: public read; writes only via Admin SDK (Functions).
+    match /decisionRooms/{roomId} {
+      allow read: if true;
+      allow write: if false;
+      
+      // Items within a decision room
+      match /items/{itemId} {
+        allow read: if true;
+        allow write: if false;
+      }
+    }
+
+    // Votes: public read (to see vote counts); writes only via Admin SDK (Functions).
+    match /votes/{voteId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Comments: public read; writes only via Admin SDK (Functions).
+    match /comments/{commentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Retailers: public read for basic info; writes only via Admin SDK (Functions).
+    match /retailers/{retailerId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Segments: public read for templates; writes only via Admin SDK (Functions).
+    match /segments/{segmentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Campaigns: authenticated retailer owners read; writes only via Admin SDK (Functions).
+    match /campaigns/{campaignId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Scores: authenticated users read; writes only via Admin SDK (Functions).
+    match /scores/{scoreId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Score calculation logs: admin only (handled by Admin SDK).
+    match /scoreCalculationLogs/{logId} {
+      allow read, write: if false;
+    }
+
+    // Score recalculation jobs: admin only (handled by Admin SDK).
+    match /scoreRecalculationJobs/{jobId} {
+      allow read, write: if false;
+    }
   }
 }

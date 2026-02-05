@@ -55,6 +55,13 @@ const Set<String> _essentialEventNames = {
   'card_impression_end',
   'empty_deck',
   'consent_updated',
+  // Gold card onboarding events
+  'gold_card_visual_shown',
+  'gold_card_visual_complete',
+  'gold_card_visual_skip',
+  'gold_card_budget_shown',
+  'gold_card_budget_complete',
+  'gold_card_budget_skip',
 };
 
 /// Canonical event tracker (v1). Buffers events and flushes to POST /api/events/batch.

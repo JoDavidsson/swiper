@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <title>Testsoffa JSON-LD</title>
+    <link rel="canonical" href="http://127.0.0.1:8099/produkt/soffa-jsonld.html" />
+    <meta property="og:type" content="product" />
+    <meta property="og:image" content="http://127.0.0.1:8099/static/a.jpg" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": "Testsoffa JSON-LD",
+        "image": ["http://127.0.0.1:8099/static/a.jpg", "http://127.0.0.1:8099/static/b.jpg"],
+        "url": "http://127.0.0.1:8099/produkt/soffa-jsonld.html",
+        "brand": { "@type": "Brand", "name": "TestBrand" },
+        "description": "En testsoffa för lokal crawl.",
+        "offers": { "@type": "Offer", "priceCurrency": "SEK", "price": "12 995 kr" }
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Testsoffa JSON-LD</h1>
+  </body>
+</html>

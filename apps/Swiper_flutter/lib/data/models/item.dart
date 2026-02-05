@@ -51,6 +51,9 @@ class Item {
     this.ecoTags = const [],
     this.images = const [],
     this.lastUpdatedAt,
+    this.creativeHealthScore,
+    this.creativeHealthBand,
+    this.creativeHealthIssues = const [],
   });
 
   final String id;
@@ -74,11 +77,23 @@ class Item {
   final List<String> ecoTags;
   final List<ItemImage> images;
   final DateTime? lastUpdatedAt;
+  
+  // Creative Health fields (from image validation)
+  final int? creativeHealthScore;
+  final String? creativeHealthBand;
+  final List<String> creativeHealthIssues;
 
   String? get firstImageUrl => images.isNotEmpty ? images.first.url : null;
 
   factory Item.fromJson(Map<String, dynamic> json) {
     final imagesRaw = json['images'] as List? ?? [];
+    
+    // Parse creative health from nested object or flat fields
+    final creativeHealth = json['creativeHealth'] as Map<String, dynamic>?;
+    final healthScore = creativeHealth?['score'] ?? json['creativeHealthScore'];
+    final healthBand = creativeHealth?['band'] ?? json['creativeHealthBand'];
+    final healthIssues = creativeHealth?['issues'] ?? json['creativeHealthIssues'];
+    
     return Item(
       id: _string(json['id']) ?? '',
       title: _string(json['title']) ?? '',
@@ -103,6 +118,9 @@ class Item {
       ecoTags: _stringList(json['ecoTags']),
       images: imagesRaw.map((e) => ItemImage.fromJson(Map<String, dynamic>.from(e is Map ? e : <String, dynamic>{}))).toList(),
       lastUpdatedAt: _parseDateTime(json['lastUpdatedAt']),
+      creativeHealthScore: healthScore is int ? healthScore : (healthScore is num ? healthScore.toInt() : null),
+      creativeHealthBand: _string(healthBand),
+      creativeHealthIssues: _stringList(healthIssues),
     );
   }
 

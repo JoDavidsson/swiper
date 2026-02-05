@@ -10,12 +10,33 @@ export async function adminRunTriggerPost(req: Request, res: Response): Promise<
     res.status(400).json({ error: "sourceId required" });
     return;
   }
+  
+  // Log the URL being called for debugging
+  const url = `${SUPPLY_ENGINE_URL.replace(/\/$/, "")}/run/${sourceId}`;
+  console.log(`[admin_run_trigger] Calling Supply Engine: ${url}`);
+  
   try {
-    const url = `${SUPPLY_ENGINE_URL.replace(/\/$/, "")}/run/${sourceId}`;
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    
+    const r = await fetch(url, { 
+      method: "POST", 
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    
     const text = await r.text();
     if (!r.ok) {
-      res.status(r.status).json({ error: text || "Supply engine error" });
+      console.error(`[admin_run_trigger] Supply Engine returned ${r.status}: ${text}`);
+      res.status(r.status).json({ 
+        error: text || "Supply engine error",
+        details: {
+          supplyEngineUrl: SUPPLY_ENGINE_URL,
+          statusCode: r.status,
+          sourceId,
+        }
+      });
       return;
     }
     let data: unknown;
@@ -26,7 +47,34 @@ export async function adminRunTriggerPost(req: Request, res: Response): Promise<
     }
     res.status(200).json(data);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: String(e) });
+    console.error(`[admin_run_trigger] Error calling Supply Engine:`, e);
+    
+    const error = e as Error;
+    const isConnectionError = 
+      error.message?.includes("ECONNREFUSED") ||
+      error.message?.includes("fetch failed") ||
+      error.name === "AbortError" ||
+      error.message?.includes("network");
+    
+    if (isConnectionError) {
+      res.status(503).json({ 
+        error: "Supply Engine is not reachable",
+        details: {
+          supplyEngineUrl: SUPPLY_ENGINE_URL,
+          sourceId,
+          hint: "Make sure the Supply Engine is running. Start it with: ./scripts/run_supply_engine.sh",
+          originalError: error.message,
+        }
+      });
+      return;
+    }
+    
+    res.status(500).json({ 
+      error: String(e),
+      details: {
+        supplyEngineUrl: SUPPLY_ENGINE_URL,
+        sourceId,
+      }
+    });
   }
 }

@@ -4,6 +4,8 @@
 
 MVP shipped: Flutter app (deck-first entry, onboarding, deck, detail, likes, compare screen, profile, shared shortlist, admin), Firebase (Functions, Firestore, Hosting), Supply Engine (feed ingestion, sample feed), device context + event logging, Data & Privacy + opt-out, deck filters, admin items/sources/import. Ranker robustness fixes completed (exploration rate control, recency-preserving ties, atomic preference updates, persona zero-weight handling).
 
+2026-02-02: Supply Engine crawl ingestion added (Sweden-first, sofas-first): sitemap/category URL discovery, extraction cascade (JSON-LD + embedded JSON + recipe runner + semantic DOM), snapshots/failures, daily metrics + drift triggers. P1 Recommendation Backbone: extract material, color, dimensions from crawl; normalize into items for ranker parity.
+
 See [CHANGELOG.md](../CHANGELOG.md) and [ARCHITECTURE.md](ARCHITECTURE.md) for details.
 
 ---
@@ -28,7 +30,8 @@ Prioritised list (merge of EVENT_TRACKING, ASSUMPTIONS, DECISIONS; no duplicates
 - **Admin: Firebase Auth allowlist** – Replace env password gate with Firebase Auth allowlist for production.
 - **SSO / social login** – Optional connection to Instagram, Facebook, etc. for personalised feed; anonymous remains default.
 - **Optional user auth** – Signup / login for users later; anonymous-first stays.
-- **Supply Engine: sources from Firestore** – Load sources from Firestore instead of config JSON.
+- **Supply Engine: sources from Firestore** – Load sources from Firestore instead of config JSON. *Done: `services/supply_engine/app/sources.py` prefers Firestore `sources` and falls back to config.*
+- **Supply Engine: compliant crawl ingestion (Sweden-first)** – Locator + resilient extractor + recipe runner + drift monitoring. *Done: `services/supply_engine/app/crawl_ingestion.py` and new `app/http`, `app/locator`, `app/extractor`, `app/recipes`, `app/monitor` modules.*
 - **LLM extractor** – Optional; behind `ENABLE_LLM_EXTRACTOR` and `LLM_API_KEY`; MVP runs without it.
 - **Geography / category** – Beyond Sweden-first and sofas-only.
 - **Optional events** – `deck_refresh`, `card_view` or dwell in metadata for ML.

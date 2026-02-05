@@ -41,6 +41,10 @@ void main() {
         ),
       ),
     );
+    // Allow any animations/timers to settle
+    await tester.pump();
     expect(find.text('Sofa'), findsOneWidget);
+    // Clean up any pending timers (e.g., from image prefetching)
+    await tester.pumpAndSettle(const Duration(seconds: 1));
   });
 }

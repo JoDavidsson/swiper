@@ -31,10 +31,79 @@ class DeckResponse {
   final Map<String, double> itemScores;
 }
 
+/// Standard image widths for responsive loading.
+enum ImageWidth {
+  thumbnail(400),
+  card(800),
+  detail(1200);
+
+  const ImageWidth(this.value);
+  final int value;
+}
+
+/// Image formats supported by the CDN.
+enum ImageFormat {
+  webp,
+  jpeg,
+  png,
+}
+
 /// API client for Cloud Functions. Base URL from env or default (emulator).
 /// When [getAdminToken] is set, adds Authorization: Bearer <token> to admin requests (except verify).
 /// When no token but [getAdminPassword] is set, adds X-Admin-Password for password-only admin access.
 class ApiClient {
+  /// Convert an external image URL to use our image proxy endpoint.
+  /// This avoids CORS issues and provides CDN-like image optimization.
+  ///
+  /// Parameters:
+  /// - [originalUrl]: The source image URL
+  /// - [width]: Optional target width (400, 800, 1200). Height auto-calculated.
+  /// - [format]: Optional output format. Default: auto (WebP if supported, else JPEG)
+  /// - [quality]: Optional quality (1-100). Default: 80.
+  static String proxyImageUrl(
+    String originalUrl, {
+    ImageWidth? width,
+    ImageFormat? format,
+    int? quality,
+  }) {
+    if (originalUrl.isEmpty) return originalUrl;
+    // Don't proxy our own images or already proxied URLs
+    if (originalUrl.contains('/api/image-proxy')) return originalUrl;
+    // Don't proxy data URIs or local files
+    if (originalUrl.startsWith('data:') || originalUrl.startsWith('file:')) return originalUrl;
+    // Don't proxy unsplash images - they support CORS and have their own CDN
+    if (originalUrl.contains('images.unsplash.com')) return originalUrl;
+    
+    final params = <String, String>{
+      'url': originalUrl,
+    };
+    
+    if (width != null) {
+      params['w'] = width.value.toString();
+    }
+    if (format != null) {
+      params['format'] = format.name;
+    }
+    if (quality != null) {
+      params['q'] = quality.toString();
+    }
+    
+    final queryString = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+    
+    return '${_defaultBaseUrl}/api/image-proxy?$queryString';
+  }
+  
+  /// Get the optimized image URL for a given context.
+  /// 
+  /// Automatically selects appropriate width:
+  /// - Card thumbnail: 400w (for background/blur)
+  /// - Card main: 800w (for card display)
+  /// - Detail view: 1200w (for full-screen detail)
+  static String optimizedImageUrl(String originalUrl, {required ImageWidth width}) {
+    return proxyImageUrl(originalUrl, width: width);
+  }
   ApiClient({String? baseUrl, String? Function()? getAdminToken, String? Function()? getAdminPassword})
       : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)),
         _getAdminToken = getAdminToken,
@@ -234,6 +303,33 @@ class ApiClient {
     await _dio.delete('/api/admin/sources/$sourceId');
   }
 
+  /// Preview auto-discovery for a URL (before creating source)
+  Future<Map<String, dynamic>> adminPreviewSource(String url, {double rateLimitRps = 1.0}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources/preview', data: {
+      'url': url,
+      'rateLimitRps': rateLimitRps,
+    });
+    return r.data ?? {};
+  }
+
+  /// Create source with auto-discovery
+  Future<Map<String, dynamic>> adminCreateSourceWithDiscovery({
+    required String url,
+    String? name,
+    double rateLimitRps = 1.0,
+    bool isEnabled = true,
+    List<String>? includeKeywords,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources/create-with-discovery', data: {
+      'url': url,
+      if (name != null && name.isNotEmpty) 'name': name,
+      'rateLimitRps': rateLimitRps,
+      'isEnabled': isEnabled,
+      if (includeKeywords != null) 'includeKeywords': includeKeywords,
+    });
+    return r.data ?? {};
+  }
+
   Future<List<Map<String, dynamic>>> adminGetRuns({String? sourceId}) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/admin/runs', queryParameters: sourceId != null ? {'sourceId': sourceId} : null);
     final list = r.data?['runs'] as List? ?? [];
@@ -255,9 +351,204 @@ class ApiClient {
     return r.data ?? {};
   }
 
-  Future<List<Map<String, dynamic>>> adminGetItems({int limit = 50}) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/items', queryParameters: {'limit': limit});
-    final list = r.data?['items'] as List? ?? [];
+  Future<Map<String, dynamic>> adminGetItems({int limit = 50, String? retailer}) async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/items', queryParameters: {
+      'limit': limit,
+      if (retailer != null) 'retailer': retailer,
+    });
+    return r.data ?? {'items': []};
+  }
+
+  /// Trigger image validation for items
+  Future<Map<String, dynamic>> adminValidateImages({
+    int limit = 50,
+    String? retailer,
+    bool force = false,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/validate-images', data: {
+      'limit': limit,
+      if (retailer != null) 'retailer': retailer,
+      'force': force,
+    });
+    return r.data ?? {};
+  }
+
+  /// Get Creative Health statistics
+  Future<Map<String, dynamic>> adminGetCreativeHealthStats({String? retailer}) async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/creative-health-stats', queryParameters: {
+      if (retailer != null) 'retailer': retailer,
+    });
+    return r.data ?? {};
+  }
+
+  // ============ Onboarding / Gold Card APIs ============
+
+  /// Get curated sofas for the visual gold card
+  Future<List<Map<String, dynamic>>> getCuratedSofas() async {
+    try {
+      final r = await _dio.get<Map<String, dynamic>>('/api/onboarding/curated-sofas');
+      final list = r.data?['sofas'] as List? ?? [];
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      // Fallback: return empty list, UI will handle gracefully
+      return [];
+    }
+  }
+
+  /// Submit onboarding picks (visual card selections + budget)
+  Future<void> submitOnboardingPicks({
+    required String sessionId,
+    required List<String> pickedItemIds,
+    double? budgetMin,
+    double? budgetMax,
+  }) async {
+    await _dio.post('/api/onboarding/picks', data: {
+      'sessionId': sessionId,
+      'pickedItemIds': pickedItemIds,
+      if (budgetMin != null) 'budgetMin': budgetMin,
+      if (budgetMax != null) 'budgetMax': budgetMax,
+    });
+  }
+
+  // ============ Admin Curated Sofas APIs ============
+
+  /// Get all curated onboarding sofas (admin)
+  Future<List<Map<String, dynamic>>> adminGetCuratedSofas() async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/curated-sofas');
+    final list = r.data?['sofas'] as List? ?? [];
     return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Add item to curated onboarding sofas (admin)
+  Future<void> adminAddCuratedSofa(String itemId, int order) async {
+    await _dio.post('/api/admin/curated-sofas', data: {
+      'itemId': itemId,
+      'order': order,
+    });
+  }
+
+  /// Remove item from curated onboarding sofas (admin)
+  Future<void> adminRemoveCuratedSofa(String itemId) async {
+    await _dio.delete('/api/admin/curated-sofas/$itemId');
+  }
+
+  /// Reorder curated onboarding sofas (admin)
+  Future<void> adminReorderCuratedSofas(List<String> itemIds) async {
+    await _dio.put('/api/admin/curated-sofas/reorder', data: {
+      'itemIds': itemIds,
+    });
+  }
+
+  // ============ User Auth APIs ============
+
+  /// Link anonymous session to authenticated user.
+  Future<Map<String, dynamic>> linkSession({required String token, required String sessionId}) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/auth/link-session',
+      data: {'sessionId': sessionId},
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  /// Get current user profile.
+  Future<Map<String, dynamic>> getMe({required String token}) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/auth/me',
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  // ============ Decision Room APIs ============
+
+  /// Create a new Decision Room (requires auth).
+  Future<Map<String, dynamic>> createDecisionRoom({
+    required String token,
+    required List<String> itemIds,
+    String? title,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/decision-rooms',
+      data: {
+        'itemIds': itemIds,
+        if (title != null) 'title': title,
+      },
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  /// Get Decision Room by ID (public).
+  Future<Map<String, dynamic>> getDecisionRoom(String roomId) async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/decision-rooms/$roomId');
+    return r.data ?? {};
+  }
+
+  /// Vote on an item in a Decision Room (requires auth).
+  Future<Map<String, dynamic>> voteInDecisionRoom({
+    required String token,
+    required String roomId,
+    required String itemId,
+    required String vote, // "up" or "down"
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/decision-rooms/$roomId/vote',
+      data: {'itemId': itemId, 'vote': vote},
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  /// Add a comment to a Decision Room (requires auth).
+  Future<Map<String, dynamic>> commentInDecisionRoom({
+    required String token,
+    required String roomId,
+    required String text,
+    String? itemId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/decision-rooms/$roomId/comment',
+      data: {
+        'text': text,
+        if (itemId != null) 'itemId': itemId,
+      },
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  /// Get comments for a Decision Room (public).
+  Future<Map<String, dynamic>> getDecisionRoomComments(String roomId) async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/decision-rooms/$roomId/comments');
+    return r.data ?? {};
+  }
+
+  /// Suggest an alternative item to a Decision Room (requires auth).
+  Future<Map<String, dynamic>> suggestInDecisionRoom({
+    required String token,
+    required String roomId,
+    required String url,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/decision-rooms/$roomId/suggest',
+      data: {'url': url},
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
+  }
+
+  /// Set finalists in a Decision Room (requires auth, creator only).
+  Future<Map<String, dynamic>> setDecisionRoomFinalists({
+    required String token,
+    required String roomId,
+    required List<String> finalistIds,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/decision-rooms/$roomId/finalists',
+      data: {'finalistIds': finalistIds},
+      options: Options(headers: {'Authorization': 'Bearer $token'}),
+    );
+    return r.data ?? {};
   }
 }

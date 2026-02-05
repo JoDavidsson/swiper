@@ -8,6 +8,9 @@ import '../features/compare/compare_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/profile/data_privacy_screen.dart';
 import '../features/shared_shortlist/shared_shortlist_screen.dart';
+import '../features/auth/login_screen.dart';
+import '../features/auth/signup_screen.dart';
+import '../features/decision_room/decision_room_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/admin/admin_login_screen.dart';
 import '../features/admin/admin_sources_screen.dart';
@@ -15,6 +18,8 @@ import '../features/admin/admin_runs_screen.dart';
 import '../features/admin/admin_items_screen.dart';
 import '../features/admin/admin_import_screen.dart';
 import '../features/admin/admin_qa_screen.dart';
+import '../features/admin/admin_curated_screen.dart';
+import '../features/admin/admin_catalog_preview_screen.dart';
 import '../data/session_provider.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -79,6 +84,29 @@ final routerProvider = Provider<GoRouter>((ref) {
           return SharedShortlistScreen(shareToken: token);
         },
       ),
+      // Decision Room
+      GoRoute(
+        path: '/r/:roomId',
+        builder: (context, state) {
+          final roomId = state.pathParameters['roomId'] ?? '';
+          return DecisionRoomScreen(roomId: roomId);
+        },
+      ),
+      // Auth routes
+      GoRoute(
+        path: '/auth/login',
+        builder: (context, state) {
+          final redirectTo = state.extra as String?;
+          return LoginScreen(redirectTo: redirectTo);
+        },
+      ),
+      GoRoute(
+        path: '/auth/signup',
+        builder: (context, state) {
+          final redirectTo = state.extra as String?;
+          return SignUpScreen(redirectTo: redirectTo);
+        },
+      ),
       GoRoute(
         path: '/admin',
         builder: (context, state) => const AdminLoginScreen(),
@@ -110,6 +138,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/qa',
         builder: (context, state) => const AdminQAScreen(),
+      ),
+      GoRoute(
+        path: '/admin/curated',
+        builder: (context, state) => const AdminCuratedScreen(),
+      ),
+      GoRoute(
+        path: '/admin/catalog-preview',
+        builder: (context, state) => const AdminCatalogPreviewScreen(),
       ),
     ],
   );

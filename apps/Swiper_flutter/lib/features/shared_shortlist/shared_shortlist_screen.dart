@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
+import '../../data/api_client.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/session_provider.dart' show currentSurfaceProvider;
@@ -141,7 +142,7 @@ class _SharedShortlistScreenState extends ConsumerState<SharedShortlistScreen> {
                           if (item.firstImageUrl != null)
                             ClipRRect(
                               borderRadius: BorderRadius.circular(AppTheme.radiusChip),
-                              child: Image.network(item.firstImageUrl!, width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported)),
+                              child: Image.network(ApiClient.proxyImageUrl(item.firstImageUrl!), width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported)),
                             )
                           else
                             const SizedBox(width: 80, height: 80, child: Icon(Icons.image_not_supported)),

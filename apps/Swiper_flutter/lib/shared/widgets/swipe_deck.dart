@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme.dart';
+import '../../data/api_client.dart';
 import '../../data/models/item.dart';
 import 'draggable_swipe_card.dart';
 import 'deck_card.dart';
@@ -28,6 +29,9 @@ class SwipeDeck extends StatefulWidget {
     this.onCardImpressionEnd,
     this.onSwipeCancel,
     this.onSwipeUndo,
+    this.hasFiltersApplied = false,
+    this.onClearFilters,
+    this.onRefresh,
   });
 
   final List<Item> items;
@@ -47,6 +51,12 @@ class SwipeDeck extends StatefulWidget {
   final void Function(Item item, int position)? onSwipeCancel;
   /// Called when user taps undo (swipe_undo). Wire to event tracker when undo is implemented.
   final void Function(Item item, String direction)? onSwipeUndo;
+  /// Whether filters are currently applied (for empty state messaging).
+  final bool hasFiltersApplied;
+  /// Callback when user wants to clear filters from empty state.
+  final VoidCallback? onClearFilters;
+  /// Callback when user wants to refresh the deck.
+  final VoidCallback? onRefresh;
 
   @override
   State<SwipeDeck> createState() => _SwipeDeckState();
@@ -73,11 +83,19 @@ class _SwipeDeckState extends State<SwipeDeck> {
   String? _currentTopId;
   String? _impressionId;
   DateTime? _impressionStartedAt;
+  // Reserved for programmatic swipe triggers (e.g., button controls)
+  // ignore: unused_field
   VoidCallback? _triggerSwipeLeft;
+  // ignore: unused_field
   VoidCallback? _triggerSwipeRight;
+  // ignore: unused_field
   bool Function()? _isAnimatingGetter;
   String? _lastLoggedLayoutTopId;
   List<String>? _lastLoggedRestIds;
+  
+  // Undo support: track last swiped item and direction
+  Item? _lastSwipedItem;
+  String? _lastSwipeDirection;
 
   @override
   void initState() {
@@ -90,12 +108,11 @@ class _SwipeDeckState extends State<SwipeDeck> {
   void didUpdateWidget(SwipeDeck oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.items != oldWidget.items) {
-      if (widget.items.isEmpty && (_triggerSwipeLeft != null || _triggerSwipeRight != null)) {
-        setState(() {
-          _triggerSwipeLeft = null;
-          _triggerSwipeRight = null;
-          _isAnimatingGetter = null;
-        });
+      // Clear triggers if items become empty
+      if (widget.items.isEmpty) {
+        _triggerSwipeLeft = null;
+        _triggerSwipeRight = null;
+        _isAnimatingGetter = null;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
       WidgetsBinding.instance.addPostFrameCallback((_) => _prefetchUpcomingImages());
@@ -107,8 +124,9 @@ class _SwipeDeckState extends State<SwipeDeck> {
     // Prefetch top + next 4 to avoid image pop-in/flash on promotion.
     final toPrefetch = widget.items.take(5);
     for (final item in toPrefetch) {
-      final url = item.firstImageUrl;
-      if (url == null || url.isEmpty) continue;
+      final rawUrl = item.firstImageUrl;
+      if (rawUrl == null || rawUrl.isEmpty) continue;
+      final url = ApiClient.proxyImageUrl(rawUrl);
       // Ignore failures (offline/cors/etc). Prefetch is best-effort.
       precacheImage(CachedNetworkImageProvider(url), context).catchError((_) {});
     }
@@ -147,6 +165,8 @@ class _SwipeDeckState extends State<SwipeDeck> {
   void _onSwipeLeft() {
     if (widget.items.isEmpty) return;
     final top = widget.items.first;
+    _lastSwipedItem = top;
+    _lastSwipeDirection = 'left';
     _endImpressionIfAny('swipe');
     widget.onSwipeLeft(top, 0);
   }
@@ -154,26 +174,32 @@ class _SwipeDeckState extends State<SwipeDeck> {
   void _onSwipeRight() {
     if (widget.items.isEmpty) return;
     final top = widget.items.first;
+    _lastSwipedItem = top;
+    _lastSwipeDirection = 'right';
     _endImpressionIfAny('swipe');
     widget.onSwipeRight(top, 0);
   }
 
   void _onSwipeLeftButton() {
     if (widget.items.isEmpty) return;
-    if (_isAnimatingGetter?.call() == true) return;
     final top = widget.items.first;
+    _lastSwipedItem = top;
+    _lastSwipeDirection = 'left';
     _endImpressionIfAny('swipe');
     widget.onSwipeLeft(top, 0, gesture: 'button');
-    _triggerSwipeLeft?.call();
+    // Always remove directly for button presses (reliable, no animation timing issues)
+    widget.onSwipeAnimationEnd?.call(top);
   }
 
   void _onSwipeRightButton() {
     if (widget.items.isEmpty) return;
-    if (_isAnimatingGetter?.call() == true) return;
     final top = widget.items.first;
+    _lastSwipedItem = top;
+    _lastSwipeDirection = 'right';
     _endImpressionIfAny('swipe');
     widget.onSwipeRight(top, 0, gesture: 'button');
-    _triggerSwipeRight?.call();
+    // Always remove directly for button presses (reliable, no animation timing issues)
+    widget.onSwipeAnimationEnd?.call(top);
   }
 
   Future<void> _onTapDetail() async {
@@ -190,17 +216,10 @@ class _SwipeDeckState extends State<SwipeDeck> {
   @override
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.textCaption),
-            const SizedBox(height: AppTheme.spacingUnit),
-            Text('No more items', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppTheme.spacingUnit),
-            Text('Check back later or adjust filters.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary)),
-          ],
-        ),
+      return _EmptyDeckWidget(
+        hasFiltersApplied: widget.hasFiltersApplied,
+        onClearFilters: widget.onClearFilters,
+        onRefresh: widget.onRefresh,
       );
     }
 
@@ -300,10 +319,13 @@ class _SwipeDeckState extends State<SwipeDeck> {
                   _ControlButton(
                     icon: Icons.undo,
                     color: AppTheme.textSecondary,
-                    onPressed: widget.onSwipeUndo != null && widget.items.isNotEmpty
+                    onPressed: widget.onSwipeUndo != null && _lastSwipedItem != null
                         ? () {
-                            final top = widget.items.first;
-                            widget.onSwipeUndo!(top, 'right');
+                            final item = _lastSwipedItem!;
+                            final direction = _lastSwipeDirection ?? 'right';
+                            _lastSwipedItem = null;
+                            _lastSwipeDirection = null;
+                            widget.onSwipeUndo!(item, direction);
                           }
                         : null,
                   ),
@@ -330,6 +352,94 @@ class _ControlButton extends StatelessWidget {
       icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
       onPressed: onPressed,
       style: IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
+    );
+  }
+}
+
+/// Empty deck state widget with contextual messaging based on filter state.
+class _EmptyDeckWidget extends StatelessWidget {
+  const _EmptyDeckWidget({
+    this.hasFiltersApplied = false,
+    this.onClearFilters,
+    this.onRefresh,
+  });
+
+  final bool hasFiltersApplied;
+  final VoidCallback? onClearFilters;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Icon based on context
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppTheme.textCaption.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(40),
+              ),
+              child: Icon(
+                hasFiltersApplied ? Icons.filter_alt_off : Icons.inventory_2_outlined,
+                size: 40,
+                color: AppTheme.textCaption,
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingUnit * 2),
+            // Message
+            Text(
+              hasFiltersApplied
+                  ? 'No items match your filters'
+                  : 'No more items to show',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppTheme.spacingUnit),
+            Text(
+              hasFiltersApplied
+                  ? 'Try adjusting your filters or clearing them to see more sofas.'
+                  : 'Great job! Check back later for new arrivals.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppTheme.spacingUnit * 3),
+            // Action buttons
+            if (hasFiltersApplied && onClearFilters != null)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onClearFilters,
+                  icon: const Icon(Icons.filter_alt_off),
+                  label: const Text('Clear Filters'),
+                ),
+              ),
+            if (hasFiltersApplied && onClearFilters != null)
+              const SizedBox(height: AppTheme.spacingUnit),
+            if (onRefresh != null)
+              SizedBox(
+                width: double.infinity,
+                child: hasFiltersApplied
+                    ? OutlinedButton.icon(
+                        onPressed: onRefresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh Deck'),
+                      )
+                    : ElevatedButton.icon(
+                        onPressed: onRefresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh Deck'),
+                      ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

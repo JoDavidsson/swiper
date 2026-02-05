@@ -11,12 +11,66 @@ import { eventsPost } from "./events";
 import { eventsBatchPost } from "./events_batch";
 import { adminVerifyPost } from "./admin";
 import { adminStatsGet } from "./admin_stats";
-import { adminSourcesGet, adminSourcesPost, adminSourceGet, adminSourcePut, adminSourceDelete } from "./admin_sources";
+import { 
+  adminSourcesGet, 
+  adminSourcesPost, 
+  adminSourceGet, 
+  adminSourcePut, 
+  adminSourceDelete,
+  adminSourcesPreview,
+  adminSourcesCreateWithDiscovery,
+} from "./admin_sources";
 import { adminRunsGet, adminRunGet } from "./admin_runs";
 import { adminRunTriggerPost } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
 import { adminItemsGet } from "./admin_items";
 import { requireAdminAuth } from "./admin_auth";
+import { onboardingCuratedSofasGet } from "./onboarding_curated";
+import { onboardingPicksPost, onboardingPicksGet } from "./onboarding_picks";
+import { adminCuratedSofasGet, adminCuratedSofasPost, adminCuratedSofasDelete, adminCuratedSofasReorder } from "./admin_curated";
+import { adminValidateImagesPost, adminCreativeHealthStatsGet } from "./admin_image_validation";
+import { imageProxyGet, imageMetaGet } from "./image_proxy";
+import { authLinkSessionPost, authMeGet } from "./auth";
+import {
+  decisionRoomsPost,
+  decisionRoomsGet,
+  decisionRoomsVotePost,
+  decisionRoomsCommentPost,
+  decisionRoomsCommentsGet,
+  decisionRoomsSuggestPost,
+  decisionRoomsFinalistsPost,
+} from "./decision_rooms";
+import {
+  adminRetailersPost,
+  adminRetailersGet,
+  retailersGetById,
+  adminRetailersPatch,
+  retailersClaimPost,
+  retailerMeGet,
+} from "./retailers";
+import {
+  segmentsTemplatesGet,
+  segmentsPost,
+  segmentsGet,
+  segmentsGetById,
+  segmentsPatch,
+  segmentsDelete,
+} from "./segments";
+import {
+  retailerCampaignsPost,
+  retailerCampaignsGet,
+  retailerCampaignsGetById,
+  retailerCampaignsPatch,
+  retailerCampaignsPause,
+  retailerCampaignsActivate,
+  retailerCampaignsDelete,
+} from "./campaigns";
+import {
+  scoresGet,
+  scoresGetByProduct,
+  adminScoresSummaryGet,
+  adminScoresRecalculatePost,
+} from "./scores";
 
 export async function apiHandler(req: Request, res: Response): Promise<void> {
   // Emulator: path can be /project/region/api/... ; prod/hosted: /api/... or /items/deck. Normalize to e.g. "session" or "items/deck".
@@ -30,7 +84,7 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Session-Id, X-Admin-Password",
   };
 
@@ -83,6 +137,53 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
       await eventsBatchPost(req, res);
       return;
     }
+
+    // User auth routes
+    if (method === "POST" && path === "auth/link-session") {
+      await authLinkSessionPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "auth/me") {
+      await authMeGet(req, res);
+      return;
+    }
+
+    // Decision Room routes
+    if (method === "POST" && path === "decision-rooms") {
+      await decisionRoomsPost(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^decision-rooms\/[^/]+$/)) {
+      const roomId = path.replace("decision-rooms/", "");
+      await decisionRoomsGet(req, res, roomId);
+      return;
+    }
+    if (method === "POST" && path.match(/^decision-rooms\/[^/]+\/vote$/)) {
+      const roomId = path.replace("decision-rooms/", "").replace("/vote", "");
+      await decisionRoomsVotePost(req, res, roomId);
+      return;
+    }
+    if (method === "POST" && path.match(/^decision-rooms\/[^/]+\/comment$/)) {
+      const roomId = path.replace("decision-rooms/", "").replace("/comment", "");
+      await decisionRoomsCommentPost(req, res, roomId);
+      return;
+    }
+    if (method === "GET" && path.match(/^decision-rooms\/[^/]+\/comments$/)) {
+      const roomId = path.replace("decision-rooms/", "").replace("/comments", "");
+      await decisionRoomsCommentsGet(req, res, roomId);
+      return;
+    }
+    if (method === "POST" && path.match(/^decision-rooms\/[^/]+\/suggest$/)) {
+      const roomId = path.replace("decision-rooms/", "").replace("/suggest", "");
+      await decisionRoomsSuggestPost(req, res, roomId);
+      return;
+    }
+    if (method === "POST" && path.match(/^decision-rooms\/[^/]+\/finalists$/)) {
+      const roomId = path.replace("decision-rooms/", "").replace("/finalists", "");
+      await decisionRoomsFinalistsPost(req, res, roomId);
+      return;
+    }
+
     // Admin routes (except verify): require Bearer token + allowlist OR X-Admin-Password (password gate)
     if (path.startsWith("admin/") && !(method === "POST" && path === "admin/verify")) {
       const adminUser = await requireAdminAuth(req, res);
@@ -108,6 +209,15 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "POST" && path === "admin/sources") {
       await adminSourcesPost(req, res);
+      return;
+    }
+    // New auto-discovery endpoints (must come before generic GET/PUT/DELETE)
+    if (method === "POST" && path === "admin/sources/preview") {
+      await adminSourcesPreview(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/sources/create-with-discovery") {
+      await adminSourcesCreateWithDiscovery(req, res);
       return;
     }
     if (method === "GET" && path.startsWith("admin/sources/")) {
@@ -144,6 +254,172 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "GET" && path === "admin/items") {
       await adminItemsGet(req, res);
+      return;
+    }
+    // Admin curated sofas routes
+    if (method === "GET" && path === "admin/curated-sofas") {
+      await adminCuratedSofasGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/curated-sofas") {
+      await adminCuratedSofasPost(req, res);
+      return;
+    }
+    if (method === "DELETE" && path.startsWith("admin/curated-sofas/")) {
+      const itemId = path.replace("admin/curated-sofas/", "");
+      await adminCuratedSofasDelete(req, res, itemId);
+      return;
+    }
+    if (method === "PUT" && path === "admin/curated-sofas/reorder") {
+      await adminCuratedSofasReorder(req, res);
+      return;
+    }
+    // Admin image validation routes
+    if (method === "POST" && path === "admin/validate-images") {
+      await adminValidateImagesPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "admin/creative-health-stats") {
+      await adminCreativeHealthStatsGet(req, res);
+      return;
+    }
+
+    // Image proxy (for serving external images through our domain)
+    if (method === "GET" && path === "image-proxy") {
+      await imageProxyGet(req, res);
+      return;
+    }
+    
+    // Image metadata (for validation without full download)
+    if (method === "GET" && path === "image-meta") {
+      await imageMetaGet(req, res);
+      return;
+    }
+
+    // Public onboarding routes
+    if (method === "GET" && path === "onboarding/curated-sofas") {
+      await onboardingCuratedSofasGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "onboarding/picks") {
+      await onboardingPicksPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "onboarding/picks") {
+      await onboardingPicksGet(req, res);
+      return;
+    }
+
+    // Retailer routes (admin)
+    if (method === "POST" && path === "admin/retailers") {
+      await adminRetailersPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "admin/retailers") {
+      await adminRetailersGet(req, res);
+      return;
+    }
+    if (method === "PATCH" && path.match(/^admin\/retailers\/[^/]+$/)) {
+      const retailerId = path.replace("admin/retailers/", "");
+      await adminRetailersPatch(req, res, retailerId);
+      return;
+    }
+    // Retailer routes (user)
+    if (method === "GET" && path === "retailer/me") {
+      await retailerMeGet(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^retailers\/[^/]+$/)) {
+      const retailerId = path.replace("retailers/", "");
+      await retailersGetById(req, res, retailerId);
+      return;
+    }
+    if (method === "POST" && path.match(/^retailers\/[^/]+\/claim$/)) {
+      const retailerId = path.replace("retailers/", "").replace("/claim", "");
+      await retailersClaimPost(req, res, retailerId);
+      return;
+    }
+
+    // Segment routes
+    if (method === "GET" && path === "segments/templates") {
+      await segmentsTemplatesGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "segments") {
+      await segmentsPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "segments") {
+      await segmentsGet(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^segments\/[^/]+$/) && !path.includes("templates")) {
+      const segmentId = path.replace("segments/", "");
+      await segmentsGetById(req, res, segmentId);
+      return;
+    }
+    if (method === "PATCH" && path.match(/^segments\/[^/]+$/)) {
+      const segmentId = path.replace("segments/", "");
+      await segmentsPatch(req, res, segmentId);
+      return;
+    }
+    if (method === "DELETE" && path.match(/^segments\/[^/]+$/)) {
+      const segmentId = path.replace("segments/", "");
+      await segmentsDelete(req, res, segmentId);
+      return;
+    }
+
+    // Campaign routes (retailer)
+    if (method === "POST" && path === "retailer/campaigns") {
+      await retailerCampaignsPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "retailer/campaigns") {
+      await retailerCampaignsGet(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^retailer\/campaigns\/[^/]+$/) && !path.includes("pause") && !path.includes("activate")) {
+      const campaignId = path.replace("retailer/campaigns/", "");
+      await retailerCampaignsGetById(req, res, campaignId);
+      return;
+    }
+    if (method === "PATCH" && path.match(/^retailer\/campaigns\/[^/]+$/)) {
+      const campaignId = path.replace("retailer/campaigns/", "");
+      await retailerCampaignsPatch(req, res, campaignId);
+      return;
+    }
+    if (method === "POST" && path.match(/^retailer\/campaigns\/[^/]+\/pause$/)) {
+      const campaignId = path.replace("retailer/campaigns/", "").replace("/pause", "");
+      await retailerCampaignsPause(req, res, campaignId);
+      return;
+    }
+    if (method === "POST" && path.match(/^retailer\/campaigns\/[^/]+\/activate$/)) {
+      const campaignId = path.replace("retailer/campaigns/", "").replace("/activate", "");
+      await retailerCampaignsActivate(req, res, campaignId);
+      return;
+    }
+    if (method === "DELETE" && path.match(/^retailer\/campaigns\/[^/]+$/)) {
+      const campaignId = path.replace("retailer/campaigns/", "");
+      await retailerCampaignsDelete(req, res, campaignId);
+      return;
+    }
+
+    // Score routes
+    if (method === "GET" && path === "scores") {
+      await scoresGet(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^scores\/[^/]+$/)) {
+      const productId = path.replace("scores/", "");
+      await scoresGetByProduct(req, res, productId);
+      return;
+    }
+    if (method === "GET" && path === "admin/scores/summary") {
+      await adminScoresSummaryGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/scores/recalculate") {
+      await adminScoresRecalculatePost(req, res);
       return;
     }
 

@@ -6,6 +6,25 @@ import os
 from pathlib import Path
 
 
+def get_sources():
+    """
+    Prefer sources from Firestore `sources` collection (admin-managed).
+    Fallback to config JSON for local MVP and bootstrap.
+    """
+    # Firestore is optional in local bootstrap; fall back gracefully.
+    try:
+        from app.firestore_client import get_firestore_client
+
+        db = get_firestore_client()
+        snap = db.collection("sources").get()
+        sources = [{"id": d.id, **(d.to_dict() or {})} for d in snap]
+        if sources:
+            return sources
+    except Exception:
+        pass
+    return get_sources_from_config()
+
+
 def get_sources_from_config():
     """Load sources from config/sources.json or env SOURCES_JSON path."""
     path = os.environ.get("SOURCES_JSON")

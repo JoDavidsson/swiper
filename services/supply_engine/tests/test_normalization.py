@@ -7,6 +7,7 @@ from app.normalization import (
     normalize_new_used,
     canonical_url,
     size_class_from_width_cm,
+    infer_color_from_title,
 )
 
 
@@ -45,3 +46,13 @@ def test_canonical_url():
     assert canonical_url("https://example.com/p?utm_source=x") == "https://example.com/p"
     assert "example.com" in canonical_url("https://Example.COM/path")
     assert canonical_url("https://a.com/p#frag").endswith("/p")
+
+
+def test_infer_color_from_title():
+    assert infer_color_from_title("Bolero 3-sits soffa svart") == "black"
+    assert infer_color_from_title("Sofa Grå modern") == "gray"
+    assert infer_color_from_title("Beige fabric sofa") == "beige"
+    assert infer_color_from_title("STOCKHOLM 2025 3-seat sofa") is None
+    assert infer_color_from_title("Red Edition Fifties Sofa 210") == "red"
+    assert infer_color_from_title("") is None
+    assert infer_color_from_title(None) is None

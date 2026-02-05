@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
+import '../../data/api_client.dart';
 import '../../data/models/item.dart';
 
 Future<void> showDetailSheet(
@@ -14,6 +15,10 @@ Future<void> showDetailSheet(
   void Function(Item item)? onOutboundRedirectStart,
   void Function(Item item)? onOutboundRedirectSuccess,
   void Function(Item item, Object error)? onOutboundRedirectFail,
+  /// Whether this item is currently liked (shows filled heart if true)
+  bool isLiked = false,
+  /// Callback when user toggles like status. Returns new liked state.
+  Future<bool> Function(Item item)? onToggleLike,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -39,6 +44,8 @@ Future<void> showDetailSheet(
         onOutboundRedirectStart: onOutboundRedirectStart,
         onOutboundRedirectSuccess: onOutboundRedirectSuccess,
         onOutboundRedirectFail: onOutboundRedirectFail,
+        isLiked: isLiked,
+        onToggleLike: onToggleLike,
       ),
     ),
   );
@@ -56,6 +63,8 @@ class DetailSheetContent extends StatefulWidget {
     this.onOutboundRedirectStart,
     this.onOutboundRedirectSuccess,
     this.onOutboundRedirectFail,
+    this.isLiked = false,
+    this.onToggleLike,
   });
 
   final Item item;
@@ -67,6 +76,8 @@ class DetailSheetContent extends StatefulWidget {
   final void Function(Item item)? onOutboundRedirectStart;
   final void Function(Item item)? onOutboundRedirectSuccess;
   final void Function(Item item, Object error)? onOutboundRedirectFail;
+  final bool isLiked;
+  final Future<bool> Function(Item item)? onToggleLike;
 
   @override
   State<DetailSheetContent> createState() => _DetailSheetContentState();
@@ -77,11 +88,14 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
   int _lastScrollEmitMs = 0;
   static const _scrollThrottleMs = 500;
   late PageController _pageController;
+  late bool _isLiked;
+  bool _isTogglingLike = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    _isLiked = widget.isLiked;
     widget.scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _animateIn = true);
@@ -101,6 +115,21 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
     if (now - _lastScrollEmitMs >= _scrollThrottleMs) {
       _lastScrollEmitMs = now;
       widget.onScroll!();
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    if (widget.onToggleLike == null || _isTogglingLike) return;
+    setState(() => _isTogglingLike = true);
+    try {
+      final newState = await widget.onToggleLike!(widget.item);
+      if (mounted) {
+        setState(() => _isLiked = newState);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTogglingLike = false);
+      }
     }
   }
 
@@ -152,7 +181,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                     return ClipRRect(
                       borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                       child: CachedNetworkImage(
-                        imageUrl: url,
+                        imageUrl: ApiClient.proxyImageUrl(url),
                         fit: BoxFit.cover,
                         placeholder: (_, __) => const Center(child: CircularProgressIndicator()),
                         errorWidget: (_, __, ___) => Icon(Icons.broken_image, size: 64, color: AppTheme.textCaption),
@@ -181,16 +210,45 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
               if (widget.item.lastUpdatedAt != null)
                 Text('Last updated: ${widget.item.lastUpdatedAt!.toIso8601String().split('T').first}', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: AppTheme.spacingUnit * 2),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    widget.onOutboundClick?.call(widget.item);
-                    _openOutbound(context);
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('View on site'),
-                ),
+              Row(
+                children: [
+                  if (widget.onToggleLike != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: AppTheme.spacingUnit),
+                      child: IconButton.filled(
+                        onPressed: _isTogglingLike ? null : _toggleLike,
+                        icon: _isTogglingLike
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Icon(
+                                _isLiked ? Icons.favorite : Icons.favorite_border,
+                                color: _isLiked ? AppTheme.positiveLike : null,
+                              ),
+                        tooltip: _isLiked ? 'Remove from likes' : 'Add to likes',
+                        style: IconButton.styleFrom(
+                          backgroundColor: _isLiked
+                              ? AppTheme.positiveLike.withValues(alpha: 0.15)
+                              : AppTheme.surface,
+                          side: BorderSide(
+                            color: _isLiked ? AppTheme.positiveLike : AppTheme.textCaption.withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        widget.onOutboundClick?.call(widget.item);
+                        _openOutbound(context);
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('View on site'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
