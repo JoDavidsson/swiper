@@ -18,64 +18,82 @@ from app.normalization import (
 )
 
 
-def run_feed_ingestion(source_id: str, source: dict) -> dict:
-    """Run feed ingestion for a source. Returns run stats."""
+def run_feed_ingestion(source_id: str, source: dict, *, run_id: str | None = None) -> dict:
+    """Run feed ingestion for a source. Returns run stats.
+    
+    Args:
+        source_id: Firestore document ID of the source
+        source: Source configuration dict
+        run_id: Optional correlation ID for logs (passed from API caller)
+    """
+    # Log with correlation ID if provided
+    correlation_id = run_id or "auto"
+    def log(msg: str):
+        print(f"[{correlation_id}] {msg}", flush=True)
+    
     feed_url = source.get("feedUrl") or source.get("feed_format_url")
     feed_format = (source.get("feedFormat") or source.get("feed_format") or "csv").lower()
     if not feed_url:
         raise ValueError("feedUrl required for feed source")
 
+    log(f"Starting feed ingestion for {source_id}, format={feed_format}")
+    
     db = get_firestore_client()
-    run_id = create_run(db, source_id, "running")
+    db_run_id = create_run(db, source_id, "running")
     started_at = time.time()
     stats = {"fetched": 0, "parsed": 0, "normalized": 0, "upserted": 0, "failed": 0}
 
     try:
-        job_id = create_job(db, source_id, run_id, "fetch_feed", {"url": feed_url}, "running")
+        job_id = create_job(db, source_id, db_run_id, "fetch_feed", {"url": feed_url}, "running")
         rows = _fetch_feed(feed_url, feed_format)
         stats["fetched"] = len(rows)
+        log(f"Fetched {len(rows)} rows")
         update_job(db, job_id, "succeeded")
     except Exception as e:
         update_job(db, job_id, "failed", error=str(e))
-        update_run(db, run_id, "failed", stats, error_summary=str(e))
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
+        update_run(db, db_run_id, "failed", stats, error_summary=str(e))
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
 
     try:
-        job_id = create_job(db, source_id, run_id, "parse", {"count": len(rows)}, "running")
+        job_id = create_job(db, source_id, db_run_id, "parse", {"count": len(rows)}, "running")
         raw_items = _parse_feed_rows(rows, feed_format)
         stats["parsed"] = len(raw_items)
+        log(f"Parsed {len(raw_items)} items")
         update_job(db, job_id, "succeeded")
     except Exception as e:
         update_job(db, job_id, "failed", error=str(e))
-        update_run(db, run_id, "failed", stats, error_summary=str(e))
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
+        update_run(db, db_run_id, "failed", stats, error_summary=str(e))
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
 
     try:
-        job_id = create_job(db, source_id, run_id, "normalize", {}, "running")
+        job_id = create_job(db, source_id, db_run_id, "normalize", {}, "running")
         items = [_normalize_item(raw, source_id) for raw in raw_items]
         items = [x for x in items if x is not None]
         stats["normalized"] = len(items)
+        log(f"Normalized {len(items)} items")
         update_job(db, job_id, "succeeded")
     except Exception as e:
         update_job(db, job_id, "failed", error=str(e))
-        update_run(db, run_id, "failed", stats, error_summary=str(e))
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
+        update_run(db, db_run_id, "failed", stats, error_summary=str(e))
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
 
     try:
-        job_id = create_job(db, source_id, run_id, "upsert", {"count": len(items)}, "running")
+        job_id = create_job(db, source_id, db_run_id, "upsert", {"count": len(items)}, "running")
         upserted, failed = write_items(db, items, source_id)
         stats["upserted"] = upserted
         stats["failed"] = failed
+        log(f"Upserted {upserted} items, {failed} failed")
         update_job(db, job_id, "succeeded")
     except Exception as e:
         update_job(db, job_id, "failed", error=str(e))
-        update_run(db, run_id, "failed", stats, error_summary=str(e))
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
+        update_run(db, db_run_id, "failed", stats, error_summary=str(e))
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
 
     duration_ms = int((time.time() - started_at) * 1000)
     stats["durationMs"] = duration_ms
-    update_run(db, run_id, "succeeded", stats)
-    return {"runId": run_id, "status": "succeeded", "stats": stats}
+    log(f"Feed ingestion completed in {duration_ms}ms")
+    update_run(db, db_run_id, "succeeded", stats)
+    return {"runId": db_run_id, "status": "succeeded", "stats": stats}
 
 
 def _fetch_feed(feed_url: str, feed_format: str) -> list[dict]:

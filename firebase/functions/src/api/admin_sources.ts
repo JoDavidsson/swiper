@@ -4,7 +4,70 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "../firestore";
 
 // Supply engine URL (set via environment variable or default to localhost)
-const SUPPLY_ENGINE_URL = process.env.SUPPLY_ENGINE_URL || "http://localhost:8000";
+// Default port 8081 matches scripts/run_supply_engine.sh
+const SUPPLY_ENGINE_URL = process.env.SUPPLY_ENGINE_URL || "http://localhost:8081";
+
+/**
+ * Normalize a URL to ensure it has https:// protocol.
+ * Converts bare domains like "www.mio.se" to "https://www.mio.se"
+ */
+function normalizeUrl(url: string | undefined): string | undefined {
+  if (!url || typeof url !== "string") return url;
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  
+  // If no protocol, add https://
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
+/**
+ * Validate source data and return normalized data with any errors.
+ */
+function validateAndNormalizeSource(body: Record<string, unknown>): {
+  normalized: Record<string, unknown>;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  const normalized: Record<string, unknown> = { ...body };
+  
+  // Normalize URL fields
+  if (normalized.url) {
+    normalized.url = normalizeUrl(normalized.url as string);
+  }
+  if (normalized.baseUrl) {
+    normalized.baseUrl = normalizeUrl(normalized.baseUrl as string);
+  }
+  
+  // Normalize seedUrls array
+  if (Array.isArray(normalized.seedUrls)) {
+    normalized.seedUrls = (normalized.seedUrls as string[])
+      .map((u) => normalizeUrl(u))
+      .filter((u) => u); // Remove empty/undefined
+  }
+  
+  // Validate: seedType=manual requires non-empty seedUrls
+  const seedType = normalized.seedType as string | undefined;
+  const seedUrls = normalized.seedUrls as string[] | undefined;
+  
+  if (seedType === "manual") {
+    if (!seedUrls || seedUrls.length === 0) {
+      errors.push("seedType 'manual' requires at least one URL in seedUrls");
+    }
+  }
+  
+  // Validate: must have either url, baseUrl, or seedUrls
+  const hasUrl = normalized.url || normalized.baseUrl;
+  const hasSeedUrls = seedUrls && seedUrls.length > 0;
+  
+  if (!hasUrl && !hasSeedUrls) {
+    errors.push("Source must have either a url/baseUrl or seedUrls");
+  }
+  
+  return { normalized, errors };
+}
 
 /**
  * Call the supply engine's /discover endpoint to auto-discover configuration.
@@ -43,9 +106,17 @@ export async function adminSourcesPost(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Body required" });
     return;
   }
+  
+  // Validate and normalize the source data
+  const { normalized, errors } = validateAndNormalizeSource(body);
+  if (errors.length > 0) {
+    res.status(400).json({ error: "Validation failed", details: errors });
+    return;
+  }
+  
   const db = admin.firestore();
   const ref = await db.collection("sources").add({
-    ...body,
+    ...normalized,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -68,11 +139,40 @@ export async function adminSourcePut(req: Request, res: Response, sourceId: stri
     res.status(400).json({ error: "Body required" });
     return;
   }
+  
   const db = admin.firestore();
-  await db.collection("sources").doc(sourceId).update({
-    ...body,
+  
+  // Check if URL changed - if so, we need to clear derived config
+  // to force re-discovery on next run (prevents stale derived overrides)
+  const existing = await db.collection("sources").doc(sourceId).get();
+  if (!existing.exists) {
+    res.status(404).json({ error: "Source not found" });
+    return;
+  }
+  
+  // Validate and normalize the source data
+  const { normalized, errors } = validateAndNormalizeSource(body);
+  if (errors.length > 0) {
+    res.status(400).json({ error: "Validation failed", details: errors });
+    return;
+  }
+  
+  const existingData = existing.data() as Record<string, unknown>;
+  const existingUrl = existingData?.url || existingData?.baseUrl;
+  const newUrl = normalized.url || normalized.baseUrl;
+  
+  const updateData: Record<string, unknown> = {
+    ...normalized,
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+  
+  // Clear derived config if URL changed (forces re-discovery)
+  if (newUrl && existingUrl && newUrl !== existingUrl) {
+    console.log(`[adminSourcePut] URL changed from "${existingUrl}" to "${newUrl}", clearing derived config`);
+    updateData.derived = FieldValue.delete();
+  }
+  
+  await db.collection("sources").doc(sourceId).update(updateData);
   res.status(200).json({ ok: true });
 }
 
@@ -126,6 +226,7 @@ export async function adminSourcesPreview(req: Request, res: Response): Promise<
  *   rateLimitRps?: number, // Optional rate limit (default: 1.0)
  *   isEnabled?: boolean,   // Optional enabled flag (default: true)
  *   includeKeywords?: string[], // Optional keyword filter overrides
+ *   categoryFilter?: string[], // URL path patterns to filter (e.g., ["soffor", "soffa"])
  * }
  * 
  * This endpoint:
@@ -144,6 +245,7 @@ export async function adminSourcesCreateWithDiscovery(req: Request, res: Respons
   const rateLimitRps = typeof body.rateLimitRps === "number" ? body.rateLimitRps : 1.0;
   const isEnabled = body.isEnabled !== false; // Default true
   const includeKeywords = Array.isArray(body.includeKeywords) ? body.includeKeywords : null;
+  const categoryFilter = Array.isArray(body.categoryFilter) ? body.categoryFilter : null;
 
   // Call supply engine for auto-discovery
   const discoveryResult = await callSupplyEngineDiscover(url, rateLimitRps);
@@ -192,6 +294,7 @@ export async function adminSourcesCreateWithDiscovery(req: Request, res: Respons
     
     // Optional overrides
     ...(includeKeywords && { includeKeywords }),
+    ...(categoryFilter && { categoryFilter }),
     
     // Metadata
     createdAt: FieldValue.serverTimestamp(),

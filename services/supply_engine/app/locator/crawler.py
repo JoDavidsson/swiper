@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from app.http.fetcher import PoliteFetcher, FetchError, absolute_url, filter_allowlisted
 from app.locator.classifier import classify_url
+from app.normalization import domains_equivalent
 
 
 @dataclass(frozen=True)
@@ -116,7 +117,9 @@ def discover_from_category_crawl(
         url, depth = q.popleft()
         if url in seen_pages:
             continue
-        if base_domain and _domain(url) != base_domain:
+        # Same-site check (treats www.x.com and x.com as equivalent)
+        url_domain = _domain(url)
+        if base_domain and url_domain and not domains_equivalent(url_domain, base_domain):
             continue
         seen_pages.add(url)
         
@@ -145,7 +148,9 @@ def discover_from_category_crawl(
         for u in links:
             if len(out) >= max_out_urls:
                 break
-            if base_domain and _domain(u) != base_domain:
+            # Same-site check (treats www.x.com and x.com as equivalent)
+            link_domain = _domain(u)
+            if base_domain and link_domain and not domains_equivalent(link_domain, base_domain):
                 continue
             if u in out_seen:
                 continue

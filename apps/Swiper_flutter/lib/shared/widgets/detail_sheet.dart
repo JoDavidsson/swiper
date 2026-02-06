@@ -260,8 +260,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
   Future<void> _openOutbound(BuildContext context) async {
     Navigator.of(context).pop();
     widget.onOutboundRedirectStart?.call(widget.item);
-    final base = widget.goBaseUrl ?? Uri.base.origin;
-    final url = Uri.parse('$base/go/${widget.item.id}');
+    final url = Uri.parse(ApiClient.goUrl(widget.item.id));
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);

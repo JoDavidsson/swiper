@@ -19,7 +19,7 @@ from dataclasses import dataclass, asdict
 from typing import Literal
 from urllib.parse import urlparse
 
-from app.normalization import normalize_source_url, extract_domain_root
+from app.normalization import normalize_source_url, extract_domain_root, domains_equivalent
 from app.http.fetcher import PoliteFetcher, FetchError
 from app.locator.classifier import classify_url
 
@@ -73,15 +73,33 @@ def _extract_sitemaps_from_robots(robots_txt: str) -> list[str]:
     return sitemaps
 
 
-def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
+def _parse_sitemap_content(content: str) -> tuple[list[str], list[str]]:
     """
-    Parse sitemap XML and return (urls, nested_sitemaps).
-    Supports both urlset and sitemapindex formats.
+    Parse sitemap content (XML or plain text) and return (urls, nested_sitemaps).
+    
+    Supports:
+    - XML urlset format (standard sitemap)
+    - XML sitemapindex format (sitemap of sitemaps)
+    - Plain text format (.txt sitemaps with one URL per line)
     """
     urls: list[str] = []
     sitemaps: list[str] = []
+    
+    # First, try to detect if it's plain text (one URL per line)
+    # Text sitemaps typically don't start with '<' and contain http URLs
+    stripped = content.strip()
+    if stripped and not stripped.startswith('<'):
+        # Likely plain text sitemap - parse as URL list
+        for line in stripped.splitlines():
+            line = line.strip()
+            if line.startswith('http://') or line.startswith('https://'):
+                urls.append(line)
+        if urls:
+            return urls, sitemaps
+    
+    # Try XML parsing
     try:
-        root = ET.fromstring(xml_text.encode("utf-8", errors="ignore"))
+        root = ET.fromstring(content.encode("utf-8", errors="ignore"))
     except Exception:
         return urls, sitemaps
 
@@ -105,6 +123,12 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
         if loc.text:
             urls.append(loc.text.strip())
     return urls, sitemaps
+
+
+# Alias for backward compatibility
+def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
+    """Alias for _parse_sitemap_content for backward compatibility."""
+    return _parse_sitemap_content(xml_text)
 
 
 def _url_matches_pattern(url: str, pattern: str) -> bool:
@@ -160,10 +184,10 @@ def _count_sitemap_urls(
             # Process URLs (sample if too many)
             sample_urls = urls[:max_urls_per_sitemap]
             for url in sample_urls:
-                # Skip if different domain
+                # Skip if different domain (treats www.x.com and x.com as equivalent)
                 try:
                     url_domain = urlparse(url).netloc.lower()
-                    if url_domain and url_domain != domain:
+                    if url_domain and not domains_equivalent(url_domain, domain):
                         continue
                 except Exception:
                     continue

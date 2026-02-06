@@ -20,42 +20,44 @@ from typing import Any
 # VERBOSE LOGGING - prints to terminal so you can follow crawl progress
 # ============================================================================
 class CrawlLogger:
-    """Simple logger that prints timestamped messages to terminal."""
+    """Simple logger that prints timestamped messages to terminal with run correlation."""
     
-    def __init__(self, source_id: str):
+    def __init__(self, source_id: str, run_id: str | None = None):
         self.source_id = source_id
+        self.run_id = run_id or "----"
         self.start_time = time.time()
     
-    def _timestamp(self) -> str:
+    def _prefix(self) -> str:
+        """Return prefix with run_id and timestamp for log correlation."""
         elapsed = time.time() - self.start_time
-        return f"[{elapsed:6.1f}s]"
+        return f"[{self.run_id}][{elapsed:6.1f}s]"
     
     def header(self, msg: str):
-        print(f"\n{'='*60}", flush=True)
-        print(f"  {msg}", flush=True)
-        print(f"{'='*60}", flush=True)
+        print(f"\n{'='*70}", flush=True)
+        print(f"  [{self.run_id}] {msg}", flush=True)
+        print(f"{'='*70}", flush=True)
     
     def section(self, msg: str):
-        print(f"\n{self._timestamp()} ▶ {msg}", flush=True)
+        print(f"\n{self._prefix()} ▶ {msg}", flush=True)
     
     def info(self, msg: str):
-        print(f"{self._timestamp()}   {msg}", flush=True)
+        print(f"{self._prefix()}   {msg}", flush=True)
     
     def success(self, msg: str):
-        print(f"{self._timestamp()}   ✓ {msg}", flush=True)
+        print(f"{self._prefix()}   ✓ {msg}", flush=True)
     
     def warning(self, msg: str):
-        print(f"{self._timestamp()}   ⚠ {msg}", flush=True)
+        print(f"{self._prefix()}   ⚠ {msg}", flush=True)
     
     def error(self, msg: str):
-        print(f"{self._timestamp()}   ✗ {msg}", flush=True)
+        print(f"{self._prefix()}   ✗ {msg}", flush=True)
     
     def progress(self, current: int, total: int, msg: str):
         pct = (current / total * 100) if total > 0 else 0
         bar_len = 20
         filled = int(bar_len * current / total) if total > 0 else 0
         bar = "█" * filled + "░" * (bar_len - filled)
-        print(f"{self._timestamp()}   [{bar}] {current}/{total} ({pct:.0f}%) {msg}", flush=True)
+        print(f"{self._prefix()}   [{bar}] {current}/{total} ({pct:.0f}%) {msg}", flush=True)
     
     def summary(self, stats: dict):
         print(f"\n{'-'*60}", flush=True)
@@ -126,6 +128,63 @@ def _source_include_keywords(source: dict) -> list[str]:
     return ["soffa", "soffor", "sofa", "sofas", "hörnsoffa", "divansoffa", "divan", "fåtölj", "armchair"]
 
 
+def _source_category_filter(source: dict) -> list[str]:
+    """
+    Get category filter patterns from source config.
+    
+    These patterns are used to filter sitemap/discovered URLs to only include
+    URLs that match at least one pattern. This focuses the crawl on specific
+    product categories (e.g., sofas) rather than the entire site.
+    
+    Example: ["soffor", "soffa", "hornsoffa"] will only keep URLs containing
+    any of these substrings in their path.
+    
+    Returns empty list if no filter is configured (all URLs pass).
+    """
+    filters = source.get("categoryFilter") or source.get("category_filter")
+    if isinstance(filters, str):
+        # Single pattern as string - split by comma or treat as single pattern
+        if "," in filters:
+            filters = [f.strip() for f in filters.split(",")]
+        else:
+            filters = [filters.strip()]
+    if isinstance(filters, list) and filters:
+        return [str(f).strip().lower() for f in filters if str(f).strip()]
+    return []
+
+
+def _filter_urls_by_category(urls: list, category_patterns: list[str], logger=None) -> list:
+    """
+    Filter discovered URLs by category patterns.
+    
+    Only keeps URLs where the path contains at least one of the category patterns.
+    If category_patterns is empty, all URLs pass through (no filtering).
+    
+    Args:
+        urls: List of DiscoveredUrl or similar objects with .url attribute
+        category_patterns: List of lowercase patterns to match against URL paths
+        logger: Optional logger for debug output
+        
+    Returns:
+        Filtered list of URLs
+    """
+    if not category_patterns:
+        return urls  # No filter configured, return all
+    
+    original_count = len(urls)
+    filtered = []
+    
+    for u in urls:
+        url_lower = (u.url if hasattr(u, 'url') else str(u)).lower()
+        if any(pattern in url_lower for pattern in category_patterns):
+            filtered.append(u)
+    
+    if logger:
+        logger.info(f"Category filter [{', '.join(category_patterns[:3])}{'...' if len(category_patterns) > 3 else ''}]: {original_count} -> {len(filtered)} URLs")
+    
+    return filtered
+
+
 def _source_rate_limit(source: dict) -> float | None:
     try:
         r = source.get("rateLimitRps") or source.get("rate_limit_rps")
@@ -149,7 +208,11 @@ def _robots_respect(source: dict) -> bool:
 
 
 def _base_url(source: dict) -> str:
-    return (source.get("baseUrl") or source.get("base_url") or "").strip()
+    """Get and normalize the base URL, ensuring it has a protocol."""
+    url = (source.get("baseUrl") or source.get("base_url") or "").strip()
+    if url and not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    return url
 
 
 def _get_derived_config(source: dict) -> dict | None:
@@ -200,7 +263,7 @@ def _get_effective_config(source: dict) -> dict:
         }
 
 
-def run_crawl_ingestion(source_id: str, source: dict) -> dict:
+def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = None) -> dict:
     """
     Run crawl ingestion for a source.
 
@@ -212,12 +275,19 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
     - baseUrl
     - seedUrls (1-3 URLs; sitemap or sofa category)
     - allowlistPolicy (recommended)
+    
+    Args:
+        source_id: Firestore document ID of the source
+        source: Source configuration dict
+        run_id: Optional correlation ID for logs (passed from API caller)
     """
-    log = CrawlLogger(source_id)
+    # Use provided run_id for correlation, or generate one
+    correlation_id = run_id or "auto"
+    log = CrawlLogger(source_id, run_id=correlation_id)
     log.header(f"CRAWL INGESTION: {source_id}")
     
     db = get_firestore_client()
-    run_id = create_run(db, source_id, "running")
+    db_run_id = create_run(db, source_id, "running")
     started_at = time.time()
     stats: dict[str, Any] = {
         "fetched": 0,
@@ -248,6 +318,7 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
     seed_urls = _source_seed_urls(source)
     seed_type = _source_seed_type(source) if not use_derived else derived_strategy
     include_keywords = _source_include_keywords(source)
+    category_filter = _source_category_filter(source)  # NEW: Category filter for focused crawling
     rate_limit_rps = _source_rate_limit(source)
     allowlist_policy = _allowlist_policy(source)
     robots_respect = _robots_respect(source)
@@ -266,13 +337,17 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
         log.info(f"Seed URLs: {seed_urls if seed_urls else '(auto-discover from sitemap)'}")
         log.info(f"Seed type: {seed_type}")
     log.info(f"Include keywords: {include_keywords[:5]}{'...' if len(include_keywords) > 5 else ''}")
+    if category_filter:
+        log.info(f"Category filter: {category_filter[:5]}{'...' if len(category_filter) > 5 else ''}")
+    else:
+        log.info("Category filter: (none - all categories)")
     log.info(f"Rate limit: {rate_limit_rps or 'default'} req/s")
     log.info(f"Robots.txt respect: {robots_respect}")
 
     if not base_url:
         log.error("baseUrl is required but missing!")
-        update_run(db, run_id, "failed", stats, error_summary="baseUrl required for crawl sources")
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": "baseUrl required"}
+        update_run(db, db_run_id, "failed", stats, error_summary="baseUrl required for crawl sources")
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": "baseUrl required"}
     
     # Auto-discover mode: if no seedUrls and no derived config, use sitemap discovery from baseUrl
     auto_discover = not seed_urls and not use_derived
@@ -292,7 +367,7 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
         job_id = create_job(
             db,
             source_id,
-            run_id,
+            db_run_id,
             "discover_urls",
             {"seedUrls": seed_urls, "baseUrl": base_url, "strategy": derived_strategy if use_derived else seed_type},
             "running",
@@ -310,18 +385,51 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
                     allowlist_policy=allowlist_policy,
                     robots_respect=robots_respect,
                     rate_limit_rps=rate_limit_rps,
-                    max_urls=50_000,
+                    max_urls=200_000,  # Increased to allow scanning more sitemaps when filtering
+                    category_filter=category_filter if category_filter else None,
+                    min_matching_urls=2000,  # Get at least 2000 matching products
                 )
                 if discovered:
                     # Filter by seed path pattern if present
                     if derived_seed_path_pattern:
                         original_count = len(discovered)
+                        unfiltered_discovered = discovered  # Keep original for fallback
                         discovered = [
                             d for d in discovered 
                             if derived_seed_path_pattern.lower() in d.url.lower()
                         ]
                         log.info(f"Filtered by path pattern '{derived_seed_path_pattern}': {original_count} -> {len(discovered)}")
-                    log.success(f"Found {len(discovered)} URLs from sitemap")
+                        
+                        # FALLBACK: If filtering removed ALL URLs, try fallback strategies
+                        if not discovered and original_count > 0:
+                            log.warning(f"Path filter removed all {original_count} URLs!")
+                            
+                            # Fallback strategy 1: Try category crawl from seed URL
+                            log.info("Fallback: Trying category crawl from seed URL...")
+                            crawl_seed = derived_seed_url if derived_seed_url else base_url
+                            discovered = discover_from_category_crawl(
+                                fetcher,
+                                base_url=base_url,
+                                seed_urls=[crawl_seed],
+                                allowlist_policy=allowlist_policy,
+                                robots_respect=robots_respect,
+                                rate_limit_rps=rate_limit_rps,
+                                include_keywords=include_keywords,
+                                max_depth=max_depth,
+                                max_pages=max_pages,
+                                max_out_urls=5000,
+                            )
+                            
+                            # Fallback strategy 2: If crawl also yields nothing, use unfiltered sitemap URLs
+                            if not discovered:
+                                log.warning("Crawl fallback found no URLs, using unfiltered sitemap URLs")
+                                discovered = unfiltered_discovered
+                                log.info(f"Using {len(discovered)} unfiltered sitemap URLs")
+                            else:
+                                log.success(f"Found {len(discovered)} URLs from crawl fallback")
+                    
+                    if discovered:
+                        log.success(f"Found {len(discovered)} URLs from sitemap")
                 else:
                     log.warning("Sitemap discovery found no URLs, trying crawl fallback")
                     # Fallback to crawl from seed URL
@@ -375,7 +483,9 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
                 allowlist_policy=allowlist_policy,
                 robots_respect=robots_respect,
                 rate_limit_rps=rate_limit_rps,
-                max_urls=50_000,
+                max_urls=200_000,  # Increased to allow scanning more sitemaps when filtering
+                category_filter=category_filter if category_filter else None,
+                min_matching_urls=2000,  # Get at least 2000 matching products
             )
             if discovered:
                 log.success(f"Found {len(discovered)} URLs from sitemap")
@@ -421,12 +531,26 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
         else:
             # No seed URLs and not sitemap mode - shouldn't happen but handle gracefully
             log.error("No discovery method available!")
-            update_run(db, run_id, "failed", stats, error_summary="No discovery method available")
-            return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": "No discovery method available"}
+            update_run(db, db_run_id, "failed", stats, error_summary="No discovery method available")
+            return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": "No discovery method available"}
+
+        # ===== APPLY CATEGORY FILTER (for non-sitemap discovery) =====
+        # For sitemap discovery, the filter is applied during discovery for efficiency.
+        # For other discovery methods (category crawl, manual), apply the filter here.
+        # Check if filter was already applied by checking the log messages or URL count
+        if category_filter and discovered and seed_type != "sitemap" and not use_derived:
+            pre_filter_count = len(discovered)
+            discovered = _filter_urls_by_category(discovered, category_filter, log)
+            if not discovered and pre_filter_count > 0:
+                log.warning(f"Category filter removed ALL {pre_filter_count} URLs! Check your filter patterns.")
+                log.info(f"Configured patterns: {category_filter}")
+                # Don't fail - just continue with empty list to record the run
 
         # Persist discovered URLs and select product candidates
         log.info("Filtering for product candidates...")
         product_candidates: list[str] = []
+        high_confidence_candidates: list[str] = []
+        
         for d in discovered:
             upsert_crawl_url(
                 db,
@@ -439,30 +563,41 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
                 status="active",
             )
             if d.url_type_hint == "product" or d.confidence >= 0.7:
-                product_candidates.append(d.url)
-        # If sitemap output had no hints, treat all as candidates but cap.
-        if not product_candidates:
+                high_confidence_candidates.append(d.url)
+        
+        # If category filter was applied, we already filtered for relevant URLs - use ALL of them
+        # Otherwise fall back to confidence-based filtering
+        if category_filter:
+            log.info(f"Category filter active - using all {len(discovered)} discovered URLs as candidates")
+            product_candidates = [d.url for d in discovered]
+        elif high_confidence_candidates:
+            product_candidates = high_confidence_candidates
+        else:
             log.info("No high-confidence product URLs, using all discovered URLs")
             product_candidates = [d.url for d in discovered]
 
-        product_candidates = product_candidates[:max_urls]
+        # No artificial limit - process ALL discovered products
+        # The sitemap discovery already respects min_matching_urls for efficiency
         stats["urlsDiscovered"] = len(discovered)
         stats["urlsCandidateProducts"] = len(product_candidates)
-        log.success(f"Selected {len(product_candidates)} product candidates (max {max_urls})")
+        log.success(f"Selected {len(product_candidates)} product candidates")
         update_job(db, job_id, "succeeded")
+        
+        # Update run with discovery results so UI shows progress
+        update_run(db, db_run_id, "running", stats)
 
         if not product_candidates:
             log.warning("No product candidates to extract - ending early")
             log.summary(stats)
-            update_run(db, run_id, "succeeded", stats)
-            return {"runId": run_id, "status": "succeeded", "stats": stats}
+            update_run(db, db_run_id, "succeeded", stats)
+            return {"runId": db_run_id, "status": "succeeded", "stats": stats}
 
         # 2) Extract
         log.section("PHASE 2: Product Extraction")
         job_id = create_job(
             db,
             source_id,
-            run_id,
+            db_run_id,
             "extract",
             {"count": len(product_candidates)},
             "running",
@@ -482,10 +617,17 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
             active_recipe = None
         
         log.info(f"Extracting from {len(product_candidates)} URLs...")
+        stats_update_interval = 10  # Update Firestore every N products for real-time UI
+        
         for idx, url in enumerate(product_candidates):
             # Progress update every 5 items or on first/last
             if idx == 0 or idx == len(product_candidates) - 1 or (idx + 1) % 5 == 0:
                 log.progress(idx + 1, len(product_candidates), url[:60] + "..." if len(url) > 60 else url)
+            
+            # Incremental stats update for real-time UI polling
+            if (idx + 1) % stats_update_interval == 0:
+                stats["success"] = successes
+                update_run(db, db_run_id, "running", stats)
             
             try:
                 r = fetcher.fetch(
@@ -651,7 +793,7 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
 
         # 3) Upsert
         log.section("PHASE 3: Database Upsert")
-        job_id = create_job(db, source_id, run_id, "upsert", {"count": len(items)}, "running")
+        job_id = create_job(db, source_id, db_run_id, "upsert", {"count": len(items)}, "running")
         log.info(f"Writing {len(items)} items to Firestore...")
         upserted, failed = write_items(db, items, source_id)
         stats["upserted"] = upserted
@@ -731,22 +873,22 @@ def run_crawl_ingestion(source_id: str, source: dict) -> dict:
 
         duration_ms = int((time.time() - started_at) * 1000)
         stats["durationMs"] = duration_ms
-        update_run(db, run_id, "succeeded", stats)
+        update_run(db, db_run_id, "succeeded", stats)
         
         log.summary(stats)
         log.header(f"CRAWL COMPLETE: {source_id} - SUCCESS")
         
-        return {"runId": run_id, "status": "succeeded", "stats": stats}
+        return {"runId": db_run_id, "status": "succeeded", "stats": stats}
     except Exception as e:
         duration_ms = int((time.time() - started_at) * 1000)
         stats["durationMs"] = duration_ms
-        update_run(db, run_id, "failed", stats, error_summary=str(e))
+        update_run(db, db_run_id, "failed", stats, error_summary=str(e))
         
         log.error(f"Crawl failed with exception: {e}")
         log.summary(stats)
         log.header(f"CRAWL COMPLETE: {source_id} - FAILED")
         
-        return {"runId": run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
+        return {"runId": db_run_id, "status": "failed", "stats": stats, "errorSummary": str(e)}
     finally:
         try:
             fetcher.close()

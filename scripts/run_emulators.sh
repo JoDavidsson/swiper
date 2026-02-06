@@ -15,13 +15,23 @@ if [ -f .env ]; then
   echo "Loaded .env (ADMIN_PASSWORD and other vars available to Functions)."
 fi
 
+# Build Functions TypeScript before starting emulators
+# This ensures we're running the latest code, not stale lib/index.js
+echo "Building Firebase Functions..."
+cd "$REPO_ROOT/firebase/functions"
+npm run build
+cd "$REPO_ROOT"
+echo "Functions build complete."
+echo ""
+
 # Start only Firestore + Functions so the deck API works. Avoids UI/Auth/Hosting port conflicts.
 # For full emulators (UI, Auth, Hosting) run: firebase emulators:start --only firestore,functions,hosting,auth,ui
 echo "Starting Firebase emulators (Firestore, Functions)..."
 echo "Firestore: http://localhost:8180"
 echo "Functions: http://localhost:5002"
 echo ""
-echo "For ingest script use: export FIRESTORE_EMULATOR_HOST=localhost:8180"
+echo "For Supply Engine: export FIRESTORE_EMULATOR_HOST=localhost:8180"
+echo "Supply Engine default port: http://localhost:8081"
 echo ""
 
 firebase emulators:start --only firestore,functions

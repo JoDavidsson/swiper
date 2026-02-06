@@ -143,6 +143,42 @@ def extract_domain(url: str) -> str:
     parsed = urlparse(url)
     return parsed.netloc.lower() if parsed.netloc else ""
 
+
+def canonical_domain(domain: str) -> str:
+    """
+    Normalize a domain by stripping the www. prefix for comparison.
+    
+    This allows treating www.example.com and example.com as equivalent
+    for same-site checks, sitemap filtering, and robots.txt caching.
+    
+    Examples:
+    - "www.example.com" -> "example.com"
+    - "example.com" -> "example.com"
+    - "WWW.EXAMPLE.COM" -> "example.com"
+    - "sub.example.com" -> "sub.example.com" (non-www subdomains preserved)
+    """
+    if not domain:
+        return ""
+    d = domain.lower().strip()
+    if d.startswith("www."):
+        return d[4:]
+    return d
+
+
+def domains_equivalent(d1: str, d2: str) -> bool:
+    """
+    Check if two domains are equivalent (handles www vs apex).
+    
+    Returns True if both domains resolve to the same canonical domain.
+    
+    Examples:
+    - domains_equivalent("www.example.com", "example.com") -> True
+    - domains_equivalent("example.com", "www.example.com") -> True
+    - domains_equivalent("example.com", "other.com") -> False
+    - domains_equivalent("sub.example.com", "example.com") -> False
+    """
+    return canonical_domain(d1) == canonical_domain(d2)
+
 MATERIAL_MAP = {
     "fabric": ["fabric", "cloth", "textile", "cotton", "linen", "polyester"],
     "leather": ["leather"],

@@ -183,7 +183,7 @@ class _SharedShortlistScreenState extends ConsumerState<SharedShortlistScreen> {
 }
 
 Future<void> _openOutbound(BuildContext context, Item item) async {
-  final url = Uri.parse('${Uri.base.origin}/go/${item.id}');
+  final url = Uri.parse(ApiClient.goUrl(item.id));
   if (await canLaunchUrl(url)) {
     await launchUrl(url, mode: LaunchMode.externalApplication);
   }

@@ -159,11 +159,84 @@ To test **persona-based ranking** and **offline evaluation** (e.g. liked items i
 
 ## Environment variables
 
-| Var | Where | Description |
-|-----|--------|-------------|
-| API_BASE_URL | Flutter | Base URL for API (e.g. http://localhost:5001/...) |
-| ADMIN_PASSWORD | Functions | Admin login password |
-| SUPPLY_ENGINE_URL | Functions | Supply Engine URL (e.g. http://localhost:8081) |
-| FIRESTORE_EMULATOR_HOST | Supply Engine | e.g. localhost:8180 |
-| GOOGLE_APPLICATION_CREDENTIALS | Supply Engine | Path to service account JSON (prod) |
-| SOURCES_JSON | Supply Engine | Path to config/sources.json |
+| Var | Where | Default | Description |
+|-----|--------|---------|-------------|
+| API_BASE_URL | Flutter | `http://localhost:5002/<project>/europe-west1` | Base URL for API calls |
+| ADMIN_PASSWORD | Functions | (none) | Admin login password |
+| SUPPLY_ENGINE_URL | Functions | `http://localhost:8081` | Supply Engine URL for admin triggers |
+| FIRESTORE_EMULATOR_HOST | Supply Engine | (none) | e.g. `localhost:8180` (required for local dev) |
+| GOOGLE_APPLICATION_CREDENTIALS | Supply Engine | (none) | Path to service account JSON (prod only) |
+| SOURCES_JSON | Supply Engine | `config/sources.json` | Path to sources configuration file |
+
+---
+
+## Port Reference
+
+| Service | Port | Notes |
+|---------|------|-------|
+| **Firestore Emulator** | 8180 | Configured in `firebase.json` |
+| **Functions Emulator** | 5002 | Configured in `firebase.json` |
+| **Supply Engine** | 8081 | Started by `run_supply_engine.sh` |
+| **Flutter Web** | 8080 | Default Flutter web port |
+| **Emulator UI** | 4100 | Firebase emulator dashboard |
+
+> **Important:** Scripts auto-set `FIRESTORE_EMULATOR_HOST=localhost:8180` where needed.
+> The Functions emulator uses `SUPPLY_ENGINE_URL=http://localhost:8081` by default.
+
+---
+
+## Troubleshooting
+
+### "Supply Engine is not reachable" when triggering runs
+
+**Symptoms:** Admin triggers fail with "Supply Engine is not reachable" error.
+
+**Cause:** Functions emulator can't connect to Supply Engine.
+
+**Fix:**
+1. Ensure Supply Engine is running: `./scripts/run_supply_engine.sh`
+2. Check it's on port 8081: `curl http://localhost:8081/health`
+3. If using a different port, set `SUPPLY_ENGINE_URL` before starting emulators:
+   ```bash
+   export SUPPLY_ENGINE_URL=http://localhost:YOUR_PORT
+   ./scripts/run_emulators.sh
+   ```
+
+### "Functions not found" or stale code
+
+**Symptoms:** API returns 404 or behaves unexpectedly after code changes.
+
+**Cause:** TypeScript not rebuilt before starting emulators.
+
+**Fix:** The `run_emulators.sh` script now automatically runs `npm run build` in `firebase/functions/` before starting. If you're running emulators manually, build first:
+```bash
+cd firebase/functions && npm run build
+firebase emulators:start --only firestore,functions
+```
+
+### "FIRESTORE_EMULATOR_HOST not set" warnings
+
+**Symptoms:** Supply Engine writes to production or fails silently.
+
+**Cause:** Missing emulator host environment variable.
+
+**Fix:** The `run_supply_engine.sh` script now auto-sets `FIRESTORE_EMULATOR_HOST=localhost:8180`. If running manually:
+```bash
+export FIRESTORE_EMULATOR_HOST=localhost:8180
+cd services/supply_engine
+uvicorn app.main:app --reload --port 8081
+```
+
+### Crawls fail with 0 products
+
+**Symptoms:** Source shows "Successful" but 0 products extracted.
+
+**Possible causes:**
+1. **URL normalization issues:** Ensure source URL includes `https://` protocol
+2. **robots.txt blocking:** Check if the site blocks the crawler
+3. **Path filter too restrictive:** Auto-discovered path patterns may filter out all URLs
+
+**Debug steps:**
+1. Watch the Supply Engine terminal for verbose crawl logs
+2. Check the run details in Admin > Runs for error messages
+3. Try re-detecting the source to refresh derived configuration

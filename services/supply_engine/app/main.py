@@ -79,23 +79,53 @@ def discover_source(request: DiscoverRequest):
         raise HTTPException(status_code=500, detail=f"Discovery failed: {e}")
 
 
+import uuid
+
+
+class RunRequest(BaseModel):
+    """Optional request body for /run endpoint."""
+    run_id: str | None = None  # Correlation ID for logs
+
+
 @app.post("/run/{source_id}")
-def run_ingestion(source_id: str):
+def run_ingestion(source_id: str, request: RunRequest | None = None):
     """Trigger ingestion for a source. Admin-only in production."""
+    # Generate or use provided run_id for log correlation
+    run_id = (request.run_id if request else None) or str(uuid.uuid4())[:8]
+    
+    def log(msg: str, level: str = "INFO"):
+        """Log with run correlation prefix."""
+        print(f"[{run_id}] [{level}] {msg}", flush=True)
+    
+    log(f"Starting ingestion for source: {source_id}")
+    
     sources = get_sources()
     source = next((s for s in sources if s.get("id") == source_id), None)
     if not source:
+        log("Source not found", "ERROR")
         raise HTTPException(status_code=404, detail="Source not found")
     if not source.get("isEnabled", True):
+        log("Source is disabled", "WARN")
         raise HTTPException(status_code=400, detail="Source is disabled")
+    
+    source_name = source.get("name", source_id)
+    log(f"Source: {source_name}, mode: {source.get('mode', 'feed')}")
+    
     try:
         mode = (source.get("mode") or "feed").lower()
         if mode == "feed":
-            result = run_feed_ingestion(source_id, source)
+            log("Running feed ingestion...")
+            result = run_feed_ingestion(source_id, source, run_id=run_id)
         elif mode == "crawl":
-            result = run_crawl_ingestion(source_id, source)
+            log("Running crawl ingestion...")
+            result = run_crawl_ingestion(source_id, source, run_id=run_id)
         else:
             raise ValueError(f"Unsupported source mode: {mode}")
+        
+        log(f"Ingestion complete: {result.get('status', 'unknown')}")
+        # Add run_id to result for correlation
+        result["run_id"] = run_id
         return result
     except Exception as e:
+        log(f"Ingestion failed: {e}", "ERROR")
         raise HTTPException(status_code=500, detail=str(e))

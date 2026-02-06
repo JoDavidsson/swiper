@@ -7,7 +7,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-from app.normalization import extract_domain_root
+from app.normalization import extract_domain_root, canonical_domain
 
 
 class FetchError(RuntimeError):
@@ -115,31 +115,38 @@ class PoliteFetcher:
         
         IMPORTANT: robots.txt is ALWAYS at the domain root, regardless of
         what path is in base_url. We extract the domain root first.
+        
+        Cache key uses canonical_domain so www.example.com and example.com
+        share the same robots.txt cache entry.
         """
         domain = _get_domain(base_url)
         if not domain:
             return None
-        if domain in self._robots_by_domain:
-            return self._robots_by_domain[domain]
+        
+        # Use canonical domain as cache key so www.x.com and x.com share cache
+        cache_key = canonical_domain(domain)
+        
+        if cache_key in self._robots_by_domain:
+            return self._robots_by_domain[cache_key]
         try:
             # Always use domain root for robots.txt (RFC requirement)
             domain_root = extract_domain_root(base_url)
             if not domain_root:
-                self._robots_by_domain[domain] = None
+                self._robots_by_domain[cache_key] = None
                 return None
             
             robots_url = f"{domain_root}/robots.txt"
             r = self._client.get(robots_url)
             if r.status_code >= 400:
-                self._robots_by_domain[domain] = None
+                self._robots_by_domain[cache_key] = None
                 return None
             rp = RobotFileParser()
             rp.set_url(robots_url)
             rp.parse((r.text or "").splitlines())
-            self._robots_by_domain[domain] = rp
+            self._robots_by_domain[cache_key] = rp
             return rp
         except Exception:
-            self._robots_by_domain[domain] = None
+            self._robots_by_domain[cache_key] = None
             return None
 
     def can_fetch(self, *, url: str, base_url: str, robots_respect: bool) -> bool:

@@ -148,9 +148,11 @@ class _AdminRunsScreenState extends ConsumerState<AdminRunsScreen> {
           maxChildSize: 0.95,
           expand: false,
           builder: (context, scrollController) => _RunDetailSheet(
-            run: run,
+            runId: runId,
+            initialRun: run,
             source: _sourcesCache[run['sourceId']],
             scrollController: scrollController,
+            apiClient: client,
           ),
         ),
       );
@@ -546,46 +548,129 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-class _RunDetailSheet extends StatelessWidget {
+/// Run detail sheet with real-time updates and stage visualization
+class _RunDetailSheet extends ConsumerStatefulWidget {
   const _RunDetailSheet({
-    required this.run,
+    required this.runId,
+    required this.initialRun,
     this.source,
     required this.scrollController,
+    required this.apiClient,
   });
 
-  final Map<String, dynamic> run;
+  final String runId;
+  final Map<String, dynamic> initialRun;
   final Map<String, dynamic>? source;
   final ScrollController scrollController;
+  final dynamic apiClient; // ApiClient
+
+  @override
+  ConsumerState<_RunDetailSheet> createState() => _RunDetailSheetState();
+}
+
+class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
+  late Map<String, dynamic> _run;
+  bool _isPolling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _run = widget.initialRun;
+    _startPollingIfNeeded();
+  }
+
+  @override
+  void dispose() {
+    _isPolling = false;
+    super.dispose();
+  }
+
+  bool _isRunning(String status) {
+    return status == 'running' || status == 'in_progress' || status == 'pending';
+  }
+
+  void _startPollingIfNeeded() {
+    final status = _run['status'] as String? ?? 'unknown';
+    if (_isRunning(status)) {
+      _isPolling = true;
+      _poll();
+    }
+  }
+
+  Future<void> _poll() async {
+    while (_isPolling && mounted) {
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted || !_isPolling) break;
+      
+      try {
+        final updated = await widget.apiClient.adminGetRun(widget.runId);
+        if (!mounted) return;
+        
+        setState(() {
+          _run = updated;
+        });
+        
+        // Stop polling when finished
+        final status = _run['status'] as String? ?? 'unknown';
+        if (!_isRunning(status)) {
+          _isPolling = false;
+        }
+      } catch (_) {
+        // Continue polling on error
+      }
+    }
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final updated = await widget.apiClient.adminGetRun(widget.runId);
+      if (!mounted) return;
+      setState(() {
+        _run = updated;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error refreshing: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final runId = run['id'] as String? ?? 'Unknown';
-    final sourceId = run['sourceId'] as String? ?? 'Unknown';
-    final status = run['status'] as String? ?? 'unknown';
-    final startedAt = _parseTimestamp(run['startedAt']);
-    final finishedAt = _parseTimestamp(run['finishedAt']);
-    final stats = run['stats'] as Map<String, dynamic>?;
-    final errorSummary = run['errorSummary'] as String?;
-    final jobs = run['jobs'] as List?;
+    final runId = _run['id'] as String? ?? 'Unknown';
+    final sourceId = _run['sourceId'] as String? ?? 'Unknown';
+    final status = _run['status'] as String? ?? 'unknown';
+    final startedAt = _parseTimestamp(_run['startedAt']);
+    final finishedAt = _parseTimestamp(_run['finishedAt']);
+    final stats = _run['stats'] as Map<String, dynamic>? ?? {};
+    final errorSummary = _run['errorSummary'] as String?;
     
     // Source info
-    final sourceName = source?['name'] as String? ?? sourceId;
-    final sourceUrl = source?['feedUrl'] as String? ?? source?['crawlRootUrl'] as String?;
-    final sourceType = source?['type'] as String?;
+    final sourceName = widget.source?['name'] as String? ?? sourceId;
+    final baseUrl = widget.source?['baseUrl'] as String?;
+    final sourceDomain = _extractDomain(baseUrl);
+    
+    // Stats
+    final urlsDiscovered = stats['urlsDiscovered'] as int? ?? 0;
+    final urlsCandidates = stats['urlsCandidateProducts'] as int? ?? 0;
+    final fetched = stats['fetched'] as int? ?? 0;
+    final success = stats['success'] as int? ?? 0;
+    final failed = stats['failed'] as int? ?? 0;
+    final upserted = stats['upserted'] as int? ?? 0;
+    
+    // Determine current stage
+    final stage = _determineStage(status, urlsDiscovered, urlsCandidates, fetched, upserted);
     
     // Calculate duration
-    String? duration;
-    if (startedAt != null && finishedAt != null) {
-      final diff = finishedAt.difference(startedAt);
-      if (diff.inMinutes > 0) {
-        duration = '${diff.inMinutes} min ${diff.inSeconds % 60} sec';
-      } else {
-        duration = '${diff.inSeconds} seconds';
-      }
-    }
+    final elapsed = _calculateElapsed(startedAt, finishedAt);
+    
+    final isRunning = _isRunning(status);
+    final isSuccess = status == 'completed' || status == 'success' || status == 'succeeded';
+    final isError = status == 'failed' || status == 'error';
     
     return SingleChildScrollView(
-      controller: scrollController,
+      controller: widget.scrollController,
       padding: const EdgeInsets.all(AppTheme.spacingUnit * 1.5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -602,54 +687,79 @@ class _RunDetailSheet extends StatelessWidget {
               ),
             ),
           ),
-          // Header
-          Text('Ingestion Run Details', style: Theme.of(context).textTheme.titleLarge),
+          
+          // Header with source info
+          Row(
+            children: [
+              // Favicon
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.2)),
+                ),
+                child: sourceDomain != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(7),
+                        child: Image.network(
+                          _faviconUrl(sourceDomain),
+                          width: 48,
+                          height: 48,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.travel_explore, color: AppTheme.textCaption),
+                        ),
+                      )
+                    : const Icon(Icons.travel_explore, color: AppTheme.textCaption),
+              ),
+              const SizedBox(width: AppTheme.spacingUnit),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(sourceName, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    if (sourceDomain != null)
+                      Text(sourceDomain, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+              // Refresh button
+              IconButton(
+                icon: Icon(Icons.refresh, color: isRunning ? AppTheme.textCaption : AppTheme.textSecondary),
+                onPressed: isRunning ? null : _refresh,
+                tooltip: 'Refresh',
+              ),
+            ],
+          ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
           
-          // Source Section
-          _SectionHeader(title: 'Source'),
-          _DetailRow(label: 'Name', value: sourceName),
-          _DetailRow(label: 'Source ID', value: sourceId),
-          if (sourceType != null) _DetailRow(label: 'Type', value: sourceType),
-          if (sourceUrl != null) _DetailRow(label: 'URL', value: sourceUrl, isUrl: true),
+          // Status badge with live indicator
+          _StatusBadge(
+            status: status,
+            isRunning: isRunning,
+            elapsed: elapsed,
+          ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
           
-          // Run Info Section
-          _SectionHeader(title: 'Run Information'),
-          _DetailRow(label: 'Run ID', value: runId),
-          _DetailRow(label: 'Status', value: status.toUpperCase(), 
-            valueColor: status == 'completed' || status == 'success' 
-                ? AppTheme.positiveLike 
-                : status == 'failed' || status == 'error'
-                    ? AppTheme.negativeDislike
-                    : null),
-          if (startedAt != null) 
-            _DetailRow(label: 'Started', value: _formatFullTimestamp(startedAt)),
-          if (finishedAt != null) 
-            _DetailRow(label: 'Finished', value: _formatFullTimestamp(finishedAt)),
-          if (duration != null) 
-            _DetailRow(label: 'Duration', value: duration),
+          // Stage Stepper
+          _StageStepper(currentStage: stage, isError: isError),
           const SizedBox(height: AppTheme.spacingUnit * 2),
           
-          // Stats Section
-          if (stats != null) ...[
-            _SectionHeader(title: 'Statistics'),
-            Wrap(
-              spacing: AppTheme.spacingUnit,
-              runSpacing: AppTheme.spacingUnit,
-              children: [
-                _StatCard(label: 'Upserted', value: '${stats['upserted'] ?? 0}', icon: Icons.add_circle_outline),
-                if (stats['skipped'] != null) _StatCard(label: 'Skipped', value: '${stats['skipped']}', icon: Icons.skip_next),
-                if (stats['errors'] != null) _StatCard(label: 'Errors', value: '${stats['errors']}', icon: Icons.warning_amber, isError: (stats['errors'] as int? ?? 0) > 0),
-                if (stats['processed'] != null) _StatCard(label: 'Processed', value: '${stats['processed']}', icon: Icons.check_circle_outline),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spacingUnit * 2),
-          ],
+          // Progress Stats
+          _ProgressStats(
+            urlsDiscovered: urlsDiscovered,
+            urlsCandidates: urlsCandidates,
+            fetched: fetched,
+            success: success,
+            failed: failed,
+            upserted: upserted,
+            isRunning: isRunning,
+          ),
+          const SizedBox(height: AppTheme.spacingUnit * 2),
           
           // Error Section
           if (errorSummary != null) ...[
-            _SectionHeader(title: 'Error Details'),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(AppTheme.spacingUnit),
@@ -658,69 +768,62 @@ class _RunDetailSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                 border: Border.all(color: AppTheme.negativeDislike.withValues(alpha: 0.3)),
               ),
-              child: SelectableText(
-                errorSummary,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.negativeDislike,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.error_outline, size: 18, color: AppTheme.negativeDislike),
+                      const SizedBox(width: 8),
+                      Text('Error', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.negativeDislike)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    errorSummary,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.negativeDislike),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: AppTheme.spacingUnit * 2),
           ],
           
-          // Jobs Section
-          if (jobs != null && jobs.isNotEmpty) ...[
-            _SectionHeader(title: 'Jobs (${jobs.length})'),
-            ...jobs.take(10).map((job) {
-              final jobMap = job as Map<String, dynamic>;
-              final jobStatus = jobMap['status'] as String? ?? 'unknown';
-              final jobUrl = jobMap['url'] as String?;
-              final itemsCount = jobMap['itemsCount'] as int?;
-              return Container(
-                margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit / 2),
-                padding: const EdgeInsets.all(AppTheme.spacingUnit / 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.background,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusChip),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      jobStatus == 'completed' ? Icons.check_circle : Icons.error_outline,
-                      size: 16,
-                      color: jobStatus == 'completed' ? AppTheme.positiveLike : AppTheme.negativeDislike,
-                    ),
-                    const SizedBox(width: AppTheme.spacingUnit / 2),
-                    Expanded(
-                      child: Text(
-                        jobUrl ?? 'Unknown',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (itemsCount != null)
-                      Text(
-                        '$itemsCount items',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            }),
-            if (jobs.length > 10)
-              Text(
-                '... and ${jobs.length - 10} more jobs',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-          ],
+          // Technical Details (collapsed by default)
+          ExpansionTile(
+            title: Text('Technical Details', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textSecondary)),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
+            children: [
+              _DetailRow(label: 'Run ID', value: runId),
+              _DetailRow(label: 'Source ID', value: sourceId),
+              if (startedAt != null) _DetailRow(label: 'Started', value: _formatFullTimestamp(startedAt)),
+              if (finishedAt != null) _DetailRow(label: 'Finished', value: _formatFullTimestamp(finishedAt)),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  int _determineStage(String status, int discovered, int candidates, int fetched, int upserted) {
+    if (status == 'failed' || status == 'error') return -1; // Error state
+    if (status == 'completed' || status == 'success' || status == 'succeeded') return 4; // Complete
+    
+    if (upserted > 0) return 3; // Saving
+    if (fetched > 0) return 2; // Crawling
+    if (discovered > 0 || candidates > 0) return 1; // Discovery done
+    return 0; // Starting
+  }
+
+  String _calculateElapsed(DateTime? start, DateTime? finish) {
+    if (start == null) return '--';
+    final end = finish ?? DateTime.now();
+    final diff = end.difference(start);
+    if (diff.inMinutes > 0) {
+      return '${diff.inMinutes}m ${diff.inSeconds % 60}s';
+    }
+    return '${diff.inSeconds}s';
   }
 
   DateTime? _parseTimestamp(dynamic ts) {
@@ -735,6 +838,387 @@ class _RunDetailSheet extends StatelessWidget {
   String _formatFullTimestamp(DateTime dt) {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Status badge with pulsing animation for running state
+class _StatusBadge extends StatefulWidget {
+  const _StatusBadge({
+    required this.status,
+    required this.isRunning,
+    required this.elapsed,
+  });
+
+  final String status;
+  final bool isRunning;
+  final String elapsed;
+
+  @override
+  State<_StatusBadge> createState() => _StatusBadgeState();
+}
+
+class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    if (widget.isRunning) {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_StatusBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isRunning && !_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    } else if (!widget.isRunning && _pulseController.isAnimating) {
+      _pulseController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuccess = widget.status == 'completed' || widget.status == 'success' || widget.status == 'succeeded';
+    final isError = widget.status == 'failed' || widget.status == 'error';
+    
+    final statusColor = widget.isRunning
+        ? AppTheme.primaryAction
+        : isSuccess
+            ? AppTheme.positiveLike
+            : isError
+                ? AppTheme.negativeDislike
+                : AppTheme.textCaption;
+
+    final statusText = widget.isRunning
+        ? 'Running'
+        : isSuccess
+            ? 'Completed'
+            : isError
+                ? 'Failed'
+                : widget.status.toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.spacingUnit),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          // Status indicator
+          widget.isRunning
+              ? AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) => Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.5 + _pulseController.value * 0.5),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                )
+              : Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: isSuccess
+                      ? const Icon(Icons.check, size: 10, color: Colors.white)
+                      : isError
+                          ? const Icon(Icons.close, size: 10, color: Colors.white)
+                          : null,
+                ),
+          const SizedBox(width: 12),
+          // Status text
+          Text(
+            statusText,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: statusColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          // Elapsed time
+          Row(
+            children: [
+              Icon(Icons.timer_outlined, size: 14, color: AppTheme.textSecondary),
+              const SizedBox(width: 4),
+              Text(
+                widget.elapsed,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Horizontal stepper showing ingestion stages
+class _StageStepper extends StatelessWidget {
+  const _StageStepper({required this.currentStage, this.isError = false});
+
+  final int currentStage; // 0=Starting, 1=Discovery, 2=Crawling, 3=Saving, 4=Complete, -1=Error
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final stages = [
+      ('Starting', Icons.play_arrow),
+      ('Discovery', Icons.search),
+      ('Crawling', Icons.download),
+      ('Saving', Icons.save),
+      ('Complete', Icons.check_circle),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingUnit),
+      child: Row(
+        children: List.generate(stages.length * 2 - 1, (index) {
+          // Odd indices are connectors
+          if (index.isOdd) {
+            final prevStageIndex = index ~/ 2;
+            final isActive = currentStage > prevStageIndex && !isError;
+            return Expanded(
+              child: Container(
+                height: 2,
+                color: isActive ? AppTheme.primaryAction : AppTheme.textCaption.withValues(alpha: 0.3),
+              ),
+            );
+          }
+          
+          // Even indices are stage circles
+          final stageIndex = index ~/ 2;
+          final (label, icon) = stages[stageIndex];
+          final isActive = currentStage >= stageIndex && !isError;
+          final isCurrent = currentStage == stageIndex;
+          final isErrorStage = isError && (currentStage == -1 || stageIndex <= currentStage);
+          
+          return _StageCircle(
+            label: label,
+            icon: icon,
+            isActive: isActive,
+            isCurrent: isCurrent,
+            isError: isErrorStage && stageIndex == (currentStage == -1 ? 0 : currentStage),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _StageCircle extends StatelessWidget {
+  const _StageCircle({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.isCurrent,
+    this.isError = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final bool isCurrent;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError
+        ? AppTheme.negativeDislike
+        : isActive
+            ? AppTheme.primaryAction
+            : AppTheme.textCaption.withValues(alpha: 0.4);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: isCurrent ? 36 : 28,
+          height: isCurrent ? 36 : 28,
+          decoration: BoxDecoration(
+            color: isActive ? color : Colors.transparent,
+            borderRadius: BorderRadius.circular(isCurrent ? 18 : 14),
+            border: Border.all(color: color, width: isCurrent ? 3 : 2),
+          ),
+          child: Icon(
+            isError ? Icons.error : icon,
+            size: isCurrent ? 18 : 14,
+            color: isActive ? Colors.white : color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: isActive ? (isError ? AppTheme.negativeDislike : AppTheme.textPrimary) : AppTheme.textCaption,
+            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Progress statistics panel
+class _ProgressStats extends StatelessWidget {
+  const _ProgressStats({
+    required this.urlsDiscovered,
+    required this.urlsCandidates,
+    required this.fetched,
+    required this.success,
+    required this.failed,
+    required this.upserted,
+    required this.isRunning,
+  });
+
+  final int urlsDiscovered;
+  final int urlsCandidates;
+  final int fetched;
+  final int success;
+  final int failed;
+  final int upserted;
+  final bool isRunning;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = urlsCandidates > 0 ? urlsCandidates : urlsDiscovered;
+    final progress = total > 0 ? (fetched / total).clamp(0.0, 1.0) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.spacingUnit),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        children: [
+          // Progress bar
+          if (isRunning && total > 0) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: AppTheme.textCaption.withValues(alpha: 0.2),
+                      valueColor: const AlwaysStoppedAnimation(AppTheme.primaryAction),
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.primaryAction,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingUnit),
+          ],
+          // Stats grid
+          Row(
+            children: [
+              _ProgressStat(label: 'Discovered', value: urlsDiscovered, icon: Icons.radar),
+              _ProgressStat(label: 'Candidates', value: urlsCandidates, icon: Icons.filter_list),
+              _ProgressStat(label: 'Crawled', value: fetched, icon: Icons.download),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Row(
+            children: [
+              _ProgressStat(label: 'Success', value: success, icon: Icons.check_circle_outline, color: AppTheme.positiveLike),
+              _ProgressStat(label: 'Failed', value: failed, icon: Icons.error_outline, color: failed > 0 ? AppTheme.negativeDislike : null),
+              _ProgressStat(label: 'Saved', value: upserted, icon: Icons.save_alt, color: AppTheme.positiveLike, highlight: true),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgressStat extends StatelessWidget {
+  const _ProgressStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.color,
+    this.highlight = false,
+  });
+
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color? color;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = color ?? AppTheme.textSecondary;
+    
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        decoration: highlight
+            ? BoxDecoration(
+                color: AppTheme.positiveLike.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppTheme.radiusChip),
+              )
+            : null,
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14, color: effectiveColor),
+                const SizedBox(width: 4),
+                Text(
+                  '$value',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: effectiveColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppTheme.textCaption,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

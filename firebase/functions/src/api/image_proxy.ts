@@ -62,6 +62,8 @@ export async function imageProxyGet(req: Request, res: Response): Promise<void> 
     "assets.ikea.com",
     "www.mio.se",
     "images.mio.se",
+    "www.mcdn.net",   // mio.se CDN
+    "mcdn.net",
     // Add more trusted domains as needed
   ];
 

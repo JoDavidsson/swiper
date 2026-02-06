@@ -414,14 +414,62 @@ class _SourceDialog extends StatefulWidget {
   State<_SourceDialog> createState() => _SourceDialogState();
 }
 
+/// Predefined category filter presets for common furniture types.
+/// Each preset contains Swedish and English terms commonly used in URLs.
+const Map<String, List<String>> _categoryPresets = {
+  'Sofas': [
+    'soffa', 'soffor', 'sofa', 'sofas',
+    'hornsoffa', 'hörnsoffa', 'corner-sofa',
+    'divansoffa', 'divan',
+    'baddsoffa', 'bäddsoffa', 'sofa-bed',
+    'modulsoffa', 'modular',
+    '2-sits', '3-sits', '4-sits',
+    'loveseat', 'sectional', 'couch',
+  ],
+  'Chairs': [
+    'stol', 'stolar', 'chair', 'chairs',
+    'fatolj', 'fåtölj', 'armchair',
+    'kontorsstol', 'office-chair',
+    'matstol', 'dining-chair',
+    'barstol', 'bar-stool',
+    'gungstol', 'rocking-chair',
+  ],
+  'Tables': [
+    'bord', 'table', 'tables',
+    'matbord', 'dining-table',
+    'soffbord', 'coffee-table',
+    'skrivbord', 'desk',
+    'sidobord', 'side-table',
+    'nattduksbord', 'nightstand',
+  ],
+  'Beds': [
+    'sang', 'säng', 'sangar', 'sängar', 'bed', 'beds',
+    'dubbelsang', 'dubbelsäng', 'double-bed',
+    'enkelsang', 'enkelsäng', 'single-bed',
+    'kontinentalsang', 'kontinentalsäng',
+    'barnssang', 'barnsäng', 'kids-bed',
+    'sovrum', 'bedroom',
+  ],
+  'Storage': [
+    'forvaring', 'förvaring', 'storage',
+    'skap', 'skåp', 'cabinet', 'wardrobe',
+    'hylla', 'hyllor', 'shelf', 'shelves',
+    'byra', 'byrå', 'dresser', 'chest',
+    'vitrinskåp', 'vitrin', 'display-cabinet',
+    'bokhylla', 'bookshelf',
+  ],
+};
+
 class _SourceDialogState extends State<_SourceDialog> {
   late final TextEditingController _urlController;
   late final TextEditingController _nameController;
   late final TextEditingController _rateLimitController;
+  late final TextEditingController _categoryFilterController;
   late bool _isEnabled;
   bool _loading = false;
   bool _detecting = false;
   bool _showAdvanced = false;
+  String? _selectedPreset;
   
   // Discovery results
   Map<String, dynamic>? _discoveryResult;
@@ -438,6 +486,15 @@ class _SourceDialogState extends State<_SourceDialog> {
     _urlController = TextEditingController(text: existingUrl);
     _nameController = TextEditingController(text: s?['name'] as String? ?? '');
     _rateLimitController = TextEditingController(text: '${s?['rateLimitRps'] ?? 1}');
+    // Category filter - convert list to comma-separated string for editing
+    final existingFilter = s?['categoryFilter'];
+    String filterText = '';
+    if (existingFilter is List) {
+      filterText = existingFilter.join(', ');
+    } else if (existingFilter is String) {
+      filterText = existingFilter;
+    }
+    _categoryFilterController = TextEditingController(text: filterText);
     _isEnabled = s?['isEnabled'] as bool? ?? true;
   }
 
@@ -446,6 +503,7 @@ class _SourceDialogState extends State<_SourceDialog> {
     _urlController.dispose();
     _nameController.dispose();
     _rateLimitController.dispose();
+    _categoryFilterController.dispose();
     super.dispose();
   }
 
@@ -493,6 +551,18 @@ class _SourceDialogState extends State<_SourceDialog> {
     }
   }
 
+  /// Parse category filter from comma-separated string to list
+  List<String>? _parseCategoryFilter() {
+    final text = _categoryFilterController.text.trim();
+    if (text.isEmpty) return null;
+    final patterns = text
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return patterns.isEmpty ? null : patterns;
+  }
+
   Future<void> _submit(WidgetRef ref) async {
     final url = _urlController.text.trim();
     if (url.isEmpty) {
@@ -506,16 +576,21 @@ class _SourceDialogState extends State<_SourceDialog> {
     try {
       final client = ref.read(apiClientProvider);
       final rateLimit = double.tryParse(_rateLimitController.text.trim()) ?? 1.0;
+      final categoryFilter = _parseCategoryFilter();
       
       if (isEditing && widget.onUpdate != null) {
         // For editing, use the legacy update method
-        final body = {
+        final body = <String, dynamic>{
           'name': _nameController.text.trim(),
           'url': url,
           'baseUrl': _discoveryResult?['derivedConfig']?['baseUrl'] ?? url,
           'isEnabled': _isEnabled,
           'rateLimitRps': rateLimit.clamp(0.1, 100.0),
         };
+        // Include category filter if set
+        if (categoryFilter != null) {
+          body['categoryFilter'] = categoryFilter;
+        }
         await widget.onUpdate!(body);
       } else {
         // For new sources, use create-with-discovery
@@ -524,6 +599,7 @@ class _SourceDialogState extends State<_SourceDialog> {
           name: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
           rateLimitRps: rateLimit.clamp(0.1, 100.0),
           isEnabled: _isEnabled,
+          categoryFilter: categoryFilter,
         );
       }
 
@@ -657,6 +733,63 @@ class _SourceDialogState extends State<_SourceDialog> {
                 
                 // Advanced settings
                 if (_showAdvanced) ...[
+                  const SizedBox(height: AppTheme.spacingUnit),
+                  // Category preset chips
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Quick presets',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textCaption,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _categoryPresets.keys.map((preset) {
+                          final isSelected = _selectedPreset == preset;
+                          return FilterChip(
+                            label: Text(preset),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() {
+                                if (selected) {
+                                  _selectedPreset = preset;
+                                  _categoryFilterController.text = 
+                                      _categoryPresets[preset]!.join(', ');
+                                } else {
+                                  _selectedPreset = null;
+                                  _categoryFilterController.clear();
+                                }
+                              });
+                            },
+                            selectedColor: AppTheme.primaryAction.withValues(alpha: 0.2),
+                            checkmarkColor: AppTheme.primaryAction,
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.spacingUnit),
+                  // Category filter - the key field for focused crawling
+                  TextField(
+                    controller: _categoryFilterController,
+                    decoration: const InputDecoration(
+                      labelText: 'Category filter',
+                      hintText: 'soffor, soffa, hornsoffa',
+                      helperText: 'Select a preset above or enter custom patterns (comma-separated)',
+                      helperMaxLines: 2,
+                      prefixIcon: Icon(Icons.filter_list),
+                    ),
+                    onChanged: (_) {
+                      // Clear preset selection when user edits manually
+                      if (_selectedPreset != null) {
+                        setState(() => _selectedPreset = null);
+                      }
+                    },
+                  ),
                   const SizedBox(height: AppTheme.spacingUnit),
                   TextField(
                     controller: _rateLimitController,

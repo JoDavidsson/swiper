@@ -41,4 +41,62 @@ When a user likes a product but finds it too expensive, allow them to request si
 
 ---
 
+## 2. MCP/AI Reconnaissance for Smart Crawling
+
+**Status:** Idea  
+**Added:** 2026-02-05
+
+### Problem
+When setting up a crawl source, users currently need to know the retailer's URL structure to specify which categories to scrape. Entering just `mio.se` without a category path results in scraping everything (tables, beds, sofas, etc.) instead of just sofas.
+
+### Concept
+A two-phase crawl system where an AI/MCP first analyzes the site structure, identifies relevant category paths, and then the crawler uses those paths for focused ingestion.
+
+### Proposed Flow
+1. **Phase 1: Site Mapping (Reconnaissance)**
+   - Fetch homepage and navigation structure
+   - Extract menu items, category links, breadcrumbs
+   - Send structure to LLM: "Identify all URL patterns for sofas"
+   - LLM returns patterns: `["soffor", "soffa-", "hornsoffa", "divansoffa"]`
+   - Store in source config as `derived.categoryPatterns`
+
+2. **Phase 2: Filtered Crawl**
+   - Fetch sitemap or crawl site
+   - Apply AI-derived patterns to filter URLs
+   - Only process pages matching sofa patterns
+
+### Example LLM Prompt
+```
+Given this furniture retailer's navigation structure:
+- /soffor (Sofas) 
+- /bord (Tables)
+- /stolar (Chairs)
+- /sangar (Beds)
+- /soffor/hornsoffor (Corner Sofas)
+- /soffor/divansoffor (Divan Sofas)
+
+Identify all URL path patterns that correspond to "sofas" (including subcategories).
+Return as JSON array: ["soffor", "hornsoffor", "divansoffor"]
+```
+
+### Technical Considerations
+- Could use Claude, GPT-4, or local model
+- Navigation extraction via BeautifulSoup (already available)
+- Cache reconnaissance results per domain
+- Consider cost/latency tradeoff vs manual configuration
+- MCP server integration for tool-based approach
+
+### Benefits
+- Zero configuration for users - just paste domain
+- Handles any site structure automatically
+- Adapts to different languages (Swedish: soffor, English: sofas)
+- Can detect category reorganizations on re-crawl
+
+### Success Metrics
+- Reduction in "wrong category" ingestion errors
+- Time-to-first-run for new sources
+- User satisfaction with automated setup
+
+---
+
 *Add new ideas below using the same format*

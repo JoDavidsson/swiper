@@ -1,5 +1,262 @@
 # Changelog
 
+## 2026-02-06 – Remove 200 Product Limit + Real-Time Stats
+
+### Problem
+1. Crawls were artificially limited to 200 products regardless of how many were discovered
+2. Stats only updated at the end of the run, not during crawling
+
+### Solution
+1. **Removed 200 limit** - Now processes ALL discovered products (sitemap discovery already handles efficiency via `min_matching_urls`)
+2. **Incremental stat updates** - Stats written to Firestore every 10 products during extraction, so the Run Details UI shows real-time progress
+
+### Files Changed
+- `services/supply_engine/app/crawl_ingestion.py`: Removed `product_candidates[:max_urls]` truncation, added `update_run()` calls during extraction loop
+
+---
+
+## 2026-02-06 – Redesigned Ingestion Run Details Page
+
+### UX Improvements (CPO Review)
+Completely redesigned the run details sheet with real-time updates and clear progress visualization.
+
+### New Features
+- **Real-time polling**: Auto-updates every 3 seconds while run is active
+- **Stage stepper**: Visual pipeline showing Starting → Discovery → Crawling → Saving → Complete
+- **Live progress stats**: Shows Discovered, Candidates, Crawled, Success, Failed, Saved counts
+- **Progress bar**: Visual progress indicator during active crawls
+- **Pulsing status badge**: Animated indicator for running state
+- **Source favicon**: Shows website icon in header for quick identification
+- **Collapsible technical details**: Run ID, Source ID, timestamps hidden by default
+
+### Design Principles Applied
+- Instant feedback (Design Principle #3)
+- Mobile-friendly layout with clear information hierarchy
+- Error states with clear messaging (replaced "Unknown" with actionable status)
+
+### Files Changed
+- `apps/Swiper_flutter/lib/features/admin/admin_runs_screen.dart`: Complete rewrite of `_RunDetailSheet`
+
+---
+
+## 2026-02-06 – Fix Sitemap Discovery Missing Filtered Products
+
+### Problem
+When crawling mio.se with a "soffa" category filter, only 60 URLs were found (all category pages, no actual products). This resulted in 0 products extracted.
+
+**Root cause**: mio.se has 118+ sitemaps. The sofa PRODUCTS are in sitemaps 19-37, but the crawler stopped at 50,000 URLs (sitemaps 0-9) which only contained category pages and other products (beds, accessories).
+
+### Solution
+- **Category filter now applied DURING sitemap discovery** instead of after
+- Crawler continues reading sitemaps until enough matching URLs are found (min 2,000)
+- Increased sitemap scan limit from 50 to 200 sitemaps
+- Increased total URL scan limit from 50K to 200K
+
+### Impact
+Crawls with category filters will now properly find filtered products even if they appear in later sitemaps.
+
+### Files Changed
+- `services/supply_engine/app/locator/sitemap.py`: Added `category_filter` and `min_matching_urls` params to `discover_from_sitemaps`
+- `services/supply_engine/app/crawl_ingestion.py`: Pass category filter to sitemap discovery
+
+---
+
+## 2026-02-06 – Category Filter Presets for Easy Setup
+
+### Feature
+Added quick preset chips in the Admin Sources screen to auto-fill category filter patterns. No more typing out all the sofa variations manually!
+
+### Presets Included
+- **Sofas**: soffa, soffor, hörnsoffa, divansoffa, bäddsoffa, modulsoffa, 2-sits, 3-sits, etc.
+- **Chairs**: stol, stolar, fåtölj, kontorsstol, matstol, barstol, etc.
+- **Tables**: bord, matbord, soffbord, skrivbord, sidobord, etc.
+- **Beds**: säng, sängar, dubbelsäng, enkelsäng, kontinentalsäng, etc.
+- **Storage**: förvaring, skåp, hylla, byrå, vitrinskåp, bokhylla, etc.
+
+### Usage
+1. Go to Admin → Sources
+2. Create or edit a source
+3. Expand Advanced settings
+4. Click a preset chip (e.g., "Sofas")
+5. The filter field auto-populates with all relevant terms
+
+### Files Changed
+- `apps/Swiper_flutter/lib/features/admin/admin_sources_screen.dart`: Added `_categoryPresets` map and preset chip UI
+
+---
+
+## 2026-02-06 – Fix "View on Website" Redirect URL
+
+### Problem
+Clicking "View on website" in product details navigated to `http://localhost:8080/go/...` (Flutter dev server) instead of the Firebase Functions endpoint, resulting in a 404 error.
+
+### Solution
+Added `ApiClient.goUrl(itemId)` helper method that generates the correct `/go/:itemId` URL using the Firebase Functions base URL. Updated all outbound redirect locations to use this method.
+
+### Files Changed
+- `apps/Swiper_flutter/lib/data/api_client.dart`: Added `goUrl()` static method
+- `apps/Swiper_flutter/lib/shared/widgets/detail_sheet.dart`: Use `ApiClient.goUrl()`
+- `apps/Swiper_flutter/lib/features/compare/compare_screen.dart`: Use `ApiClient.goUrl()`
+- `apps/Swiper_flutter/lib/features/shared_shortlist/shared_shortlist_screen.dart`: Use `ApiClient.goUrl()`
+
+---
+
+## 2026-02-06 – Fix Missing Images from mio.se CDN
+
+### Problem
+Images from mio.se products were not displaying in the app. The image proxy was returning 403 "Domain not allowed" errors because mio.se serves images from `www.mcdn.net` CDN, which wasn't in the allowlist.
+
+### Solution
+Added `www.mcdn.net` and `mcdn.net` to the allowed domains in the image proxy.
+
+### Files Changed
+- `firebase/functions/src/api/image_proxy.ts`: Added mcdn.net domains to allowlist
+
+---
+
+## 2026-02-05 – Category Filter for Focused Crawling
+
+### Problem
+When crawling a retailer site (e.g., mio.se), the crawler was scraping ALL product categories (tables, beds, chairs, sofas) instead of just sofas. Users needed a way to focus crawls on specific categories.
+
+### Solution: Category Filter
+Added a `categoryFilter` field to source configuration that filters discovered URLs by path patterns.
+
+**Usage:**
+- When creating/editing a source, set category filter to: `soffor, soffa, hornsoffa`
+- Only URLs containing at least one of these patterns will be processed
+- Empty filter = all URLs pass through (previous behavior)
+
+### Changes
+
+**Backend (Supply Engine):**
+- Added `_source_category_filter()` to extract filter patterns from source config
+- Added `_filter_urls_by_category()` to filter discovered URLs
+- Applied filter after URL discovery, before product extraction
+- Logs filter results for debugging
+
+**Frontend (Admin UI):**
+- Added "Category filter" field in Advanced Settings when creating/editing sources
+- Accepts comma-separated patterns (e.g., "soffor, soffa, hornsoffa")
+- Patterns are case-insensitive and match anywhere in URL path
+
+**API:**
+- Updated `/api/admin/sources/create-with-discovery` to accept `categoryFilter` parameter
+- Filter patterns stored as array in Firestore source document
+
+### Future: MCP Reconnaissance (Idea Logged)
+Added comprehensive idea to `docs/FUTURE_IDEAS.md` for AI-powered site reconnaissance that would automatically identify category patterns, eliminating manual configuration.
+
+### Files Changed
+- `services/supply_engine/app/crawl_ingestion.py`: Category filter implementation
+- `apps/Swiper_flutter/lib/features/admin/admin_sources_screen.dart`: UI field
+- `apps/Swiper_flutter/lib/data/api_client.dart`: API parameter
+- `firebase/functions/src/api/admin_sources.ts`: Backend endpoint
+- `docs/FUTURE_IDEAS.md`: MCP reconnaissance idea
+
+---
+
+## 2026-02-05 – Crawler Quality & Execution Controls
+
+### URL Classifier Improvements
+- **Fixed category path mis-classification:** Removed `/soffa` and `/soffor` from product hints (these are category paths in Swedish)
+- **Added category negative patterns:** Swedish furniture categories (`/soffor`, `/mobler`, `/stolar`, `/bord`, etc.) now correctly classified as listings
+- **Added utility page exclusions:** `/kampanj`, `/inspiration`, `/guide`, `/press`, `/outlet`, etc.
+- **Improved confidence scoring:** Shallow paths without product markers now lean toward category classification
+- **Added product patterns:** Better detection of `/p/product-slug`, SKU patterns, and deep product paths
+
+### Source Data Validation
+- **URL normalization on save:** Sources are now validated and URLs automatically normalized with `https://` on create/update
+- **Prevent invalid manual configs:** `seedType=manual` now requires at least one URL in `seedUrls`
+- **Clear error messages:** Validation failures return structured error details
+
+### Sitemap Early Stopping
+- **Stop on repeated zero-yields:** If 5 consecutive sitemaps return 0 URLs, discovery stops early to conserve crawl budget
+- **Resets on any yield:** Counter resets when URLs or nested sitemaps are found
+- **Reduces wasted fetches:** Sites with many empty/incompatible sitemaps no longer burn all budget
+
+### Duplicate Run Prevention
+- **Prevent concurrent runs:** "Run Now" button now checks for active runs before triggering
+- **Run tracking in Firestore:** Runs are tracked with status (`running`, `completed`, `failed`)
+- **Stale run handling:** Runs older than 30 minutes are marked as failed and allow new runs
+- **Force override:** `force=true` parameter allows bypassing the check when needed
+
+### Run Correlation Logging
+- **Run IDs in logs:** All log messages now include a `[run_id]` prefix for filtering concurrent runs
+- **Correlation across services:** Run ID passed from Firebase Functions to Supply Engine
+- **Easier debugging:** Can now filter logs by run ID when multiple crawls run simultaneously
+
+### New Tests
+- `test_classifier.py`: Comprehensive tests for URL classification (categories, products, edge cases)
+
+### Files Changed
+- `services/supply_engine/app/locator/classifier.py`: Improved URL classification heuristics
+- `firebase/functions/src/api/admin_sources.ts`: Added source validation and URL normalization
+- `services/supply_engine/app/locator/sitemap.py`: Added early stopping on zero-yield sitemaps
+- `firebase/functions/src/api/admin_run_trigger.ts`: Added duplicate run prevention and tracking
+- `services/supply_engine/app/main.py`: Added run ID correlation support
+- `services/supply_engine/app/crawl_ingestion.py`: Added run ID to logger
+- `services/supply_engine/app/feed_ingestion.py`: Added run ID logging
+- `services/supply_engine/tests/test_classifier.py`: New test file for classifier
+
+---
+
+## 2026-02-05 – Crawler Bug Fixes & Reliability Improvements
+
+### Runtime Parity and Environment Alignment
+- **Fixed SUPPLY_ENGINE_URL mismatch:** Unified default port to 8081 across all Firebase Functions (was 8000 in `admin_sources.ts`, 8081 in `admin_run_trigger.ts`)
+- **Fixed FIRESTORE_EMULATOR_HOST port:** Updated `.env.example` to show correct port 8180 (was 8080)
+- **Added Functions build step:** `run_emulators.sh` now runs `npm run build` before starting emulators to prevent stale code issues
+- **Auto-set emulator host:** `run_supply_engine.sh` now auto-exports `FIRESTORE_EMULATOR_HOST=localhost:8180`
+
+### Domain Equivalence Normalization
+Crawls now work correctly when sites use www and apex domains interchangeably:
+- **Added `canonical_domain()`:** Strips www. prefix for consistent comparison
+- **Added `domains_equivalent()`:** Treats `www.example.com` and `example.com` as same-site
+- **Updated domain checks:** Applied to sitemap filtering (`sitemap.py`), category crawl (`crawler.py`), discovery sampling (`discovery.py`), and robots.txt cache (`fetcher.py`)
+
+### Source Edit Behavior Fix
+- **Clear derived config on URL change:** `adminSourcePut` now clears the `derived` object when the source URL changes, preventing stale auto-discovered configuration from silently overriding user edits
+
+### Filter Fallback Hardening
+- **Added fallback when path filtering removes all URLs:** When `seedPathPattern` filtering yields zero results:
+  1. First tries category crawl from seed URL
+  2. If crawl also yields nothing, falls back to unfiltered sitemap URLs
+- **Prevents "succeeded with 0 candidates":** Crawls now have robust recovery when sitemap filtering is too aggressive
+
+### Base URL Protocol Normalization
+- **Auto-add https:// when missing:** `_base_url()` now normalizes URLs without protocol (e.g., `www.mio.se` → `https://www.mio.se`)
+- **Fixes "Request URL is missing protocol" errors:** Legacy sources with bare domains now work correctly
+
+### Text Sitemap Support
+- **Support for .txt sitemaps:** Added parsing for plain text sitemaps (one URL per line) in addition to XML
+- **Auto-format detection:** `_parse_sitemap_content()` detects text vs XML and parses accordingly
+- **Fixes Mio and similar sites:** Sites using `.txt` sitemap files now parse correctly (was returning 0 URLs)
+
+### Regression Tests
+- **Domain equivalence tests** (`test_normalization.py`): Tests for `canonical_domain`, `domains_equivalent` including edge cases
+- **Filter fallback tests** (`test_crawl_fallback.py`): Tests for path filter behavior, fallback logic, and config resolution
+
+### Documentation Updates
+- **RUNBOOK_LOCAL_DEV.md:** Added port reference table, environment variable defaults, and troubleshooting section for common issues (Supply Engine unreachable, stale Functions code, missing emulator host)
+
+### Files Changed
+- `firebase/functions/src/api/admin_sources.ts`: Fixed port default, added derived config clearing on URL change
+- `.env.example`: Fixed Firestore emulator port, added SUPPLY_ENGINE_URL
+- `scripts/run_emulators.sh`: Added Functions build step
+- `scripts/run_supply_engine.sh`: Auto-set FIRESTORE_EMULATOR_HOST
+- `services/supply_engine/app/normalization.py`: Added `canonical_domain`, `domains_equivalent`
+- `services/supply_engine/app/locator/sitemap.py`: Use `domains_equivalent` for filtering, added text sitemap support
+- `services/supply_engine/app/locator/crawler.py`: Use `domains_equivalent` for same-site checks
+- `services/supply_engine/app/discovery.py`: Use `domains_equivalent` for sampling, added text sitemap support
+- `services/supply_engine/app/http/fetcher.py`: Use `canonical_domain` for robots cache key
+- `services/supply_engine/app/crawl_ingestion.py`: Added fallback when path filter removes all URLs, auto-add https:// to base URL
+- `services/supply_engine/tests/test_normalization.py`: Added domain equivalence tests
+- `services/supply_engine/tests/test_crawl_fallback.py`: New file for fallback tests
+- `docs/RUNBOOK_LOCAL_DEV.md`: Added ports table and troubleshooting section
+
+---
+
 ## 2026-02-05 – Smart Crawler Auto-Discovery
 
 ### Major Feature: Automated Source Configuration

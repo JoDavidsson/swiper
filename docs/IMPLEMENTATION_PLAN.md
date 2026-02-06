@@ -7,9 +7,9 @@
 
 ## Current Status
 
-**Phase:** Phase 11b (Smart Crawler Auto-Discovery) Complete  
+**Phase:** Phase 11c (Crawler Bug Fixes) Complete  
 **Next Phase:** Phase 12 (Featured Distribution)  
-**Last Milestone:** Smart Crawler Auto-Discovery – single URL input with automatic configuration
+**Last Milestone:** Crawler Bug Fixes – runtime parity, domain equivalence, filter fallback
 
 ---
 
@@ -191,6 +191,23 @@
 | 11b.7 | Simplified admin source form with URL detection | High | 11b.6 | ✅ Done |
 
 **Summary:** Single URL input → automatic discovery of domain, sitemaps, product counts, and strategy recommendation. Dramatically simplifies adding new retailer sources.
+
+### Phase 11c: Crawler Bug Fixes ✅
+
+| Step | Task | Priority | Dependencies | Status |
+|------|------|----------|--------------|--------|
+| 11c.1 | Fix SUPPLY_ENGINE_URL port mismatch (8000→8081) | High | — | ✅ Done |
+| 11c.2 | Fix FIRESTORE_EMULATOR_HOST port in .env.example | Medium | — | ✅ Done |
+| 11c.3 | Add Functions build step to emulators script | High | — | ✅ Done |
+| 11c.4 | Auto-set FIRESTORE_EMULATOR_HOST in supply engine script | Medium | — | ✅ Done |
+| 11c.5 | Add `canonical_domain` and `domains_equivalent` functions | High | — | ✅ Done |
+| 11c.6 | Update sitemap/crawler/discovery domain comparisons | High | 11c.5 | ✅ Done |
+| 11c.7 | Clear derived config when source URL changes | High | — | ✅ Done |
+| 11c.8 | Add fallback when path filter removes all URLs | High | — | ✅ Done |
+| 11c.9 | Regression tests for domain equivalence and fallback | Medium | 11c.5-8 | ✅ Done |
+| 11c.10 | Update RUNBOOK_LOCAL_DEV.md with troubleshooting | Medium | 11c.1-4 | ✅ Done |
+
+**Summary:** Fixed runtime parity issues, domain equivalence (www vs apex), stale derived config, and filter fallback. Crawls now work reliably across various site configurations.
 
 ### Phase 12: Featured Distribution
 

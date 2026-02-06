@@ -1,4 +1,4 @@
-"""Tests for normalization (color, material, size, canonical URL)."""
+"""Tests for normalization (color, material, size, canonical URL, domain equivalence)."""
 import pytest
 from app.normalization import (
     normalize_material,
@@ -8,6 +8,8 @@ from app.normalization import (
     canonical_url,
     size_class_from_width_cm,
     infer_color_from_title,
+    canonical_domain,
+    domains_equivalent,
 )
 
 
@@ -56,3 +58,56 @@ def test_infer_color_from_title():
     assert infer_color_from_title("Red Edition Fifties Sofa 210") == "red"
     assert infer_color_from_title("") is None
     assert infer_color_from_title(None) is None
+
+
+# =============================================================================
+# DOMAIN EQUIVALENCE TESTS
+# =============================================================================
+
+def test_canonical_domain_strips_www():
+    """canonical_domain should strip www. prefix for comparison."""
+    assert canonical_domain("www.example.com") == "example.com"
+    assert canonical_domain("example.com") == "example.com"
+    assert canonical_domain("WWW.EXAMPLE.COM") == "example.com"
+    assert canonical_domain("www.mio.se") == "mio.se"
+
+
+def test_canonical_domain_preserves_other_subdomains():
+    """Non-www subdomains should be preserved."""
+    assert canonical_domain("sub.example.com") == "sub.example.com"
+    assert canonical_domain("api.example.com") == "api.example.com"
+    assert canonical_domain("www2.example.com") == "www2.example.com"
+
+
+def test_canonical_domain_handles_edge_cases():
+    """Handle empty strings and whitespace."""
+    assert canonical_domain("") == ""
+    assert canonical_domain("  www.example.com  ") == "example.com"
+
+
+def test_domains_equivalent_www_and_apex():
+    """www.x.com and x.com should be equivalent."""
+    assert domains_equivalent("www.example.com", "example.com") is True
+    assert domains_equivalent("example.com", "www.example.com") is True
+    assert domains_equivalent("www.mio.se", "mio.se") is True
+    assert domains_equivalent("mio.se", "www.mio.se") is True
+
+
+def test_domains_equivalent_same_domain():
+    """Identical domains should be equivalent."""
+    assert domains_equivalent("example.com", "example.com") is True
+    assert domains_equivalent("www.example.com", "www.example.com") is True
+
+
+def test_domains_equivalent_different_domains():
+    """Different domains should not be equivalent."""
+    assert domains_equivalent("example.com", "other.com") is False
+    assert domains_equivalent("www.example.com", "www.other.com") is False
+    assert domains_equivalent("mio.se", "ikea.se") is False
+
+
+def test_domains_equivalent_subdomains_not_equivalent():
+    """Non-www subdomains should not be equivalent to apex."""
+    assert domains_equivalent("sub.example.com", "example.com") is False
+    assert domains_equivalent("api.example.com", "www.example.com") is False
+    assert domains_equivalent("shop.mio.se", "mio.se") is False

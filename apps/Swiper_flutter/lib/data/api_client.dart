@@ -144,6 +144,12 @@ class ApiClient {
     return env;
   }
 
+  /// Get the /go/:itemId redirect URL for outbound links.
+  /// This endpoint is a separate Firebase Function (not under /api).
+  static String goUrl(String itemId) {
+    return '$_defaultBaseUrl/go/$itemId';
+  }
+
   final Dio _dio;
 
   /// Create or refresh anonymous session. Optionally send device context for ML/analytics.
@@ -319,6 +325,7 @@ class ApiClient {
     double rateLimitRps = 1.0,
     bool isEnabled = true,
     List<String>? includeKeywords,
+    List<String>? categoryFilter,
   }) async {
     final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources/create-with-discovery', data: {
       'url': url,
@@ -326,6 +333,7 @@ class ApiClient {
       'rateLimitRps': rateLimitRps,
       'isEnabled': isEnabled,
       if (includeKeywords != null) 'includeKeywords': includeKeywords,
+      if (categoryFilter != null) 'categoryFilter': categoryFilter,
     });
     return r.data ?? {};
   }
