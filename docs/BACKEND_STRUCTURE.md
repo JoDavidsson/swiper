@@ -1,6 +1,6 @@
 # Swiper – Backend Structure
 
-> **Last updated:** 2026-02-05  
+> **Last updated:** 2026-02-07  
 > Complete database schema, API contracts, and service architecture.
 
 ---
@@ -10,8 +10,8 @@
 ```
 ┌─────────────────┐     ┌─────────────────────────────────────┐
 │  Flutter App    │────▶│  Firebase Cloud Functions (API)     │
-└─────────────────┘     │  • /session, /deck, /swipe          │
-                        │  • /likes, /shortlists, /events     │
+└─────────────────┘     │  • /api/session, /api/items/deck    │
+                        │  • /api/swipe, /api/likes, /api/*   │
                         │  • /admin/*, /retailer/*            │
                         └───────────────┬─────────────────────┘
                                         │
@@ -48,20 +48,22 @@ Primary collection for all furniture products.
 |-------|------|----------|-------------|
 | `id` | `string` | ✓ | Document ID, nanoid |
 | `sourceId` | `string` | ✓ | External product ID |
-| `url` | `string` | ✓ | Product page URL |
+| `sourceUrl` | `string` | ✓ | Product page URL |
 | `title` | `string` | ✓ | Product name |
-| `priceSek` | `number` | ✓ | Price in SEK |
+| `priceAmount` | `number` | ✓ | Price amount |
+| `priceCurrency` | `string` | ✓ | Currency (typically SEK) |
 | `images` | `string[]` | ✓ | Image URLs (first is primary) |
 | `retailer` | `string` | ✓ | Retailer slug |
-| `active` | `boolean` | ✓ | Visible in deck |
+| `isActive` | `boolean` | ✓ | Visible in deck |
 | `styleTags` | `string[]` | — | Style descriptors |
 | `material` | `string` | — | Normalized material |
 | `colorFamily` | `string` | — | Normalized color |
-| `sizeClass` | `string` | — | `compact` / `medium` / `large` |
+| `sizeClass` | `string` | — | `small` / `medium` / `large` |
 | `dimensionsCm` | `object` | — | `{w, h, d}` in cm |
-| `createdAt` | `timestamp` | ✓ | First ingestion time |
-| `updatedAt` | `timestamp` | ✓ | Last update time |
-| `ingestedAt` | `timestamp` | ✓ | Last crawl time |
+| `extractionMeta` | `object` | — | Extraction quality metadata `{method, extractorMethod, completeness, missingFields[], fetchMethod, extractedAt}` |
+| `firstSeenAt` | `timestamp` | ✓ | First ingestion time |
+| `lastUpdatedAt` | `timestamp` | ✓ | Last update time |
+| `lastSeenAt` | `timestamp` | ✓ | Last crawl/seen time |
 
 **Indexes:**
 
@@ -70,8 +72,8 @@ Primary collection for all furniture products.
   "collectionGroup": "items",
   "queryScope": "COLLECTION",
   "fields": [
-    { "fieldPath": "active", "order": "ASCENDING" },
-    { "fieldPath": "createdAt", "order": "DESCENDING" }
+    { "fieldPath": "isActive", "order": "ASCENDING" },
+    { "fieldPath": "lastUpdatedAt", "order": "DESCENDING" }
   ]
 }
 ```
@@ -83,7 +85,7 @@ Primary collection for all furniture products.
 | `id` | `string` | ✓ | Document ID, nanoid |
 | `deviceFingerprint` | `string` | — | Optional device ID |
 | `createdAt` | `timestamp` | ✓ | Session start |
-| `lastActiveAt` | `timestamp` | ✓ | Last activity |
+| `lastSeenAt` | `timestamp` | ✓ | Last activity |
 | `swipeCount` | `number` | — | Total swipes |
 | `likeCount` | `number` | — | Total likes |
 | `analyticsOptOut` | `boolean` | — | GDPR opt-out flag |
@@ -108,8 +110,8 @@ Primary collection for all furniture products.
 | `id` | `string` | ✓ | Document ID |
 | `sessionId` | `string` | ✓ | Reference to `anonSessions` |
 | `itemId` | `string` | ✓ | Reference to `items` |
-| `direction` | `string` | ✓ | `like` / `dislike` |
-| `durationMs` | `number` | — | Time spent on card |
+| `direction` | `string` | ✓ | `left` / `right` |
+| `positionInDeck` | `number` | — | Position when swiped |
 | `createdAt` | `timestamp` | ✓ | Swipe timestamp |
 
 **Indexes:**
@@ -363,6 +365,74 @@ Precomputed signals from users with similar onboarding picks.
 | `topItems` | `string[]` | ✓ | Top 20 liked items |
 | `updatedAt` | `timestamp` | ✓ | Last aggregation time |
 
+### 2.21 `goldItems` – Serve-Ready Items (Phase 11d)
+
+Items that have been classified and accepted by the sorting engine. The deck reads from this collection first.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `itemId` | `string` | ✓ | Matches items collection doc ID |
+| `eligibleSurfaces` | `string[]` | ✓ | Surface IDs where item is accepted |
+| `predictedCategory` | `string` | ✓ | Category from classifier |
+| `categoryConfidence` | `number` | ✓ | Classification confidence 0.0-1.0 |
+| `classificationVersion` | `number` | ✓ | Version of classification model |
+| `policyVersion` | `number` | ✓ | Version of eligibility policy |
+| `decisions` | `object` | ✓ | Per-surface ACCEPT/REJECT/UNCERTAIN with reason codes |
+| `humanVerified` | `boolean` | | True if reviewer manually accepted |
+| `promotedAt` | `string` | ✓ | ISO timestamp of promotion |
+| `isActive` | `boolean` | ✓ | Whether shown in deck |
+| (plus essential item fields for fast reads: title, brand, price, images, etc.) | | | |
+
+### 2.22 `reviewQueue` – Uncertain Items (Phase 11d)
+
+Items that the classifier is uncertain about, awaiting human review.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `itemId` | `string` | ✓ | Matches items collection doc ID |
+| `classification` | `object` | ✓ | Full classification result |
+| `decisions` | `object` | ✓ | Per-surface decisions |
+| `status` | `string` | ✓ | "pending" or "reviewed" |
+| `reviewedBy` | `string` | | Reviewer ID |
+| `reviewAction` | `string` | | "accept", "reject", or "reclassify" |
+| `createdAt` | `string` | ✓ | ISO timestamp |
+
+### 2.23 `reviewerLabels` – Training Data (Phase 11d)
+
+Stores reviewer decisions as training data for future model calibration.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `itemId` | `string` | ✓ | Item that was reviewed |
+| `action` | `string` | ✓ | "accept", "reject", "reclassify" |
+| `correctCategory` | `string` | | If reclassified, the correct category |
+| `reason` | `string` | | Reviewer's reason |
+| `reviewerId` | `string` | ✓ | Who reviewed |
+| `originalClassification` | `object` | ✓ | Classification at review time |
+| `createdAt` | `string` | ✓ | ISO timestamp |
+
+### 2.24 `calibrationRuns` – Threshold Calibration History (Phase 11d)
+
+Records of calibration runs that adjust classification thresholds.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `totalLabels` | `number` | ✓ | Labels used for calibration |
+| `accuracyBefore` | `number` | ✓ | Accuracy before adjustment |
+| `accuracyAfter` | `number` | ✓ | Accuracy after adjustment |
+| `thresholdAdjustments` | `object` | ✓ | Old vs new thresholds |
+| `calibratedAt` | `string` | ✓ | ISO timestamp |
+
+### 2.25 `sources` – Crawl Config (Quality Fields)
+
+Additional crawl-source fields used by Supply Engine quality controls.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `useBrowserFallback` | `boolean` | — | Enable Playwright fallback for JS-rendered pages (default `false`) |
+| `enableQualityRefetch` | `boolean` | — | Optional second-pass refetch for stale low-completeness items |
+| `qualityRefetchLimit` | `number` | — | Max low-quality items to refetch per run (default `100`) |
+
 ---
 
 ## 3. Firestore Security Rules
@@ -464,6 +534,19 @@ service cloud.firestore {
     match /crawlRecipes/{recipeId} {
       allow read, write: if false;
     }
+    // Sorting engine collections (Phase 11d)
+    match /goldItems/{itemId} {
+      allow read, write: if false;
+    }
+    match /reviewQueue/{itemId} {
+      allow read, write: if false;
+    }
+    match /reviewerLabels/{labelId} {
+      allow read, write: if false;
+    }
+    match /calibrationRuns/{runId} {
+      allow read, write: if false;
+    }
   }
 }
 ```
@@ -472,30 +555,35 @@ service cloud.firestore {
 
 ## 4. API Endpoints (Cloud Functions)
 
-Base URL: `https://{region}-{project}.cloudfunctions.net`
+Base URL:
+
+- Emulator: `http://127.0.0.1:5002/{projectId}/{region}`
+- API path prefix: `/api/*`
 
 ### 4.1 Public Endpoints
 
-#### `POST /session`
+#### `POST /api/session`
 
-Create or resume anonymous session.
+Create anonymous session.
 
 **Request:**
 ```json
 {
-  "deviceFingerprint": "optional-device-id"
+  "locale": "sv-SE",
+  "platform": "web",
+  "screenBucket": "mobile",
+  "timezoneOffsetMinutes": 60
 }
 ```
 
 **Response:**
 ```json
 {
-  "sessionId": "abc123",
-  "isNew": true
+  "sessionId": "abc123"
 }
 ```
 
-#### `GET /deck`
+#### `GET /api/items/deck`
 
 Get ranked items for swiping.
 
@@ -503,32 +591,45 @@ Get ranked items for swiping.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `sessionId` | `string` | — | Required |
-| `limit` | `number` | `20` | Max items |
+| `limit` | `number` | `30` | Max items |
+| `filters` | `json-string` | — | Optional serialized filters |
+| `requestId` | `string` | auto | Optional caller-provided request id |
+| `debug` | `boolean` | `false` | Include debug block |
 
 **Response:**
 ```json
 {
+  "requestId": "deck_...",
   "items": [
     {
       "id": "item123",
       "title": "STOCKHOLM Sofa",
-      "priceSek": 14995,
+      "priceAmount": 14995,
+      "priceCurrency": "SEK",
       "images": ["https://..."],
       "retailer": "ikea",
-      "url": "https://ikea.com/...",
+      "sourceUrl": "https://ikea.com/...",
       "styleTags": ["scandinavian", "modern"],
       "material": "leather",
       "colorFamily": "brown",
-      "sizeClass": "large",
-      "isFeatured": false,
-      "campaignId": null
+      "sizeClass": "large"
     }
   ],
-  "hasMore": true
+  "rank": {
+    "rankerRunId": "run_...",
+    "algorithmVersion": "preference_weights_v1",
+    "candidateCount": 300,
+    "rankWindow": 300,
+    "retrievalQueues": ["preference_match", "fresh_catalog"],
+    "itemIds": ["item123", "item456"]
+  },
+  "itemScores": {
+    "item123": 1.42
+  }
 }
 ```
 
-#### `POST /swipe`
+#### `POST /api/swipe`
 
 Record a swipe action.
 
@@ -537,22 +638,19 @@ Record a swipe action.
 {
   "sessionId": "abc123",
   "itemId": "item456",
-  "direction": "like",
-  "durationMs": 2500,
-  "isFeatured": false,
-  "campaignId": null
+  "direction": "right",
+  "positionInDeck": 0
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "likeCount": 5
+  "ok": true
 }
 ```
 
-#### `GET /likes`
+#### `GET /api/likes`
 
 Get user's liked items.
 
@@ -560,28 +658,34 @@ Get user's liked items.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `sessionId` | `string` | — | Required |
-| `limit` | `number` | `50` | Max items |
-| `cursor` | `string` | — | Pagination cursor |
 
 **Response:**
 ```json
 {
-  "items": [...],
-  "nextCursor": "abc123",
-  "total": 15
+  "items": [...]
 }
 ```
 
-#### `DELETE /likes/{itemId}`
+#### `POST /api/likes/toggle`
 
-Remove a liked item.
+Toggle like for an item.
 
-**Query Params:**
-| Param | Type | Description |
-|-------|------|-------------|
-| `sessionId` | `string` | Required |
+**Request:**
+```json
+{
+  "sessionId": "abc123",
+  "itemId": "item456"
+}
+```
 
-#### `POST /shortlists`
+**Response:**
+```json
+{
+  "liked": true
+}
+```
+
+#### `POST /api/shortlists/create`
 
 Create shareable shortlist.
 
@@ -596,22 +700,22 @@ Create shareable shortlist.
 **Response:**
 ```json
 {
-  "id": "xyz789",
-  "shareUrl": "https://swiper.app/s/xyz789"
+  "shortlistId": "xyz789",
+  "shareToken": "abcXYZ..."
 }
 ```
 
-#### `GET /shortlists/{id}`
+#### `GET /api/shortlists/byToken/{shareToken}`
 
 Get shortlist by ID (public).
 
 **Response:**
 ```json
 {
-  "id": "xyz789",
+  "shortlistId": "xyz789",
+  "shareToken": "abcXYZ...",
   "items": [...],
-  "createdAt": "2026-02-02T12:00:00Z",
-  "decisionRoomId": null
+  "createdAt": "2026-02-02T12:00:00Z"
 }
 ```
 
@@ -981,7 +1085,7 @@ List retailer's products with scores.
       "id": "prod123",
       "title": "STOCKHOLM Sofa",
       "images": [...],
-      "priceSek": 14995,
+      "priceAmount": 14995,
       "included": true,
       "score": {
         "value": 87.3,

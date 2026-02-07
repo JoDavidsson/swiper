@@ -94,11 +94,12 @@ def update_job(db, job_id: str, status: str, error: str | None = None):
     db.collection("ingestionJobs").document(job_id).update(data)
 
 
-def write_items(db, items: list[dict], source_id: str) -> tuple[int, int]:
-    """Batch write items to Firestore. Returns (upserted, failed)."""
+def write_items(db, items: list[dict], source_id: str) -> tuple[int, int, list[str]]:
+    """Batch write items to Firestore. Returns (upserted, failed, item_ids)."""
     from firebase_admin import firestore as fs
     upserted = 0
     failed = 0
+    item_ids: list[str] = []
     col = db.collection("items")
     for item in items:
         try:
@@ -109,9 +110,11 @@ def write_items(db, items: list[dict], source_id: str) -> tuple[int, int]:
             item_id = data.pop("id", None) or str(uuid.uuid4()).replace("-", "")[:24]
             col.document(item_id).set(data, merge=True)
             upserted += 1
+            item_ids.append(item_id)
         except Exception:
             failed += 1
-    return upserted, failed
+            item_ids.append("")  # Placeholder to keep alignment with items list
+    return upserted, failed, item_ids
 
 
 # ----------------------------
@@ -247,6 +250,8 @@ def upsert_metrics_daily(db, *, source_id: str, date: str, metrics: dict) -> str
     Upsert daily metrics.
 
     `date` should be YYYY-MM-DD in UTC.
+    Metrics map may include quality fields such as:
+    descriptionRate, dimensionsRate, materialRate, avgCompleteness, browserFetchCount.
     """
     doc_id = f"{source_id}__{date}"
     data = {"sourceId": source_id, "date": date, **metrics, "updatedAt": _server_timestamp()}
@@ -293,6 +298,38 @@ def get_active_recipe(db, *, source_id: str) -> dict | None:
     if not snap:
         return None
     return {"id": snap[0].id, **snap[0].to_dict()}
+
+
+def get_known_hashes(db, *, source_id: str, urls: list[str]) -> dict[str, str]:
+    """
+    Look up previously stored html_hash values for a batch of URLs.
+
+    Returns {url: html_hash} for URLs that have a stored snapshot.
+    Used for incremental recrawl: if the hash hasn't changed, skip re-extraction.
+    """
+    if not urls:
+        return {}
+
+    # Use crawlUrls collection which stores htmlHash from previous runs
+    known: dict[str, str] = {}
+    for url in urls:
+        doc_id = _doc_id_for_url(url)
+        doc = db.collection("crawlUrls").document(doc_id).get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            h = data.get("htmlHash")
+            if h:
+                known[url] = h
+    return known
+
+
+def update_crawl_url_hash(db, *, url: str, html_hash: str, source_id: str) -> None:
+    """Store the html_hash for a crawl URL so future runs can skip unchanged pages."""
+    doc_id = _doc_id_for_url(url)
+    db.collection("crawlUrls").document(doc_id).set(
+        {"htmlHash": html_hash, "lastCrawledAt": _server_timestamp(), "sourceId": source_id},
+        merge=True,
+    )
 
 
 def deactivate_active_recipes(db, *, source_id: str) -> int:

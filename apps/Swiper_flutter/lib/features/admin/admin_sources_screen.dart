@@ -54,6 +54,11 @@ class _AdminSourcesScreenState extends ConsumerState<AdminSourcesScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.play_circle_outline),
+            onPressed: _sources.isEmpty ? null : () => _runAllSources(context),
+            tooltip: 'Run All Sources',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadSources,
             tooltip: 'Refresh',
@@ -130,6 +135,76 @@ class _AdminSourcesScreenState extends ConsumerState<AdminSourcesScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _runAllSources(BuildContext context) async {
+    // Get enabled source IDs
+    final enabledSources = _sources
+        .where((s) => s['isEnabled'] == true)
+        .map((s) => s['id'] as String? ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    if (enabledSources.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No enabled sources to run')),
+        );
+      }
+      return;
+    }
+
+    // Confirm with user
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Run All Sources?'),
+        content: Text(
+          'This will run ${enabledSources.length} enabled source${enabledSources.length == 1 ? '' : 's'} in parallel.\n\n'
+          'This may take several minutes depending on the number of products.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.play_arrow, size: 18),
+            label: Text('Run ${enabledSources.length} source${enabledSources.length == 1 ? '' : 's'}'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final client = ref.read(apiClientProvider);
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Starting batch run for ${enabledSources.length} sources...'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      final result = await client.adminTriggerBatchRun(enabledSources);
+      if (context.mounted) {
+        final succeeded = result['succeeded'] ?? 0;
+        final failed = result['failed'] ?? 0;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Batch complete: $succeeded succeeded, $failed failed'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Batch run error: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _runNow(BuildContext context, String sourceId) async {

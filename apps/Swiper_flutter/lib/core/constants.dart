@@ -2,6 +2,10 @@
 class AppConstants {
   static const String appName = 'Swiper';
   static const String tagline = 'Swipe your way to the perfect sofa';
+  static const bool enableStandaloneOnboarding = bool.fromEnvironment(
+    'ENABLE_STANDALONE_ONBOARDING',
+    defaultValue: false,
+  );
 
   /// API base URL: from env or default for local emulator.
   static String get apiBaseUrl {

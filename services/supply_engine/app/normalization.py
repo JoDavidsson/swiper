@@ -249,18 +249,62 @@ def infer_color_from_title(title: str) -> str | None:
     return None
 
 
-def normalize_size_class(raw: Any, width_cm: float | None = None) -> str:
+def infer_size_from_title(title: str) -> str | None:
+    """
+    Infer sofa size class from Swedish/English product title patterns.
+
+    Patterns:
+      small  – 1-sits, 2-sits, fåtölj, schäslong (single/compact seating)
+      medium – 3-sits (standard sofa)
+      large  – 4-sits, 5-sits, 6-sits+, U-soffa, U-formad, modulsoffa, hörnbäddsoffa
+    """
+    import re
+    if not title or not isinstance(title, str):
+        return None
+    s = title.lower()
+
+    # Check N-sits patterns first (most reliable)
+    m = re.search(r"(\d+)\s*-?\s*sits", s)
+    if m:
+        seats = int(m.group(1))
+        if seats <= 2:
+            return "small"
+        if seats == 3:
+            return "medium"
+        return "large"  # 4+ sits
+
+    # Large indicators
+    large_keywords = ["u-soffa", "u-formad", "modulsoffa", "hörnbäddsoffa",
+                      "hörnsoffa", "u-bäddsoffa", "sectional", "corner sofa",
+                      "modular"]
+    if any(kw in s for kw in large_keywords):
+        return "large"
+
+    # Small indicators
+    small_keywords = ["fåtölj", "armchair", "schäslong", "chaise", "fotpall",
+                      "ottoman", "puff", "loveseat"]
+    if any(kw in s for kw in small_keywords):
+        return "small"
+
+    return None
+
+
+def normalize_size_class(raw: Any, width_cm: float | None = None, title: str | None = None) -> str:
     if width_cm is not None:
         return size_class_from_width_cm(width_cm)
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return "medium"
-    s = str(raw).lower().strip()
-    if s in ("small", "medium", "large"):
-        return s
-    if "small" in s or "compact" in s:
-        return "small"
-    if "large" in s or "wide" in s:
-        return "large"
+    if raw is not None and isinstance(raw, str) and raw.strip():
+        s = raw.lower().strip()
+        if s in ("small", "medium", "large"):
+            return s
+        if "small" in s or "compact" in s:
+            return "small"
+        if "large" in s or "wide" in s:
+            return "large"
+    # Infer from title when no explicit size data
+    if title:
+        inferred = infer_size_from_title(title)
+        if inferred:
+            return inferred
     return "medium"
 
 

@@ -339,7 +339,7 @@ class _AdminItemCard extends StatelessWidget {
               height: 80,
               child: imageUrl != null
                   ? Image.network(
-                      ApiClient.proxyImageUrl(imageUrl),
+                      ApiClient.proxyImageUrl(imageUrl, width: ImageWidth.thumbnail),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: AppTheme.background,
@@ -500,7 +500,7 @@ class _AdminItemDetailSheet extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                       child: Image.network(
-                        ApiClient.proxyImageUrl(url),
+                        ApiClient.proxyImageUrl(url, width: ImageWidth.thumbnail),
                         width: 120,
                         height: 120,
                         fit: BoxFit.cover,

@@ -1,34 +1,19 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/auth_provider.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
-import '../../data/session_provider.dart' show sessionIdProvider, currentSurfaceProvider;
+import '../../data/locale_provider.dart';
+import '../../data/session_provider.dart'
+    show sessionIdProvider, currentSurfaceProvider;
 import '../../data/models/item.dart';
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
-
-// #region agent log
-void _agentLogLikes(String location, String message, Map<String, dynamic> data) {
-  if (!kDebugMode) return;
-  try {
-    final payload = {'location': location, 'message': message, 'data': data, 'timestamp': DateTime.now().millisecondsSinceEpoch, 'sessionId': 'debug-session', 'hypothesisId': 'H7'};
-    Dio()
-        .post(
-          'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
-          data: payload,
-          options: Options(sendTimeout: const Duration(milliseconds: 500), receiveTimeout: const Duration(milliseconds: 500)),
-        )
-        .catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: 'agent_ingest'))));
-  } catch (_) {}
-}
-// #endregion
 
 class LikesScreen extends ConsumerStatefulWidget {
   const LikesScreen({super.key});
@@ -55,27 +40,32 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       item,
       goBaseUrl: Uri.base.origin,
       onOutboundClick: (i) => _trackOutbound(tracker, i),
-      onScroll: () => tracker.track('detail_scroll', {'item': {'itemId': item.id}}),
+      onScroll: () => tracker.track('detail_scroll', {
+        'item': {'itemId': item.id}
+      }),
       onGalleryPageChange: (i) => tracker.track('detail_gallery_interaction', {
         'item': {'itemId': item.id},
         'ext': {'imageIndex': i},
       }),
       onOutboundRedirectStart: (i) {
-        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        final domain =
+            i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
         tracker.track('outbound_redirect_start', {
           'item': {'itemId': i.id},
           'outbound': {'destinationDomain': domain ?? 'unknown'},
         });
       },
       onOutboundRedirectSuccess: (i) {
-        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        final domain =
+            i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
         tracker.track('outbound_redirect_success', {
           'item': {'itemId': i.id},
           'outbound': {'destinationDomain': domain ?? 'unknown'},
         });
       },
       onOutboundRedirectFail: (i, e) {
-        final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+        final domain =
+            i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
         tracker.track('outbound_redirect_fail', {
           'item': {'itemId': i.id},
           'outbound': {'destinationDomain': domain ?? 'unknown'},
@@ -111,7 +101,8 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
   }
 
   void _trackOutbound(EventTracker tracker, Item item) {
-    final domain = item.outboundUrl != null ? Uri.tryParse(item.outboundUrl!)?.host : null;
+    final domain =
+        item.outboundUrl != null ? Uri.tryParse(item.outboundUrl!)?.host : null;
     tracker.track('outbound_click', {
       'item': {'itemId': item.id},
       'outbound': {'destinationDomain': domain ?? 'unknown'},
@@ -120,8 +111,10 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'likes'};
+      if (mounted)
+        ref.read(currentSurfaceProvider.notifier).state = {'name': 'likes'};
     });
     final likesAsync = ref.watch(likesListProvider);
     final sessionId = ref.watch(sessionIdProvider);
@@ -130,16 +123,13 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       _didEmitLikesOpen = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          // #region agent log
-          _agentLogLikes('likes_screen.dart:build', 'likes_open_emitting', {});
-          // #endregion
           ref.read(eventTrackerProvider).track('likes_open', {});
         }
       });
     }
 
     return AppShell(
-      title: 'Likes',
+      title: strings.likes,
       body: likesAsync.when(
         data: (items) {
           if (items.isEmpty) {
@@ -147,15 +137,21 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.favorite_border, size: 64, color: AppTheme.textCaption),
+                  Icon(Icons.favorite_border,
+                      size: 64, color: AppTheme.textCaption),
                   const SizedBox(height: AppTheme.spacingUnit),
-                  Text('No likes yet', style: Theme.of(context).textTheme.titleMedium),
+                  Text(strings.noLikesYet,
+                      style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: AppTheme.spacingUnit),
-                  Text('Swipe right to save items here.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary)),
+                  Text(strings.swipeRightToSave,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(color: AppTheme.textSecondary)),
                   const SizedBox(height: AppTheme.spacingUnit * 2),
                   ElevatedButton(
                     onPressed: () => context.go('/deck'),
-                    child: const Text('Back to deck'),
+                    child: Text(strings.backToDeck),
                   ),
                 ],
               ),
@@ -170,7 +166,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                   IconButton(
                     icon: Icon(_gridView ? Icons.view_list : Icons.grid_view),
                     onPressed: () => setState(() => _gridView = !_gridView),
-                    tooltip: _gridView ? 'List view' : 'Grid view',
+                    tooltip: _gridView ? strings.listView : strings.gridView,
                   ),
                 ],
               ),
@@ -178,7 +174,8 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                 child: _gridView
                     ? GridView.builder(
                         padding: const EdgeInsets.all(AppTheme.spacingUnit),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           childAspectRatio: 0.75,
                           crossAxisSpacing: AppTheme.spacingUnit,
@@ -188,7 +185,8 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                         itemBuilder: (context, i) => _LikeCard(
                           item: items[i],
                           selected: _selectedIds.contains(items[i].id),
-                          onTap: () => _openDetailWithLogging(context, items[i]),
+                          onTap: () =>
+                              _openDetailWithLogging(context, items[i]),
                           onLongPress: () => setState(() {
                             if (_selectedIds.contains(items[i].id)) {
                               _selectedIds.remove(items[i].id);
@@ -202,11 +200,13 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                         padding: const EdgeInsets.all(AppTheme.spacingUnit),
                         itemCount: items.length,
                         itemBuilder: (context, i) => Padding(
-                          padding: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
+                          padding: const EdgeInsets.only(
+                              bottom: AppTheme.spacingUnit),
                           child: _LikeListTile(
                             item: items[i],
                             selected: _selectedIds.contains(items[i].id),
-                            onTap: () => _openDetailWithLogging(context, items[i]),
+                            onTap: () =>
+                                _openDetailWithLogging(context, items[i]),
                             onLongPress: () => setState(() {
                               if (_selectedIds.contains(items[i].id)) {
                                 _selectedIds.remove(items[i].id);
@@ -226,19 +226,22 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
                       if (_selectedIds.length >= 2 && _selectedIds.length <= 4)
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.only(right: AppTheme.spacingUnit / 2),
+                            padding: const EdgeInsets.only(
+                                right: AppTheme.spacingUnit / 2),
                             child: OutlinedButton.icon(
-                              onPressed: () => context.push('/compare?ids=${_selectedIds.join(",")}'),
+                              onPressed: () => context.push(
+                                  '/compare?ids=${_selectedIds.join(",")}'),
                               icon: const Icon(Icons.compare_arrows),
-                              label: const Text('Compare'),
+                              label: Text(strings.compare),
                             ),
                           ),
                         ),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _createDecisionRoom(context, _selectedIds.toList()),
+                          onPressed: () => _createDecisionRoom(
+                              context, _selectedIds.toList()),
                           icon: const Icon(Icons.people),
-                          label: const Text('Decision Room'),
+                          label: Text(strings.decisionRoom),
                         ),
                       ),
                     ],
@@ -253,7 +256,9 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
     );
   }
 
-  Future<void> _createDecisionRoom(BuildContext context, List<String> itemIds) async {
+  Future<void> _createDecisionRoom(
+      BuildContext context, List<String> itemIds) async {
+    final strings = ref.read(appStringsProvider);
     final authState = ref.read(authProvider);
     final tracker = ref.read(eventTrackerProvider);
 
@@ -262,16 +267,16 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       final shouldSignIn = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Sign in required'),
-          content: const Text('You need to sign in to create a Decision Room and collaborate with others.'),
+          title: Text(strings.signInRequired),
+          content: Text(strings.signInRequiredDecisionRoom),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text(strings.cancel),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Sign in'),
+              child: Text(strings.signIn),
             ),
           ],
         ),
@@ -288,7 +293,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
     if (token == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to get authentication token')),
+          SnackBar(content: Text(strings.failedToCreateDecisionRoom)),
         );
       }
       return;
@@ -301,12 +306,12 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       title = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Name your Decision Room'),
+          title: Text(strings.nameDecisionRoom),
           content: TextField(
             controller: titleController,
-            decoration: const InputDecoration(
-              hintText: 'e.g., "Our new sofa" (optional)',
-              labelText: 'Room name',
+            decoration: InputDecoration(
+              hintText: strings.roomNameHint,
+              labelText: strings.roomName,
             ),
             autofocus: true,
             onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
@@ -314,11 +319,11 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, ''),
-              child: const Text('Skip'),
+              child: Text(strings.skip),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, titleController.text.trim()),
-              child: const Text('Create'),
+              child: Text(strings.create),
             ),
           ],
         ),
@@ -329,7 +334,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
 
     // Show loading
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Creating Decision Room...')),
+      SnackBar(content: Text(strings.creatingDecisionRoom)),
     );
 
     try {
@@ -367,9 +372,9 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Decision Room created!'),
+            content: Text(strings.decisionRoomCreated),
             action: SnackBarAction(
-              label: 'View',
+              label: strings.view,
               onPressed: () => context.go('/r/$roomId'),
             ),
           ),
@@ -379,7 +384,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create room: $e')),
+          SnackBar(content: Text('${strings.failedToCreateDecisionRoom}: $e')),
         );
       }
     }
@@ -406,7 +411,9 @@ class _LikeCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        side: selected ? const BorderSide(color: AppTheme.primaryAction, width: 2) : BorderSide.none,
+        side: selected
+            ? const BorderSide(color: AppTheme.primaryAction, width: 2)
+            : BorderSide.none,
       ),
       child: InkWell(
         onTap: onTap,
@@ -416,17 +423,42 @@ class _LikeCard extends StatelessWidget {
           children: [
             Expanded(
               child: item.firstImageUrl != null
-                  ? Image.network(ApiClient.proxyImageUrl(item.firstImageUrl!), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.image_not_supported, color: AppTheme.textCaption))
-                  : Container(color: AppTheme.background, child: Icon(Icons.image_not_supported, color: AppTheme.textCaption)),
+                  ? CachedNetworkImage(
+                      imageUrl: ApiClient.proxyImageUrl(item.firstImageUrl!,
+                          width: ImageWidth.thumbnail),
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        color: AppTheme.background,
+                        child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                      ),
+                      errorWidget: (_, __, ___) => Icon(
+                          Icons.image_not_supported,
+                          color: AppTheme.textCaption),
+                    )
+                  : Container(
+                      color: AppTheme.background,
+                      child: Icon(Icons.image_not_supported,
+                          color: AppTheme.textCaption)),
             ),
             Padding(
               padding: const EdgeInsets.all(AppTheme.spacingUnit / 2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item.title, style: Theme.of(context).textTheme.bodyMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  Text('${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.primaryAction)),
-                  if (item.brand != null) Text(item.brand!, style: Theme.of(context).textTheme.bodySmall),
+                  Text(item.title,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                  Text(
+                      '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(color: AppTheme.primaryAction)),
+                  if (item.brand != null)
+                    Text(item.brand!,
+                        style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
             ),
@@ -457,7 +489,9 @@ class _LikeListTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        side: selected ? const BorderSide(color: AppTheme.primaryAction, width: 2) : BorderSide.none,
+        side: selected
+            ? const BorderSide(color: AppTheme.primaryAction, width: 2)
+            : BorderSide.none,
       ),
       child: InkWell(
         onTap: onTap,
@@ -470,17 +504,25 @@ class _LikeListTile extends StatelessWidget {
               SizedBox(
                 width: 100,
                 child: item.firstImageUrl != null
-                    ? Image.network(
-                        ApiClient.proxyImageUrl(item.firstImageUrl!),
+                    ? CachedNetworkImage(
+                        imageUrl: ApiClient.proxyImageUrl(item.firstImageUrl!,
+                            width: ImageWidth.thumbnail),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        placeholder: (_, __) => Container(
                           color: AppTheme.background,
-                          child: Icon(Icons.image_not_supported, color: AppTheme.textCaption),
+                          child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppTheme.background,
+                          child: Icon(Icons.image_not_supported,
+                              color: AppTheme.textCaption),
                         ),
                       )
                     : Container(
                         color: AppTheme.background,
-                        child: Icon(Icons.image_not_supported, color: AppTheme.textCaption),
+                        child: Icon(Icons.image_not_supported,
+                            color: AppTheme.textCaption),
                       ),
               ),
               Expanded(
@@ -499,13 +541,19 @@ class _LikeListTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.primaryAction),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(color: AppTheme.primaryAction),
                       ),
                       if (item.brand != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           item.brand!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: AppTheme.textSecondary),
                         ),
                       ],
                     ],
@@ -516,7 +564,8 @@ class _LikeListTile extends StatelessWidget {
                 Container(
                   width: 40,
                   alignment: Alignment.center,
-                  child: const Icon(Icons.check_circle, color: AppTheme.primaryAction),
+                  child: const Icon(Icons.check_circle,
+                      color: AppTheme.primaryAction),
                 ),
             ],
           ),

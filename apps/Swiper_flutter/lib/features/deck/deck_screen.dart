@@ -8,7 +8,13 @@ import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/gold_card_provider.dart';
 import '../../data/locale_provider.dart';
-import '../../data/session_provider.dart' show sessionIdProvider, swipeHintSeenProvider, ensureSession, clearSessionId, currentSurfaceProvider;
+import '../../data/session_provider.dart'
+    show
+        sessionIdProvider,
+        swipeHintSeenProvider,
+        ensureSession,
+        clearSessionId,
+        currentSurfaceProvider;
 import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/detail_sheet.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
@@ -25,6 +31,25 @@ Map<String, dynamic> _itemSnapshot(Item item) {
     if (item.material != null) 'material': item.material,
     if (item.colorFamily != null) 'colorFamily': item.colorFamily,
     'styleTags': item.styleTags,
+    if (item.deliveryComplexity != null)
+      'deliveryComplexity': item.deliveryComplexity,
+    'smallSpaceFriendly': item.smallSpaceFriendly,
+    'modular': item.modular,
+    'ecoTags': item.ecoTags,
+    if (item.isFeatured) 'isFeatured': true,
+    if (item.campaignId != null) 'campaignId': item.campaignId,
+  };
+}
+
+Map<String, dynamic> _itemExtendedFeatures(Item item) {
+  return {
+    if (item.deliveryComplexity != null)
+      'deliveryComplexity': item.deliveryComplexity,
+    'smallSpaceFriendly': item.smallSpaceFriendly,
+    'modular': item.modular,
+    'ecoTags': item.ecoTags,
+    if (item.isFeatured) 'isFeatured': true,
+    if (item.campaignId != null) 'campaignId': item.campaignId,
   };
 }
 
@@ -35,7 +60,8 @@ String _userFriendlyError(Object e) {
       return 'Backend not available (${e.response?.statusCode}). '
           'Start Firebase emulators: run ./scripts/run_emulators.sh in the project root, then retry.';
     }
-    if (e.type == DioExceptionType.connectionError || e.type == DioExceptionType.connectionTimeout) {
+    if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout) {
       return 'Cannot reach backend. Start Firebase emulators: ./scripts/run_emulators.sh';
     }
   }
@@ -53,12 +79,14 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   // Track if we're showing a gold card to prevent duplicate insertions
   bool _showingGoldCard = false;
   // Key for the gold card visual widget to access its state
-  final GlobalKey<GoldCardVisualState> _goldCardVisualKey = GlobalKey<GoldCardVisualState>();
+  final GlobalKey<GoldCardVisualState> _goldCardVisualKey =
+      GlobalKey<GoldCardVisualState>();
 
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (context.mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'deck_card'};
+      if (context.mounted)
+        ref.read(currentSurfaceProvider.notifier).state = {'name': 'deck_card'};
     });
     final deckState = ref.watch(deckItemsProvider);
     final sessionId = ref.watch(sessionIdProvider);
@@ -86,14 +114,18 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           final goldCardNotifier = ref.read(goldCardProvider.notifier);
           final rank = notifier.rankContext;
           final itemScores = notifier.itemScores;
-          
+
           // Determine if we should show a gold card
-          final shouldShowVisualCard = goldCardState.shouldShowVisualCard && !_showingGoldCard;
-          final shouldShowBudgetCard = goldCardState.shouldShowBudgetCard && !_showingGoldCard;
+          final shouldShowVisualCard =
+              goldCardState.shouldShowVisualCard && !_showingGoldCard;
+          final shouldShowBudgetCard =
+              goldCardState.shouldShowBudgetCard && !_showingGoldCard;
           final curatedSofas = curatedSofasAsync.valueOrNull ?? [];
-          
+
           // Show gold card as overlay if conditions are met
-          if (shouldShowVisualCard && curatedSofas.isNotEmpty && items.isNotEmpty) {
+          if (shouldShowVisualCard &&
+              curatedSofas.isNotEmpty &&
+              items.isNotEmpty) {
             return _buildGoldCardVisualOverlay(
               context,
               curatedSofas,
@@ -109,7 +141,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               strings,
             );
           }
-          
+
           if (shouldShowBudgetCard) {
             return _buildGoldCardBudgetOverlay(
               context,
@@ -126,7 +158,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               strings,
             );
           }
-          
+
           final showSwipeHint = items.isNotEmpty && !swipeHintSeen;
           return Stack(
             children: [
@@ -136,11 +168,13 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                 goBaseUrl: Uri.base.origin,
                 onSwipeLeft: (item, position, {gesture = 'swipe'}) {
                   swipeHintNotifier.markSeen();
-                  notifier.swipe(item.id, 'left', position, item: item, gesture: gesture);
+                  notifier.swipe(item.id, 'left', position,
+                      item: item, gesture: gesture);
                 },
                 onSwipeRight: (item, position, {gesture = 'swipe'}) {
                   swipeHintNotifier.markSeen();
-                  notifier.swipe(item.id, 'right', position, item: item, gesture: gesture);
+                  notifier.swipe(item.id, 'right', position,
+                      item: item, gesture: gesture);
                   // Increment right swipe count for gold card triggering
                   goldCardNotifier.incrementRightSwipes();
                 },
@@ -153,30 +187,73 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                       'itemId': item.id,
                       'positionInDeck': 0,
                       'source': 'deck',
+                      'priceSEKAtTime': item.priceAmount.round(),
+                      if (item.isFeatured) 'isFeatured': true,
+                      if (item.campaignId != null)
+                        'campaignId': item.campaignId,
                       if (rank != null) 'snapshot': _itemSnapshot(item),
                     },
-                    if (rank != null) 'rank': {
-                      'rankerRunId': rank.rankerRunId,
-                      'algorithmVersion': rank.algorithmVersion,
-                      if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
-                    },
+                    'ext': _itemExtendedFeatures(item),
+                    if (rank != null)
+                      'rank': {
+                        'rankerRunId': rank.rankerRunId,
+                        'algorithmVersion': rank.algorithmVersion,
+                        if (rank.requestId != null) 'requestId': rank.requestId,
+                        if (rank.candidateSetId != null)
+                          'candidateSetId': rank.candidateSetId,
+                        if (rank.candidateCount != null)
+                          'candidateCount': rank.candidateCount,
+                        if (rank.rankWindow != null)
+                          'rankWindow': rank.rankWindow,
+                        if (rank.retrievalQueues.isNotEmpty)
+                          'retrievalQueues': rank.retrievalQueues,
+                        if (rank.explorationPolicy != null)
+                          'explorationPolicy': rank.explorationPolicy,
+                        if (rank.variant != null) 'variant': rank.variant,
+                        if (rank.variantBucket != null)
+                          'variantBucket': rank.variantBucket,
+                        if (itemScores.containsKey(item.id))
+                          'scoreAtRender': itemScores[item.id],
+                      },
                   });
                   tracker.track('card_impression_start', {
                     'item': {
                       'itemId': item.id,
                       'positionInDeck': 0,
                       'source': 'deck',
+                      'priceSEKAtTime': item.priceAmount.round(),
+                      if (item.isFeatured) 'isFeatured': true,
+                      if (item.campaignId != null)
+                        'campaignId': item.campaignId,
                       if (rank != null) 'snapshot': _itemSnapshot(item),
                     },
                     'impression': {'impressionId': impressionId},
-                    if (rank != null) 'rank': {
-                      'rankerRunId': rank.rankerRunId,
-                      'algorithmVersion': rank.algorithmVersion,
-                      if (itemScores.containsKey(item.id)) 'scoreAtRender': itemScores[item.id],
-                    },
+                    'ext': _itemExtendedFeatures(item),
+                    if (rank != null)
+                      'rank': {
+                        'rankerRunId': rank.rankerRunId,
+                        'algorithmVersion': rank.algorithmVersion,
+                        if (rank.requestId != null) 'requestId': rank.requestId,
+                        if (rank.candidateSetId != null)
+                          'candidateSetId': rank.candidateSetId,
+                        if (rank.candidateCount != null)
+                          'candidateCount': rank.candidateCount,
+                        if (rank.rankWindow != null)
+                          'rankWindow': rank.rankWindow,
+                        if (rank.retrievalQueues.isNotEmpty)
+                          'retrievalQueues': rank.retrievalQueues,
+                        if (rank.explorationPolicy != null)
+                          'explorationPolicy': rank.explorationPolicy,
+                        if (rank.variant != null) 'variant': rank.variant,
+                        if (rank.variantBucket != null)
+                          'variantBucket': rank.variantBucket,
+                        if (itemScores.containsKey(item.id))
+                          'scoreAtRender': itemScores[item.id],
+                      },
                   });
                 },
-                onCardImpressionEnd: (impressionId, visibleDurationMs, endReason, itemId) {
+                onCardImpressionEnd:
+                    (impressionId, visibleDurationMs, endReason, itemId) {
                   final bucket = visibleDurationMs < 1000
                       ? '0_1s'
                       : visibleDurationMs < 3000
@@ -196,7 +273,11 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                 },
                 onSwipeCancel: (item, position) {
                   tracker.track('swipe_cancel', {
-                    'item': {'itemId': item.id, 'positionInDeck': position, 'source': 'deck'},
+                    'item': {
+                      'itemId': item.id,
+                      'positionInDeck': position,
+                      'source': 'deck'
+                    },
                     'interaction': {'gesture': 'swipe'},
                   });
                 },
@@ -221,41 +302,61 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                           item,
                           goBaseUrl: Uri.base.origin,
                           onOutboundClick: (i) {
-                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            final domain = i.outboundUrl != null
+                                ? Uri.tryParse(i.outboundUrl!)?.host
+                                : null;
                             tracker.track('outbound_click', {
                               'item': {'itemId': i.id},
-                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                              'outbound': {
+                                'destinationDomain': domain ?? 'unknown'
+                              },
                             });
                           },
-                          onScroll: () => tracker.track('detail_scroll', {'item': {'itemId': item.id}}),
-                          onGalleryPageChange: (i) => tracker.track('detail_gallery_interaction', {
+                          onScroll: () => tracker.track('detail_scroll', {
+                            'item': {'itemId': item.id}
+                          }),
+                          onGalleryPageChange: (i) =>
+                              tracker.track('detail_gallery_interaction', {
                             'item': {'itemId': item.id},
                             'ext': {'imageIndex': i},
                           }),
                           onOutboundRedirectStart: (i) {
-                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            final domain = i.outboundUrl != null
+                                ? Uri.tryParse(i.outboundUrl!)?.host
+                                : null;
                             tracker.track('outbound_redirect_start', {
                               'item': {'itemId': i.id},
-                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                              'outbound': {
+                                'destinationDomain': domain ?? 'unknown'
+                              },
                             });
                           },
                           onOutboundRedirectSuccess: (i) {
-                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            final domain = i.outboundUrl != null
+                                ? Uri.tryParse(i.outboundUrl!)?.host
+                                : null;
                             tracker.track('outbound_redirect_success', {
                               'item': {'itemId': i.id},
-                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                              'outbound': {
+                                'destinationDomain': domain ?? 'unknown'
+                              },
                             });
                           },
                           onOutboundRedirectFail: (i, e) {
-                            final domain = i.outboundUrl != null ? Uri.tryParse(i.outboundUrl!)?.host : null;
+                            final domain = i.outboundUrl != null
+                                ? Uri.tryParse(i.outboundUrl!)?.host
+                                : null;
                             tracker.track('outbound_redirect_fail', {
                               'item': {'itemId': i.id},
-                              'outbound': {'destinationDomain': domain ?? 'unknown'},
+                              'outbound': {
+                                'destinationDomain': domain ?? 'unknown'
+                              },
                               'error': {'errorType': e.runtimeType.toString()},
                             });
                           },
                         );
-                        final timeViewedMs = DateTime.now().difference(started).inMilliseconds;
+                        final timeViewedMs =
+                            DateTime.now().difference(started).inMilliseconds;
                         if (context.mounted) {
                           tracker.track('detail_close', {
                             'item': {'itemId': item.id},
@@ -268,7 +369,8 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                 hasFiltersApplied: ref.read(deckFiltersProvider).isNotEmpty,
                 onClearFilters: () {
                   ref.read(eventTrackerProvider).track('filters_clear', {});
-                  ref.read(deckFiltersProvider.notifier).state = <String, dynamic>{};
+                  ref.read(deckFiltersProvider.notifier).state =
+                      <String, dynamic>{};
                   ref.read(deckItemsProvider.notifier).refresh();
                 },
                 onRefresh: () => ref.read(deckItemsProvider.notifier).refresh(),
@@ -284,10 +386,13 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(_userFriendlyError(e), style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                  Text(_userFriendlyError(e),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      textAlign: TextAlign.center),
                   const SizedBox(height: AppTheme.spacingUnit),
                   ElevatedButton(
-                    onPressed: () => ref.read(deckItemsProvider.notifier).refresh(),
+                    onPressed: () =>
+                        ref.read(deckItemsProvider.notifier).refresh(),
                     child: const Text('Retry'),
                   ),
                 ],
@@ -314,20 +419,23 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     dynamic strings,
   ) {
     final startTime = DateTime.now();
-    
+
     // Track gold card shown
     WidgetsBinding.instance.addPostFrameCallback((_) {
       tracker.track('gold_card_visual_shown', {
-        'goldCard': {'swipeNumber': ref.read(goldCardProvider).totalRightSwipes},
+        'goldCard': {
+          'swipeNumber': ref.read(goldCardProvider).totalRightSwipes
+        },
       });
     });
-    
+
     return _GoldCardSwipeWrapper(
       child: GoldCardVisual(
         key: _goldCardVisualKey,
         sofas: curatedSofas,
         onComplete: (pickedItemIds) async {
-          final durationMs = DateTime.now().difference(startTime).inMilliseconds;
+          final durationMs =
+              DateTime.now().difference(startTime).inMilliseconds;
           tracker.track('gold_card_visual_complete', {
             'goldCard': {
               'pickedItemIds': pickedItemIds,
@@ -339,9 +447,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           if (sessionId != null) {
             try {
               await ref.read(apiClientProvider).submitOnboardingPicks(
-                sessionId: sessionId,
-                pickedItemIds: pickedItemIds,
-              );
+                    sessionId: sessionId,
+                    pickedItemIds: pickedItemIds,
+                  );
             } catch (_) {
               // Non-blocking - picks are stored locally regardless
             }
@@ -396,19 +504,20 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   ) {
     final startTime = DateTime.now();
     final budgetKey = GlobalKey<GoldCardBudgetState>();
-    
+
     // Track gold card shown
     WidgetsBinding.instance.addPostFrameCallback((_) {
       tracker.track('gold_card_budget_shown', {});
     });
-    
+
     return _GoldCardSwipeWrapper(
       child: GoldCardBudget(
         key: budgetKey,
         initialMin: goldCardState.budgetMin,
         initialMax: goldCardState.budgetMax,
         onComplete: (budgetMin, budgetMax) async {
-          final durationMs = DateTime.now().difference(startTime).inMilliseconds;
+          final durationMs =
+              DateTime.now().difference(startTime).inMilliseconds;
           tracker.track('gold_card_budget_complete', {
             'goldCard': {
               'budgetMin': budgetMin,
@@ -421,11 +530,11 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           if (sessionId != null && goldCardState.pickedItemIds.isNotEmpty) {
             try {
               await ref.read(apiClientProvider).submitOnboardingPicks(
-                sessionId: sessionId,
-                pickedItemIds: goldCardState.pickedItemIds,
-                budgetMin: budgetMin,
-                budgetMax: budgetMax,
-              );
+                    sessionId: sessionId,
+                    pickedItemIds: goldCardState.pickedItemIds,
+                    budgetMin: budgetMin,
+                    budgetMax: budgetMax,
+                  );
             } catch (_) {
               // Non-blocking
             }
@@ -433,7 +542,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
         },
         onSkip: () {
           tracker.track('gold_card_budget_skip', {
-            'goldCard': {'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1},
+            'goldCard': {
+              'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1
+            },
           });
           goldCardNotifier.skipBudgetCard();
         },
@@ -447,7 +558,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       onSwipeLeft: () {
         goldCardNotifier.skipBudgetCard();
         tracker.track('gold_card_budget_skip', {
-          'goldCard': {'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1},
+          'goldCard': {
+            'skipCount': ref.read(goldCardProvider).budgetSkipCount + 1
+          },
         });
       },
       canSwipeRight: () => true, // Budget card can always be submitted
@@ -457,12 +570,14 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   void _showMenuSheet(BuildContext context, WidgetRef ref) {
     final strings = ref.read(appStringsProvider);
     final locale = ref.read(localeProvider);
-    final currentLabel = locale.languageCode == 'sv' ? strings.swedish : strings.english;
+    final currentLabel =
+        locale.languageCode == 'sv' ? strings.swedish : strings.english;
     showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
       ),
       builder: (sheetContext) => LayoutBuilder(
         builder: (ctx, constraints) {
@@ -476,7 +591,8 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                     const _SheetHandle(),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: Text(strings.menu, style: Theme.of(context).textTheme.titleLarge),
+                      child: Text(strings.menu,
+                          style: Theme.of(context).textTheme.titleLarge),
                     ),
                     const SizedBox(height: AppTheme.spacingUnit),
                     _MenuTile(
@@ -496,15 +612,16 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                       },
                     ),
                     const Divider(height: AppTheme.spacingUnit * 2),
-                    _MenuTile(
-                      icon: Icons.settings,
-                      title: strings.preferences,
-                      subtitle: strings.reRunOnboarding,
-                      onTap: () {
-                        Navigator.of(sheetContext).pop();
-                        context.push('/onboarding');
-                      },
-                    ),
+                    if (AppConstants.enableStandaloneOnboarding)
+                      _MenuTile(
+                        icon: Icons.settings,
+                        title: strings.preferences,
+                        subtitle: strings.reRunOnboarding,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          context.push('/onboarding');
+                        },
+                      ),
                     _MenuTile(
                       icon: Icons.shield_outlined,
                       title: strings.dataAndPrivacy,
@@ -516,7 +633,8 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                     _MenuTile(
                       icon: Icons.language,
                       title: strings.language,
-                      subtitle: '${strings.swedish} / ${strings.english} – $currentLabel',
+                      subtitle:
+                          '${strings.swedish} / ${strings.english} – $currentLabel',
                       onTap: () {
                         Navigator.of(sheetContext).pop();
                         _showLanguageSheet(context, ref);
@@ -575,20 +693,26 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 
   void _showFiltersSheet(BuildContext context, WidgetRef ref) {
     ref.read(eventTrackerProvider).track('filters_open', {});
+    final strings = ref.read(appStringsProvider);
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
       ),
       builder: (context) => _DeckFiltersSheet(
+        strings: strings,
         currentFilters: ref.read(deckFiltersProvider),
         onFilterChange: (key, from, to) {
           ref.read(eventTrackerProvider).track('filter_change', {
-            'filters': {'change': {'key': key, 'from': from, 'to': to}},
+            'filters': {
+              'change': {'key': key, 'from': from, 'to': to}
+            },
           });
         },
         onApply: (filters) {
-          ref.read(deckFiltersProvider.notifier).state = Map<String, dynamic>.from(filters);
+          ref.read(deckFiltersProvider.notifier).state =
+              Map<String, dynamic>.from(filters);
           ref.read(deckItemsProvider.notifier).refresh();
           _trackFiltersApply(ref, filters);
           Navigator.of(context).pop();
@@ -612,7 +736,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     if (colorFamily != null && colorFamily.isNotEmpty) {
       active['colorFamilies'] = [colorFamily];
     }
-    ref.read(eventTrackerProvider).track('filters_apply', {'filters': {'active': active}});
+    ref.read(eventTrackerProvider).track('filters_apply', {
+      'filters': {'active': active}
+    });
   }
 }
 
@@ -625,15 +751,19 @@ class SwipeHintOverlay extends StatefulWidget {
   State<SwipeHintOverlay> createState() => _SwipeHintOverlayState();
 }
 
-class _SwipeHintOverlayState extends State<SwipeHintOverlay> with SingleTickerProviderStateMixin {
+class _SwipeHintOverlayState extends State<SwipeHintOverlay>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<Offset> _slide;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
-    _slide = Tween<Offset>(begin: const Offset(-0.2, 0), end: const Offset(0.2, 0)).animate(
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 900));
+    _slide =
+        Tween<Offset>(begin: const Offset(-0.2, 0), end: const Offset(0.2, 0))
+            .animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
     _controller.repeat(reverse: true);
@@ -652,7 +782,9 @@ class _SwipeHintOverlayState extends State<SwipeHintOverlay> with SingleTickerPr
         ignoring: true,
         child: Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingUnit * 1.5, vertical: AppTheme.spacingUnit),
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.spacingUnit * 1.5,
+                vertical: AppTheme.spacingUnit),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(AppTheme.radiusChip),
@@ -662,13 +794,17 @@ class _SwipeHintOverlayState extends State<SwipeHintOverlay> with SingleTickerPr
               children: [
                 SlideTransition(
                   position: _slide,
-                  child: const Icon(Icons.arrow_forward, color: Colors.white, size: 36),
+                  child: const Icon(Icons.arrow_forward,
+                      color: Colors.white, size: 36),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit / 2),
                 Text(
                   widget.text,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: Colors.white),
                 ),
               ],
             ),
@@ -727,7 +863,18 @@ const List<String> _sizeClassOptions = ['small', 'medium', 'large'];
 
 /// Color family options (DATA_MODEL / TAG_TAXONOMY).
 const List<String> _colorFamilyOptions = [
-  'white', 'beige', 'brown', 'gray', 'black', 'green', 'blue', 'red', 'yellow', 'orange', 'pink', 'multi',
+  'white',
+  'beige',
+  'brown',
+  'gray',
+  'black',
+  'green',
+  'blue',
+  'red',
+  'yellow',
+  'orange',
+  'pink',
+  'multi',
 ];
 
 /// New/used options.
@@ -735,12 +882,14 @@ const List<String> _newUsedOptions = ['new', 'used'];
 
 class _DeckFiltersSheet extends StatefulWidget {
   const _DeckFiltersSheet({
+    required this.strings,
     required this.currentFilters,
     required this.onApply,
     required this.onClear,
     this.onFilterChange,
   });
 
+  final dynamic strings;
   final Map<String, dynamic> currentFilters;
   final void Function(Map<String, dynamic> filters) onApply;
   final VoidCallback onClear;
@@ -765,99 +914,130 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
 
   Map<String, dynamic> get _selectedFilters {
     final map = <String, dynamic>{};
-    if (_sizeClass != null && _sizeClass!.isNotEmpty) map['sizeClass'] = _sizeClass!;
-    if (_colorFamily != null && _colorFamily!.isNotEmpty) map['colorFamily'] = _colorFamily!;
+    if (_sizeClass != null && _sizeClass!.isNotEmpty)
+      map['sizeClass'] = _sizeClass!;
+    if (_colorFamily != null && _colorFamily!.isNotEmpty)
+      map['colorFamily'] = _colorFamily!;
     if (_newUsed != null && _newUsed!.isNotEmpty) map['newUsed'] = _newUsed!;
     return map;
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = widget.strings;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Filters', style: Theme.of(context).textTheme.titleLarge),
+          Text(strings.filtersTitle,
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppTheme.spacingUnit),
           Text(
-            'Narrow the deck by size, color, and condition.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+            strings.filtersSubtitle,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: AppTheme.textSecondary),
           ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Size', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textSecondary)),
+          Text(strings.size,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
           const SizedBox(height: AppTheme.spacingUnit / 2),
           Wrap(
             spacing: AppTheme.spacingUnit / 2,
             runSpacing: AppTheme.spacingUnit / 2,
             children: [
               AppFilterChip(
-                label: const Text('Any'),
+                label: Text(strings.any),
                 selected: _sizeClass == null,
                 onSelected: (_) {
-                  widget.onFilterChange?.call('smallSpaceOnly', _sizeClass, null);
+                  widget.onFilterChange
+                      ?.call('smallSpaceOnly', _sizeClass, null);
                   setState(() => _sizeClass = null);
                 },
               ),
               ..._sizeClassOptions.map((v) => AppFilterChip(
-                label: Text(v == 'small' ? 'Small' : v == 'medium' ? 'Medium' : 'Large'),
-                selected: _sizeClass == v,
-                onSelected: (_) {
-                  widget.onFilterChange?.call('smallSpaceOnly', _sizeClass, _sizeClass == v ? null : v);
-                  setState(() => _sizeClass = _sizeClass == v ? null : v);
-                },
-              )),
+                    label: Text(v == 'small'
+                        ? strings.small
+                        : v == 'medium'
+                            ? strings.medium
+                            : strings.large),
+                    selected: _sizeClass == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('smallSpaceOnly', _sizeClass,
+                          _sizeClass == v ? null : v);
+                      setState(() => _sizeClass = _sizeClass == v ? null : v);
+                    },
+                  )),
             ],
           ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Color', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textSecondary)),
+          Text(strings.color,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
           const SizedBox(height: AppTheme.spacingUnit / 2),
           Wrap(
             spacing: AppTheme.spacingUnit / 2,
             runSpacing: AppTheme.spacingUnit / 2,
             children: [
               AppFilterChip(
-                label: const Text('Any'),
+                label: Text(strings.any),
                 selected: _colorFamily == null,
                 onSelected: (_) {
-                  widget.onFilterChange?.call('colorFamilies', _colorFamily, null);
+                  widget.onFilterChange
+                      ?.call('colorFamilies', _colorFamily, null);
                   setState(() => _colorFamily = null);
                 },
               ),
               ..._colorFamilyOptions.map((v) => AppFilterChip(
-                label: Text(v[0].toUpperCase() + v.substring(1)),
-                selected: _colorFamily == v,
-                onSelected: (_) {
-                  widget.onFilterChange?.call('colorFamilies', _colorFamily, _colorFamily == v ? null : v);
-                  setState(() => _colorFamily = _colorFamily == v ? null : v);
-                },
-              )),
+                    label: Text(v[0].toUpperCase() + v.substring(1)),
+                    selected: _colorFamily == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('colorFamilies', _colorFamily,
+                          _colorFamily == v ? null : v);
+                      setState(
+                          () => _colorFamily = _colorFamily == v ? null : v);
+                    },
+                  )),
             ],
           ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Condition', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textSecondary)),
+          Text(strings.condition,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
           const SizedBox(height: AppTheme.spacingUnit / 2),
           Wrap(
             spacing: AppTheme.spacingUnit / 2,
             runSpacing: AppTheme.spacingUnit / 2,
             children: [
               AppFilterChip(
-                label: const Text('Any'),
+                label: Text(strings.any),
                 selected: _newUsed == null,
                 onSelected: (_) {
-                  widget.onFilterChange?.call('newOnly', _newUsed == 'new', null);
+                  widget.onFilterChange
+                      ?.call('newOnly', _newUsed == 'new', null);
                   setState(() => _newUsed = null);
                 },
               ),
               ..._newUsedOptions.map((v) => AppFilterChip(
-                label: Text(v == 'new' ? 'New' : 'Used'),
-                selected: _newUsed == v,
-                onSelected: (_) {
-                  widget.onFilterChange?.call('newOnly', _newUsed == 'new', _newUsed == v ? null : v == 'new');
-                  setState(() => _newUsed = _newUsed == v ? null : v);
-                },
-              )),
+                    label:
+                        Text(v == 'new' ? strings.newLabel : strings.usedLabel),
+                    selected: _newUsed == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('newOnly', _newUsed == 'new',
+                          _newUsed == v ? null : v == 'new');
+                      setState(() => _newUsed = _newUsed == v ? null : v);
+                    },
+                  )),
             ],
           ),
           const SizedBox(height: AppTheme.spacingUnit * 2),
@@ -865,13 +1045,13 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
             children: [
               OutlinedButton(
                 onPressed: widget.onClear,
-                child: const Text('Clear all'),
+                child: Text(strings.clearAll),
               ),
               const SizedBox(width: AppTheme.spacingUnit),
               Expanded(
                 child: ElevatedButton(
                   onPressed: () => widget.onApply(_selectedFilters),
-                  child: const Text('Apply'),
+                  child: Text(strings.apply),
                 ),
               ),
             ],
@@ -941,9 +1121,11 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
   void _onPanEnd(DragEndDetails details) {
     if (_isAnimatingOut) return;
     final velocity = details.velocity.pixelsPerSecond.dx;
-    final shouldSwipeRight = (_dragDx > _swipeThreshold || velocity > _velocityThreshold) &&
-        (widget.canSwipeRight?.call() ?? true);
-    final shouldSwipeLeft = _dragDx < -_swipeThreshold || velocity < -_velocityThreshold;
+    final shouldSwipeRight =
+        (_dragDx > _swipeThreshold || velocity > _velocityThreshold) &&
+            (widget.canSwipeRight?.call() ?? true);
+    final shouldSwipeLeft =
+        _dragDx < -_swipeThreshold || velocity < -_velocityThreshold;
 
     if (shouldSwipeRight) {
       _animateOut(toRight: true);
@@ -958,7 +1140,7 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
     _isAnimatingOut = true;
     final screenWidth = MediaQuery.of(context).size.width;
     final endX = toRight ? screenWidth * 1.5 : -screenWidth * 1.5;
-    
+
     _exitAnimation = Tween<Offset>(
       begin: Offset(_dragDx, _dragDy),
       end: Offset(endX, _dragDy),
@@ -987,9 +1169,11 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
 
   Color? get _overlayColor {
     if (_dragDx > 30) {
-      return AppTheme.positiveLike.withValues(alpha: (_dragDx / 200).clamp(0, 0.3));
+      return AppTheme.positiveLike
+          .withValues(alpha: (_dragDx / 200).clamp(0, 0.3));
     } else if (_dragDx < -30) {
-      return AppTheme.negativeDislike.withValues(alpha: (-_dragDx / 200).clamp(0, 0.3));
+      return AppTheme.negativeDislike
+          .withValues(alpha: (-_dragDx / 200).clamp(0, 0.3));
     }
     return null;
   }
@@ -1011,7 +1195,7 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
                   final offset = _isAnimatingOut
                       ? _exitAnimation?.value ?? Offset(_dragDx, _dragDy)
                       : Offset(_dragDx, _dragDy);
-                  
+
                   return Transform(
                     transform: Matrix4.identity()
                       ..translate(offset.dx, offset.dy)
@@ -1024,10 +1208,12 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
                         if (_overlayColor != null && !_isAnimatingOut)
                           IgnorePointer(
                             child: Container(
-                              margin: const EdgeInsets.all(AppTheme.spacingUnit),
+                              margin:
+                                  const EdgeInsets.all(AppTheme.spacingUnit),
                               decoration: BoxDecoration(
                                 color: _overlayColor,
-                                borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                                borderRadius:
+                                    BorderRadius.circular(AppTheme.radiusCard),
                               ),
                             ),
                           ),
@@ -1073,7 +1259,8 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
 }
 
 class _ControlButton extends StatelessWidget {
-  const _ControlButton({required this.icon, required this.color, required this.onPressed});
+  const _ControlButton(
+      {required this.icon, required this.color, required this.onPressed});
 
   final IconData icon;
   final Color color;
@@ -1084,7 +1271,8 @@ class _ControlButton extends StatelessWidget {
     return IconButton.filled(
       icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
       onPressed: onPressed,
-      style: IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
+      style:
+          IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
     );
   }
 }

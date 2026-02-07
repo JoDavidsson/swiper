@@ -1,5 +1,3 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../data/models/item.dart';
 import 'deck_card.dart';
@@ -7,22 +5,6 @@ import 'deck_card.dart';
 const double _swipeThreshold = 100;
 const double _rotationFactor = 0.0003;
 const int _animationDurationMs = 200;
-const _kAgentIngestUrl = 'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba';
-
-void _swipeAnimationLog(String location, String message, Map<String, dynamic> data) {
-  if (!kDebugMode) return;
-  try {
-    final payload = {
-      'location': location,
-      'message': message,
-      'data': data,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'sessionId': 'debug-session',
-      'hypothesisId': 'flow',
-    };
-    Dio().post(_kAgentIngestUrl, data: payload).catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: _kAgentIngestUrl))));
-  } catch (_) {}
-}
 
 /// Optional: parent can register trigger callbacks and isAnimating getter (for button-triggered swipe).
 typedef RegisterSwipeTriggers = void Function(
@@ -64,9 +46,6 @@ class DraggableSwipeCardState extends State<DraggableSwipeCard> with SingleTicke
   double _dragDx = 0;
   late AnimationController _controller;
   Offset _exitEnd = Offset.zero;
-  double _lastLoggedFrameValue = -1;
-
-  static const _frameThresholds = [0.25, 0.5, 0.75, 1.0];
 
   @override
   void initState() {
@@ -77,19 +56,10 @@ class DraggableSwipeCardState extends State<DraggableSwipeCard> with SingleTicke
     );
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        // #region agent log
-        _swipeAnimationLog(
-          'draggable_swipe_card.dart',
-          'animation_completed',
-          {'itemId': widget.item.id},
-        );
-        // #endregion
-        _lastLoggedFrameValue = -1;
         widget.onSwipeAnimationEnd?.call(widget.item);
         _controller.reset();
       }
     });
-    _controller.addListener(_onAnimationTick);
     if (widget.onRegisterSwipeTriggers != null) {
       widget.onRegisterSwipeTriggers!(triggerSwipeLeft, triggerSwipeRight, () => _controller.isAnimating);
     }
@@ -104,61 +74,15 @@ class DraggableSwipeCardState extends State<DraggableSwipeCard> with SingleTicke
     super.dispose();
   }
 
-  void _onAnimationTick() {
-    if (!kDebugMode) return;
-    final value = _controller.value;
-    double? newLastLogged;
-    for (final t in _frameThresholds) {
-      if (value >= t && _lastLoggedFrameValue < t) {
-        final curveT = Curves.easeOut.transform(t);
-        final offset = Offset.lerp(
-          Offset(_dragDx, 0),
-          _exitEnd,
-          curveT,
-        ) ?? Offset.zero;
-        final rotationRad = offset.dx * _rotationFactor;
-        _swipeAnimationLog(
-          'draggable_swipe_card.dart:_onAnimationTick',
-          'swipe_animation_frame',
-          {
-            'itemId': widget.item.id,
-            'value': t,
-            'offsetPx': offset.dx,
-            'rotationRad': rotationRad,
-          },
-        );
-        if (newLastLogged == null || t > newLastLogged) newLastLogged = t;
-      }
-    }
-    if (newLastLogged != null) _lastLoggedFrameValue = newLastLogged;
-  }
-
-  void _emitSwipeAnimationStart(String direction, String trigger) {
-    _swipeAnimationLog(
-      'draggable_swipe_card.dart',
-      'swipe_animation_start',
-      {
-        'itemId': widget.item.id,
-        'direction': direction,
-        'startPx': _dragDx,
-        'endPx': _exitEnd.dx,
-        'durationMs': _animationDurationMs,
-        'trigger': trigger,
-      },
-    );
-  }
-
   void triggerSwipeLeft() {
     if (_controller.isAnimating) return;
     _exitEnd = const Offset(-500, 0);
-    _emitSwipeAnimationStart('left', 'button');
     _controller.forward();
   }
 
   void triggerSwipeRight() {
     if (_controller.isAnimating) return;
     _exitEnd = const Offset(500, 0);
-    _emitSwipeAnimationStart('right', 'button');
     _controller.forward();
   }
 
@@ -177,28 +101,12 @@ class DraggableSwipeCardState extends State<DraggableSwipeCard> with SingleTicke
     final shouldSwipeLeft = _dragDx < -_swipeThreshold || (_dragDx < -20 && velocity < -200);
 
     if (shouldSwipeRight) {
-      // #region agent log
-      _swipeAnimationLog(
-        'draggable_swipe_card.dart:_onDragEnd',
-        'commit_and_forward',
-        {'itemId': widget.item.id, 'direction': 'right', 'dragDx': _dragDx, 'trigger': 'gesture'},
-      );
-      // #endregion
       widget.onSwipeRight();
       _exitEnd = const Offset(500, 0);
-      _emitSwipeAnimationStart('right', 'gesture');
       _controller.forward();
     } else if (shouldSwipeLeft) {
-      // #region agent log
-      _swipeAnimationLog(
-        'draggable_swipe_card.dart:_onDragEnd',
-        'commit_and_forward',
-        {'itemId': widget.item.id, 'direction': 'left', 'dragDx': _dragDx, 'trigger': 'gesture'},
-      );
-      // #endregion
       widget.onSwipeLeft();
       _exitEnd = const Offset(-500, 0);
-      _emitSwipeAnimationStart('left', 'gesture');
       _controller.forward();
     } else {
       widget.onSwipeCancel?.call(widget.item);

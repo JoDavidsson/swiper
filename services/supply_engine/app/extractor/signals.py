@@ -67,17 +67,75 @@ def extract_page_signals(html: str, *, final_url: str) -> PageSignals:
         if data is not None:
             jsonld_blocks.append(data)
 
-    # Embedded JSON candidates: prioritise known IDs, then large JSON-like scripts
+    # Embedded JSON candidates: prioritise known IDs, then window.* state,
+    # then large JSON-like scripts.
     embedded: list[dict] = []
-    # Next.js
+
+    # Next.js: <script id="__NEXT_DATA__" type="application/json">{...}</script>
     nxt = soup.find("script", id="__NEXT_DATA__")
     if nxt and (nxt.string or "").strip().startswith("{"):
         data = _safe_json_loads(nxt.string or "")
         if isinstance(data, dict):
             embedded.append({"kind": "scriptTag", "id": "__NEXT_DATA__", "format": "json", "data": data})
 
+    # ── Window-level JavaScript state variables ──
+    # Many modern e-commerce sites embed the full product catalog in the
+    # initial HTML inside a window.* variable (NOT a JSON script tag).
+    # We scan all <script> blocks for known patterns.
+    _WINDOW_STATE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+        # Chilli: window.INITIAL_DATA = JSON.parse('...')
+        ("INITIAL_DATA", re.compile(
+            r"window\.INITIAL_DATA\s*=\s*JSON\.parse\(\s*'(.+?)'\s*\)",
+            re.DOTALL,
+        )),
+        # RoyalDesign & others: window.__INITIAL_STATE__ = {...};
+        ("__INITIAL_STATE__", re.compile(
+            r"window\.__INITIAL_STATE__\s*=\s*(\{.+?\});\s*(?:</script>|$)",
+            re.DOTALL,
+        )),
+        # Nuxt.js: window.__NUXT__ = {...};
+        ("__NUXT__", re.compile(
+            r"window\.__NUXT__\s*=\s*(\{.+?\});\s*(?:</script>|$)",
+            re.DOTALL,
+        )),
+        # Generic: window.__PRELOADED_STATE__ = {...};
+        ("__PRELOADED_STATE__", re.compile(
+            r"window\.__PRELOADED_STATE__\s*=\s*(\{.+?\});\s*(?:</script>|$)",
+            re.DOTALL,
+        )),
+    ]
+
+    # Build a single text of all script bodies to run regex against.
+    # (Cheaper than running per-script; we only care about presence.)
+    all_script_text = "\n".join(
+        (script.string or "")
+        for script in soup.find_all("script")
+        if script.string and len(script.string) > 500
+    )
+
+    for var_name, pattern in _WINDOW_STATE_PATTERNS:
+        if len(embedded) >= 8:
+            break
+        m = pattern.search(all_script_text)
+        if not m:
+            continue
+        raw_json = m.group(1)
+        # INITIAL_DATA uses JSON.parse() with escaped single quotes
+        if var_name == "INITIAL_DATA":
+            raw_json = raw_json.replace("\\'", "'").replace('\\"', '"').replace("\\\\", "\\")
+        data = _safe_json_loads(raw_json)
+        if isinstance(data, dict):
+            embedded.append({
+                "kind": "windowState",
+                "id": var_name,
+                "format": "js_assignment",
+                "data": data,
+            })
+
     # Generic: large script tags that are valid JSON and contain product-ish keys
     for script in soup.find_all("script"):
+        if len(embedded) >= 8:
+            break
         txt = (script.string or "").strip()
         if len(txt) < 2000:
             continue
@@ -91,8 +149,6 @@ def extract_page_signals(html: str, *, final_url: str) -> PageSignals:
         if not any(k in blob for k in ("price", "product", "images", "sku", "variant", "name")):
             continue
         embedded.append({"kind": "scriptTag", "id": script.get("id"), "format": "json", "data": data})
-        if len(embedded) >= 5:
-            break
 
     return PageSignals(
         canonical_url=canonical,

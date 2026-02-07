@@ -181,7 +181,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                     return ClipRRect(
                       borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                       child: CachedNetworkImage(
-                        imageUrl: ApiClient.proxyImageUrl(url),
+                        imageUrl: ApiClient.proxyImageUrl(url, width: ImageWidth.detail),
                         fit: BoxFit.cover,
                         placeholder: (_, __) => const Center(child: CircularProgressIndicator()),
                         errorWidget: (_, __, ___) => Icon(Icons.broken_image, size: 64, color: AppTheme.textCaption),
@@ -198,6 +198,16 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                 '${widget.item.priceAmount.toStringAsFixed(0)} ${widget.item.priceCurrency}',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.primaryAction),
               ),
+              if (widget.item.descriptionShort != null && widget.item.descriptionShort!.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.spacingUnit),
+                Text(
+                  widget.item.descriptionShort!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
               if (widget.item.dimensionsCm != null) ...[
                 const SizedBox(height: AppTheme.spacingUnit),
                 Text(

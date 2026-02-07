@@ -2,6 +2,16 @@ import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
 import { FieldValue } from "../firestore";
+import { toPriceBucket } from "../ranker/scoreItem";
+
+const RIGHT_SWIPE_WEIGHT_DELTA = 1;
+const LEFT_SWIPE_WEIGHT_DELTA = -0.35;
+
+function normalizeToken(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
 
 export async function swipePost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
@@ -46,41 +56,72 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
       { addedAt: FieldValue.serverTimestamp() },
       { merge: true },
     );
+  }
 
-    try {
-      const itemSnap = await db.collection("items").doc(itemId).get();
-      if (itemSnap.exists) {
-        const data = itemSnap.data()!;
-        const sessionRef = db.collection("anonSessions").doc(sessionId);
-        const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
-        const counts: Record<string, number> = {};
-        const addCount = (key: string, amount: number = 1) => {
-          counts[key] = (counts[key] || 0) + amount;
-        };
-
-        const styleTags = Array.isArray(data.styleTags) ? data.styleTags : [];
-        for (const t of styleTags) {
-          if (typeof t === "string") addCount(t);
-        }
-        const material = typeof data.material === "string" ? data.material : undefined;
-        if (material) addCount(`material:${material}`);
-        const color = typeof data.colorFamily === "string" ? data.colorFamily : undefined;
-        if (color) addCount(`color:${color}`);
-        const sizeClass = typeof data.sizeClass === "string" ? data.sizeClass : undefined;
-        if (sizeClass) addCount(`size:${sizeClass}`);
-
-        const updates: Record<string, ReturnType<typeof FieldValue.increment>> = {};
-        for (const [key, amount] of Object.entries(counts)) {
-          updates[key] = FieldValue.increment(amount);
-        }
-        if (Object.keys(updates).length > 0) {
-          batch.set(weightsRef, updates, { merge: true });
-        }
-      }
-    } catch (e) {
-      console.warn("swipe: preferenceWeights update skipped", e);
-      // Swipe, event, and likes are still committed below
+  try {
+    let itemSnap = await db.collection("items").doc(itemId).get();
+    if (!itemSnap.exists) {
+      itemSnap = await db.collection("goldItems").doc(itemId).get();
     }
+
+    if (itemSnap.exists) {
+      const data = itemSnap.data()!;
+      const sessionRef = db.collection("anonSessions").doc(sessionId);
+      const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
+      const delta = direction === "right" ? RIGHT_SWIPE_WEIGHT_DELTA : LEFT_SWIPE_WEIGHT_DELTA;
+      const counts: Record<string, number> = {};
+      const addCount = (key: string, amount: number = 1) => {
+        counts[key] = (counts[key] || 0) + amount;
+      };
+
+      const styleTags = Array.isArray(data.styleTags) ? data.styleTags : [];
+      for (const t of styleTags) {
+        const normalized = normalizeToken(t);
+        if (normalized) addCount(normalized);
+      }
+
+      const material = normalizeToken(data.material);
+      if (material) addCount(`material:${material}`);
+
+      const color = normalizeToken(data.colorFamily);
+      if (color) addCount(`color:${color}`);
+
+      const sizeClass = normalizeToken(data.sizeClass);
+      if (sizeClass) addCount(`size:${sizeClass}`);
+
+      const brand = normalizeToken(data.brand);
+      if (brand) addCount(`brand:${brand}`);
+
+      const deliveryComplexity = normalizeToken(data.deliveryComplexity);
+      if (deliveryComplexity) addCount(`delivery:${deliveryComplexity}`);
+
+      const condition = normalizeToken(data.newUsed);
+      if (condition) addCount(`condition:${condition}`);
+
+      const ecoTags = Array.isArray(data.ecoTags) ? data.ecoTags : [];
+      for (const ecoTag of ecoTags) {
+        const normalized = normalizeToken(ecoTag);
+        if (normalized) addCount(`eco:${normalized}`);
+      }
+
+      if (data.smallSpaceFriendly === true) addCount("feature:small_space");
+      if (data.modular === true) addCount("feature:modular");
+
+      const priceAmount = typeof data.priceAmount === "number" ? data.priceAmount : undefined;
+      const priceBucket = toPriceBucket(priceAmount);
+      if (priceBucket) addCount(`price_bucket:${priceBucket}`);
+
+      const updates: Record<string, ReturnType<typeof FieldValue.increment>> = {};
+      for (const [key, amount] of Object.entries(counts)) {
+        updates[key] = FieldValue.increment(amount * delta);
+      }
+      if (Object.keys(updates).length > 0) {
+        batch.set(weightsRef, updates, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.warn("swipe: preferenceWeights update skipped", e);
+    // Swipe, event, and likes are still committed below
   }
 
   await batch.commit();

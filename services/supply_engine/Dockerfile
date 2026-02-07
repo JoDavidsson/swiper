@@ -3,7 +3,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m playwright install chromium --with-deps
 COPY app/ ./app/
 COPY config/ ../config/ 2>/dev/null || true
 COPY sample_data/ ../sample_data/ 2>/dev/null || true

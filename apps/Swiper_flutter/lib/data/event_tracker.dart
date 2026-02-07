@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -9,27 +7,6 @@ import 'package:uuid/uuid.dart';
 import 'api_providers.dart';
 import 'device_context.dart';
 import 'session_provider.dart';
-
-// #region agent log
-void _agentLog(String location, String message, Map<String, dynamic> data, String hypothesisId) {
-  if (!kDebugMode) return;
-  try {
-    final payload = {
-      'location': location,
-      'message': message,
-      'data': data,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'sessionId': 'debug-session',
-      'hypothesisId': hypothesisId,
-    };
-    Dio().post(
-      'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba',
-      data: payload,
-      options: Options(sendTimeout: const Duration(milliseconds: 500), receiveTimeout: const Duration(milliseconds: 500)),
-    ).catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: 'agent_ingest'))));
-  } catch (_) {}
-}
-// #endregion
 
 const String _kClientSeqPrefix = 'swiper_client_seq_';
 const int _kBufferFlushSize = 20;
@@ -80,20 +57,11 @@ class EventTracker {
   Future<void> track(String eventName, [Map<String, dynamic> partial = const {}]) async {
     final sessionId = _ref.read(sessionIdProvider);
     final optOut = _ref.read(analyticsOptOutProvider);
-    // #region agent log
-    _agentLog('event_tracker.dart:track', 'track_entry', {'eventName': eventName, 'sessionIdLen': sessionId?.length ?? 0, 'optOut': optOut}, 'H1');
-    // #endregion
     if (sessionId == null || sessionId.length < 8) {
-      // #region agent log
-      _agentLog('event_tracker.dart:track', 'track_early_return', {'reason': 'sessionId', 'eventName': eventName}, 'H1');
-      // #endregion
       return;
     }
 
     if (optOut && !_essentialEventNames.contains(eventName)) {
-      // #region agent log
-      _agentLog('event_tracker.dart:track', 'track_early_return_optout', {'eventName': eventName}, 'H2');
-      // #endregion
       return;
     }
 
@@ -112,9 +80,6 @@ class EventTracker {
           'createdAtClient': DateTime.now().toUtc().toIso8601String(),
           'app': app,
         });
-        // #region agent log
-        _agentLog('event_tracker.dart:track', 'app_open_emitted', {'clientSeq': appOpenSeq}, 'H3');
-        // #endregion
       }
     }
 
@@ -127,9 +92,6 @@ class EventTracker {
       final surface = _ref.read(currentSurfaceProvider);
       if (surface != null) merged['surface'] = surface;
     }
-    // #region agent log
-    _agentLog('event_tracker.dart:track', 'event_queued', {'eventName': eventName, 'hasSurface': merged.containsKey('surface')}, 'H4');
-    // #endregion
     final event = <String, dynamic>{
       'schemaVersion': '1.0',
       'eventId': _uuid.v4(),
@@ -191,9 +153,6 @@ class EventTracker {
       final client = _ref.read(apiClientProvider);
       await client.postEventsBatch(events);
     } catch (e) {
-      // #region agent log
-      _agentLog('event_tracker.dart:_flush', 'flush_failed', {'eventCount': events.length, 'error': e.runtimeType.toString()}, 'H5');
-      // #endregion
       _buffer.addAll(events);
     }
   }

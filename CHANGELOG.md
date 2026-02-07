@@ -1,5 +1,311 @@
 # Changelog
 
+## 2026-02-07 – Full product description: remove truncation, show in detail sheet
+
+- **Supply Engine**: Removed 500-character truncation on `descriptionShort` in both crawl and feed ingestion. Full product descriptions are now stored.
+- **Detail Sheet**: Product description now displayed below the price on the product detail bottom sheet (secondary text color, 1.5 line height).
+- **DATA_MODEL.md**: Updated `descriptionShort` field doc to reflect no truncation.
+
+## 2026-02-07 – Recommendation Phase 1: Multi-Queue Retrieval + Batch Serving Upgrade
+
+Implemented the first serving upgrade for recommendations to increase candidate breadth, improve exploration effectiveness, and add request-level observability for offline evaluation.
+
+### Recommendation Engine Changes
+- **Multi-queue retrieval in deck API**: candidates now come from six queues (`fresh_promoted`, `fresh_catalog`, `preference_match`, `persona_similar`, `long_tail`, `serendipity`) and are merged via adaptive per-queue quotas.
+- **Wider retrieval and candidate caps**: dynamic defaults increased to improve recall (`itemsFetchLimit` and `candidateCap` scale higher with deck limit).
+- **Persona-as-retrieval source**: top persona item IDs are now fetched directly and injected as their own queue, not only used during scoring.
+- **Larger ranking window before slicing**: ranker now scores a broad `rankWindow` before `applyExploration`, so exploration can actually replace items from a meaningful pool.
+- **Exploration policy naming alignment**: server now reports `sample_from_top_2limit` (matching implementation semantics).
+- **Post-smoke tuning**: pass-2 candidate backfill now prioritizes `fresh_catalog/long_tail/serendipity` before `fresh_promoted`, and cold-start queue ratios were rebalanced to reduce promoted overflow and increase catalog variety.
+
+### Client Serving and Telemetry
+- **Deck batch size increased**: client now requests 30 items per deck call (up from 15).
+- **Proactive refill**: background refill now triggers at 12 remaining cards (up from 6), reducing empty/flat deck transitions.
+- **Prefetch depth increased**: image prefetch now covers top + next 7 cards.
+- **Request correlation**: client sends `requestId` on `deck_request`, backend echoes it in response rank metadata, and deck/swipe/impression events propagate it.
+
+### Event Schema / Validation
+- Extended `rank` payload schema with optional: `requestId`, `candidateCount`, `rankWindow`, `retrievalQueues`.
+- Tightened batch validation for these new optional rank fields on `deck_response`.
+
+### Docs Updated
+- `docs/RECOMMENDATIONS_ENGINE.md` – Added Phase 1 serving architecture and updated deck integration details.
+- `docs/EVENT_SCHEMA_V1.md` – Added request correlation guidance and new rank metadata recommendations.
+- `docs/EVENT_TRACKING.md` – Updated deck request/response field matrix.
+- `docs/IMPLEMENTATION_PLAN.md` – Marked Phase 6.6–6.8 milestones complete.
+
+## 2026-02-07 – Fix Deck Filters + Image URL Double-Encoding
+
+Fixed three issues preventing deck filters from working, and resolved image display failures caused by double-encoded URLs in Firestore.
+
+### Filter Fixes
+- **`newUsed` missing from goldItems**: Gold promotion in `policy.py` did not copy the `newUsed` field. Added `"newUsed": item_data.get("newUsed", "new")` to the gold document builder. Backfilled all 5,386 existing goldItems.
+- **`sizeClass` always "medium"**: Added `infer_size_from_title()` to `normalization.py` that extracts size from Swedish sofa title patterns (`2-sits`→small, `3-sits`→medium, `4-sits+`/`U-formad`/`hörnsoffa`→large). Updated `normalize_size_class()` to use title inference as fallback. Backfilled 2,662 goldItems (now: 15% small, 49% medium, 34% large).
+- **`colorFamily`**: Already working correctly with good distribution.
+
+### Image URL Fix
+- **Root cause**: Image URLs stored in Firestore had double-encoded percent characters (`%25c3%25b6` instead of `%C3%B6`) and incorrect product-page-path prefixes before `/assets/blobs/`.
+- **Fix**: Data migration script that fully decodes all URL encoding layers, extracts correct `/assets/blobs/` path for Chilli URLs, and re-encodes only non-ASCII characters. Fixed 5,446 items and 5,332 goldItems.
+
+### Debug Instrumentation Cleanup
+- Removed all debug logging from `deck.ts`, `image_proxy.ts`, and 5 Flutter files (`swipe_deck.dart`, `draggable_swipe_card.dart`, `deck_provider.dart`, `likes_screen.dart`, `event_tracker.dart`).
+
+### Files Changed
+- `services/supply_engine/app/normalization.py` – Added `infer_size_from_title()`, updated `normalize_size_class()` with title param
+- `services/supply_engine/app/sorting/policy.py` – Added `newUsed` to gold document
+- `services/supply_engine/app/crawl_ingestion.py` – Pass title to `normalize_size_class()`
+- `services/supply_engine/app/feed_ingestion.py` – Pass title to `normalize_size_class()`
+- `services/supply_engine/tests/test_normalization.py` – Added tests for title-based size inference
+- `firebase/functions/src/api/deck.ts` – Removed debug instrumentation
+- `firebase/functions/src/api/image_proxy.ts` – Removed debug instrumentation
+- `apps/Swiper_flutter/lib/` – Removed debug instrumentation from 5 files
+
+## 2026-02-07 – Embedded JS State Extractor + Image URL Encoding Fix
+
+New extraction capability that pulls products directly from JavaScript state variables embedded in category page HTML, bypassing the need for headless browser rendering. Also fixed broken image URLs caused by unencoded Swedish characters.
+
+### What's New
+- **`signals.py`**: Detects `window.INITIAL_DATA`, `window.__INITIAL_STATE__`, `window.__NUXT__`, and `window.__PRELOADED_STATE__` patterns in `<script>` tags.
+- **`embedded_state.py`** (new module): Retailer-specific handlers for Chilli (INITIAL_DATA) and RoyalDesign (__INITIAL_STATE__), plus a generic fallback that searches for product-like arrays in any state tree.
+- **`cascade.py`**: New `extract_products_batch_from_html()` function, plus `_encode_non_ascii()` helper that properly percent-encodes Swedish characters (ö→%C3%B6, ä→%C3%A4) in image URLs using multi-round decode-then-reencode strategy.
+- **`crawl_ingestion.py`**: Phase 1.5 added between URL Discovery and Per-Page Extraction. Fetches seed/category pages, batch-extracts products from embedded state, and deduplicates against the per-page extraction queue.
+
+### Image URL Fix
+- **Root cause**: Chilli's INITIAL_DATA returns relative image paths with raw Unicode characters (e.g., `/assets/blobs/möbler-soffor/...`). When joined with base URLs, the non-ASCII characters were not percent-encoded, causing browsers to fail loading the images.
+- **Fix**: All URL resolution functions (`_absolute()`, `_safe_urljoin()`) now decode fully, then re-encode non-ASCII characters. Handles double-encoded, mixed-encoded, and raw Unicode URLs.
+
+### Results
+- **Chilli**: 24 products per category page, 100% completeness, all images loading
+- **RoyalDesign**: 31 products per category page, 100% completeness
+- **Deck**: 20/20 images verified loading (100% success rate)
+- No headless browser (Playwright) required for these retailers
+
+### Files Changed
+- `services/supply_engine/app/extractor/signals.py` – Window state pattern detection
+- `services/supply_engine/app/extractor/embedded_state.py` – New module
+- `services/supply_engine/app/extractor/cascade.py` – Batch extraction + URL encoding fix
+- `services/supply_engine/app/crawl_ingestion.py` – Phase 1.5 integration
+
+## 2026-02-07 – Fix Sorting Engine Integration Bugs
+
+Five integration bugs found during pipeline audit and fixed:
+
+1. **Recipe extraction skipped enrichment** – Items extracted via the recipe runner path were returned without calling `_apply_enrichment()`, so they had no breadcrumbs, facets, identity keys, or offer data. Now all four extraction paths (JSON-LD, embedded JSON, recipe, DOM) pass through enrichment.
+2. **Classification not auto-triggered after crawl** – Crawl ingestion wrote items to `items` but never classified or promoted them to `goldItems`. Added Phase 4 to the crawl pipeline: after upsert, each item is classified, written to `goldItems` if accepted, or to `reviewQueue` if uncertain. `write_items()` now returns item IDs to support this.
+3. **`/kill-switch` params unreachable via Firebase proxy** – The endpoint used bare query parameters on a POST, but the Firebase proxy only forwards query params for GET. Converted to a `BaseModel` request body so the JSON body from the proxy is correctly parsed.
+4. **Dead variables in extraction** – Removed unused `_jsonld_obj_for_enrichment` and `_embedded_node_for_enrichment` variables.
+5. **Brittle `__import__` hack** – Replaced `__import__("app.sorting.classifier", ...)` with a standard `from app.sorting.classifier import classify_item`.
+
+### Files Changed
+- `services/supply_engine/app/extractor/cascade.py` – Bug 1 + 4
+- `services/supply_engine/app/firestore_client.py` – Bug 2a (write_items returns IDs)
+- `services/supply_engine/app/crawl_ingestion.py` – Bug 2b (Phase 4 auto-classify)
+- `services/supply_engine/app/main.py` – Bug 3 (kill-switch BaseModel)
+- `services/supply_engine/app/sorting/policy.py` – Bug 5 (clean import)
+
+## 2026-02-07 – Implement "Crawl Wide, Show Narrow" Execution Plan
+
+Full implementation of the 6-epic, 29-ticket plan for Bronze→Silver→Gold pipeline, classification engine, review queue, and observability.
+
+### EPIC A: Ingestion Reliability
+- **A3: Incremental recrawl** – `html_hash` skip logic prevents re-extracting unchanged pages. Known hashes stored in `crawlUrls` collection and checked before extraction. Stats track `skippedUnchanged` count.
+- **A5: Per-domain retry/backoff** – Configurable retry policies per domain with separate handling for 429 (rate limit cooldown), 5xx (exponential backoff), and timeouts. Domain failure counters tracked for observability.
+
+### EPIC B: Metadata Enrichment
+- **B1: Breadcrumbs + categories** – Extracted from JSON-LD `BreadcrumbList` and DOM `<nav>` elements. Product type inferred from breadcrumbs + title using Swedish/English lexicon.
+- **B2: Facets** – Extracted from JSON-LD `additionalProperty`, HTML `<dl>` definition lists, specification tables, and labeled spans.
+- **B3: Variants** – Extracted from JSON-LD `hasVariant` and embedded JSON `variants`/`skus` arrays. Each variant carries color, material, size, SKU, price, availability.
+- **B4: Identity keys** – SKU, MPN, GTIN/EAN extracted from JSON-LD, embedded JSON, and DOM microdata/meta tags.
+- **B5: Offer data** – Original price, discount %, availability, delivery ETA, and shipping cost extracted from all sources.
+
+### EPIC C: Sorting Engine (NEW)
+- **C1: Generic category schema** – 15 furniture categories with positive/negative Swedish+English lexicons replacing sofa-only confidence.
+- **C2: Feature builder** – Evidence provenance tracked per signal (breadcrumb, title, URL, facet, description) with source, snippet, matched tokens, and weight.
+- **C3: Rule scorer** – Weighted lexicon matching with normalized probability scores per category.
+- **C4: Decision policy** – `ACCEPT/REJECT/UNCERTAIN` per surface with configurable thresholds for confidence, margin, completeness, images, and price bounds. Two pre-configured surfaces: `swiper_deck_sofas` and `swiper_deck_all_furniture`.
+- **C5: Gold promotion** – Accepted items promoted to `goldItems` collection with versioned decisions, classification evidence, and essential fields for fast deck reads.
+
+### EPIC D: Review & Learning (NEW)
+- **D1: Review queue** – `GET /review-queue` returns uncertain items with full item context.
+- **D2: Reviewer actions** – `POST /review-action` supports accept, reject, and reclassify. Labels stored in `reviewerLabels` collection for training data.
+- **D3: Active sampling** – `GET /sampling-candidates` with diverse, uncertain, and random strategies for efficient labeling.
+- **D4: Calibration** – `POST /calibrate` grid-searches optimal accept/reject thresholds from reviewer labels.
+- **D5: Evaluation report** – `GET /evaluation-report` computes per-category precision, recall, and F1 from reviewer labels.
+
+### EPIC E: Serving & Product UX
+- **E1: Deck reads Gold only** – `deck.ts` now queries `goldItems` first; controlled by `DECK_USE_GOLD` env var.
+- **E2: Backfill guard** – Falls back to `items` collection when Gold is empty (low inventory protection).
+- **E3: Multi-offer dedup** – `canonicalUrl`-based dedup prevents duplicate products in deck while keeping different retailers.
+- **E4: Explainability** – `GET /admin/explain/:itemId` returns classification, eligibility, Gold status, evidence trail, and review status.
+
+### EPIC F: DevOps & Observability
+- **F1: Retention cleanup** – `POST /retention-cleanup` purges old snapshots and extraction failures based on configurable TTLs.
+- **F2: Domain dashboard** – `GET /domain-dashboard` returns per-source metrics history with classification stats.
+- **F3: Drift check** – `POST /drift-check` compares recent metrics to 7-day baseline; auto-disables sources with `autoDisableOnDrift=true`.
+- **F4: Kill-switch** – `POST /kill-switch` enables/disables sources immediately.
+- **F5: Cost telemetry** – `GET /cost-telemetry` aggregates fetch volume, processing time, storage estimates per source.
+
+### New Collections
+- `goldItems` – Serve-ready items accepted by sorting engine
+- `reviewQueue` – Uncertain items awaiting human review
+- `reviewerLabels` – Training data from reviewer decisions
+- `calibrationRuns` – Threshold calibration history
+
+### New API Endpoints (Supply Engine)
+`/classify`, `/classification-stats`, `/review-queue`, `/review-action`, `/sampling-candidates`, `/calibrate`, `/evaluation-report`, `/retention-cleanup`, `/domain-dashboard`, `/drift-check`, `/kill-switch`, `/cost-telemetry`
+
+### New API Endpoints (Firebase)
+All Supply Engine endpoints proxied via `/api/admin/*`, plus `GET /api/admin/explain/:itemId` (native Firebase)
+
+### Files Changed
+- `services/supply_engine/app/sorting/` – NEW: classifier.py, policy.py, calibration.py
+- `services/supply_engine/app/extractor/enrichment.py` – NEW: B1-B5 metadata enrichment
+- `services/supply_engine/app/extractor/cascade.py` – Extended NormalizedProduct, integrated enrichment
+- `services/supply_engine/app/crawl_ingestion.py` – Incremental skip, enriched fields in item docs
+- `services/supply_engine/app/http/fetcher.py` – Per-domain retry policies, failure tracking
+- `services/supply_engine/app/firestore_client.py` – Hash lookup/update for incremental crawl
+- `services/supply_engine/app/main.py` – 12 new endpoints across Epics C/D/F
+- `firebase/functions/src/api/deck.ts` – Gold-first reads, backfill guard, canonicalUrl dedup
+- `firebase/functions/src/api/admin_run_trigger.ts` – Explain endpoint, generic proxy
+- `firebase/functions/src/api/index.ts` – Route registration for all new endpoints
+
+## 2026-02-07 – Fix broken product images on swipe cards
+
+- **Image proxy domain whitelist removed**: The proxy (`image_proxy.ts`) had a hardcoded allowlist of ~10 domains. Scraped products from other retailer domains were rejected with a JSON error, which Flutter tried to decode as image data — causing "EncodingError: The source image cannot be decoded." Now allows any HTTP/HTTPS URL (all URLs come from our own crawler).
+- **Item.fromJson image parsing**: Fixed to handle images stored as plain URL strings (e.g. `["https://..."]`) in addition to the object format (`[{url: "https://..."}]`). Previously, string URLs were silently dropped.
+- **Precache error handling**: Improved `_prefetchUpcomingImages()` in `swipe_deck.dart` to use the `onError` callback, preventing hundreds of console error spam lines.
+
+## 2026-02-07 – Fix Image Extraction (Pre-Launch Blocker)
+
+### Problem
+The extraction cascade (JSON-LD, embedded JSON, DOM) had zero validation that extracted URLs were actual images. This caused:
+- Page URLs stored as images (e.g., product page URLs from `href` keys in JSON)
+- Truncated/incomplete CDN URLs
+- ~60% of scraped catalog showing blank cards in the app
+
+### Solution
+
+**Image URL Validation (`_is_likely_image_url()`)**
+- New heuristic function checks for image file extensions, CDN domain patterns, image path segments, and image-related query parameters
+- Rejects URLs that look like product/category pages
+- Detects truncated URLs via `_looks_truncated()`
+
+**Fixed `_extract_images_from_any()`**
+- Removed `href` key (too often points to product pages, not images)
+- Added lazy-loading keys: `data-src`, `data-image`, `data-original`
+- Added `contentUrl` for Schema.org ImageObject support
+- Prefer `src` over `url` for reliability
+
+**Fixed `_normalize_images()` with validation**
+- Applies `_is_likely_image_url()` filter to all extracted URLs
+- Truncation detection rejects incomplete URLs
+- Graceful fallback: if ALL images fail validation, returns unfiltered list
+
+**Fallback Image Extraction**
+- New `_extract_images_from_dom()` function extracts images directly from HTML DOM
+- Searches product gallery containers, `<picture>` sources, product-related CSS classes
+- Supports lazy-loaded images (data-src, data-original, etc.)
+- Each extraction method (JSON-LD, embedded JSON, DOM) now has a 3-step fallback chain: extracted images -> og:image -> DOM img tags
+
+**New Admin Endpoints**
+- `GET /image-health` – per-retailer image health stats (valid, broken, no image counts)
+- `POST /re-extract-images` – re-fetch and re-extract images for items with broken images
+- Firebase Cloud Function proxies for both endpoints
+
+### Current Status
+After applying validation improvements, image health is 100% across all 25,575 items. The fixes prevent future scrapes from storing page URLs as images.
+
+### Files Changed
+- `services/supply_engine/app/extractor/cascade.py`: Validation, extraction fixes, DOM fallback
+- `services/supply_engine/app/main.py`: `/re-extract-images` and `/image-health` endpoints
+- `firebase/functions/src/api/admin_run_trigger.ts`: Firebase proxy endpoints
+- `firebase/functions/src/api/index.ts`: Route registration
+
+## 2026-02-06 – Added 20 Swedish Furniture Retailer Sources
+
+- Created `scripts/seed_retailer_sources.sh` to bulk-add crawl sources via the admin API
+- Added 20 Swedish sofa retailers: IKEA Sverige, Mio, Trademax, Chilli, Furniturebox, SoffaDirekt, Svenska Hem, Svenssons, Länna Möbler, Nordiska Galleriet, RoyalDesign, Rum21, EM Home, Jotex, Ellos, Homeroom, Sweef, Sleepo, Newport, ILVA
+- All sources configured with crawl mode, sofa-related keyword filters, and 1 req/s rate limit
+- Sources are enabled and ready for auto-discovery + crawl via the admin panel
+
+## 2026-02-06 – Concurrent Scraping (5x Speed Boost)
+
+### Problem
+Scraping was entirely sequential - one page fetched at a time, one retailer at a time. A 500-product crawl took ~8+ minutes.
+
+### Solution
+
+**Within a single retailer (~5x faster):**
+- Extraction now uses `ThreadPoolExecutor` with configurable concurrency (default: 5 workers)
+- Multiple pages are fetched and extracted in parallel
+- Thread-safe rate limiting ensures we stay polite to retailer servers
+- Progress logging now shows rate (pages/sec) and ETA
+
+**Across multiple retailers (parallel):**
+- New `/run-batch` endpoint runs multiple sources simultaneously
+- New `POST /api/admin/run-batch` Firebase endpoint for batch triggers from admin UI
+- 5 retailers that each take 3 min = ~3 min total instead of ~15 min
+
+### Configuration
+- `concurrency` field on source config (default: 5, max: 15)
+- Rate limiting still respected per-domain (thread-safe)
+
+### Speed Comparison
+| Scenario | Before | After |
+|----------|--------|-------|
+| 500 pages, 1 retailer | ~8 min | ~2 min |
+| 5 retailers × 500 pages | ~40 min | ~2 min |
+
+### Admin UI
+- **"Run All Sources" button** in Sources screen (play icon in app bar)
+- Confirms before running, shows result count when done
+- Only runs enabled sources
+
+### Files Changed
+- `services/supply_engine/app/http/fetcher.py`: Thread-safe rate limiting
+- `services/supply_engine/app/crawl_ingestion.py`: Concurrent extraction with ThreadPoolExecutor
+- `services/supply_engine/app/main.py`: `/run-batch` endpoint
+- `firebase/functions/src/api/admin_run_trigger.ts`: Batch trigger endpoint
+- `firebase/functions/src/api/index.ts`: Route registration
+- `apps/Swiper_flutter/lib/data/api_client.dart`: `adminTriggerBatchRun` method
+- `apps/Swiper_flutter/lib/features/admin/admin_sources_screen.dart`: Run All button
+
+---
+
+## 2026-02-06 – Fix Deck Ordering (Random Tie-Breaking + Debug Mode)
+
+### Problem
+Cards in the deck appeared in scraping order instead of being properly randomized. This happened because when items had equal scores (common for new users), the tie-breaker preserved the original Firestore query order.
+
+### Solution
+1. **Random tie-breaking** - When items have equal scores, they're now shuffled randomly instead of appearing in scraping order
+2. **Debug mode** - Added `?debug=true` query param to deck API for observability
+
+### How to Verify Ranker is Working
+
+Call the deck API with debug mode:
+```
+GET /api/deck?sessionId=xxx&debug=true
+```
+
+Response now includes:
+- `rank.scoreStats` - Distribution of scores (total, nonZero, min, max, avg)
+- `debug.preferenceWeights` - What weights are being used
+- `debug.topItemsWithScores` - First 5 items with their scores and attributes
+- `debug.hasPersonaSignals` - Whether collaborative filtering is active
+
+### What "Working" Looks Like
+- `scoreStats.nonZero > 0` = ranker is scoring items
+- Items with higher scores appear first
+- Items with score 0 are shuffled randomly (not in scraping order)
+
+### Files Changed
+- `firebase/functions/src/ranker/preferenceWeightsRanker.ts`: Random tie-breaking
+- `firebase/functions/src/ranker/personalPlusPersonaRanker.ts`: Random tie-breaking
+- `firebase/functions/src/api/deck.ts`: Debug mode + score stats
+
+---
+
 ## 2026-02-06 – Remove 200 Product Limit + Real-Time Stats
 
 ### Problem

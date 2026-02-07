@@ -177,7 +177,7 @@ class _AdminCuratedScreenState extends ConsumerState<AdminCuratedScreen> {
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(4),
                             child: Image.network(
-                              ApiClient.proxyImageUrl(imageUrl),
+                              ApiClient.proxyImageUrl(imageUrl, width: ImageWidth.thumbnail),
                               width: 50,
                               height: 50,
                               fit: BoxFit.cover,
@@ -331,7 +331,7 @@ class _AdminCuratedScreenState extends ConsumerState<AdminCuratedScreen> {
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: Image.network(
-                                ApiClient.proxyImageUrl(imageUrl),
+                                ApiClient.proxyImageUrl(imageUrl, width: ImageWidth.thumbnail),
                                 width: 50,
                                 height: 50,
                                 fit: BoxFit.cover,

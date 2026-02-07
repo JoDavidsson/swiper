@@ -295,8 +295,18 @@ async function getCreativeHealthScore(productId: string): Promise<number | null>
   const itemDoc = await db.collection("items").doc(productId).get();
   if (!itemDoc.exists) return null;
 
-  const data = itemDoc.data();
-  return data?.creativeHealthScore ?? null;
+  const data = itemDoc.data() as {
+    creativeHealth?: { score?: unknown } | null;
+    creativeHealthScore?: unknown;
+  } | undefined;
+
+  const nested = data?.creativeHealth?.score;
+  if (typeof nested === "number" && Number.isFinite(nested)) return nested;
+
+  const legacy = data?.creativeHealthScore;
+  if (typeof legacy === "number" && Number.isFinite(legacy)) return legacy;
+
+  return null;
 }
 
 /**
@@ -309,7 +319,7 @@ async function calculateSegmentScores(segmentId: string): Promise<number> {
   // Get all active products
   // In production, this would filter by segment criteria
   const itemsSnap = await db.collection("items")
-    .where("status", "==", "active")
+    .where("isActive", "==", true)
     .limit(1000) // Batch limit
     .get();
 

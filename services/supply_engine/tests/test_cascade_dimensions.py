@@ -142,3 +142,72 @@ def test_dom_fallback_infers_color_from_title():
     assert out.color_raw == "black"
     assert out.dimensions_raw is None
     assert out.material_raw is None
+
+
+def test_dom_fallback_extracts_description_dimensions_material_brand():
+    html = """
+    <html><head>
+      <meta property="og:type" content="product" />
+      <meta property="og:description" content="Elegant 3-seat sofa with oak legs." />
+      <meta property="product:price:amount" content="14990" />
+      <meta property="product:brand" content="Nordic Living" />
+    </head>
+    <body>
+      <h1>Nordic 3-sits soffa beige</h1>
+      <section class="product-specs">
+        <table>
+          <tr><th>Bredd</th><td>220 cm</td></tr>
+          <tr><th>Höjd</th><td>88 cm</td></tr>
+          <tr><th>Djup</th><td>95 cm</td></tr>
+          <tr><th>Material</th><td>Velvet</td></tr>
+        </table>
+      </section>
+    </body></html>
+    """
+    out = extract_product_from_html(
+        source_id="retailer_x",
+        fetched_url="https://example.se/sofa-dom-1",
+        final_url="https://example.se/sofa-dom-1",
+        html=html,
+        extracted_at_iso="2026-02-07T00:00:00Z",
+    )
+    assert out is not None
+    assert out.method == "dom"
+    assert out.description == "Elegant 3-seat sofa with oak legs."
+    assert out.brand == "Nordic Living"
+    assert out.dimensions_raw == {"w": 220.0, "h": 88.0, "d": 95.0}
+    assert out.material_raw == "velvet"
+
+
+def test_dimensions_promoted_from_enrichment_facets():
+    html = """
+    <html><head>
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": "Facet Sofa",
+          "url": "https://example.se/facet-sofa",
+          "image": "https://example.se/facet.jpg",
+          "offers": {"@type": "Offer", "price": 9990, "priceCurrency": "SEK"}
+        }
+      </script>
+    </head>
+    <body>
+      <ul class="product-info">
+        <li>Bredd: 210 cm</li>
+        <li>Höjd: 82 cm</li>
+        <li>Djup: 93 cm</li>
+      </ul>
+    </body></html>
+    """
+    out = extract_product_from_html(
+        source_id="retailer_x",
+        fetched_url="https://example.se/facet-sofa",
+        final_url="https://example.se/facet-sofa",
+        html=html,
+        extracted_at_iso="2026-02-07T00:00:00Z",
+    )
+    assert out is not None
+    assert out.method == "jsonld"
+    assert out.dimensions_raw == {"w": 210.0, "h": 82.0, "d": 93.0}

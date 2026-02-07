@@ -4,6 +4,7 @@ Crawl ingestion: allowlisted URLs only, robots.txt respected, rate limited.
 Pipeline:
 1) Discover candidate URLs (sitemaps + bounded category crawl)
 2) Extract product data via deterministic cascade (JSON-LD -> semantic DOM)
+   - Uses concurrent fetching for speed (configurable workers)
 3) Normalize into existing `items` schema and upsert into Firestore
 4) Persist snapshots, failures, and daily metrics for monitoring/healing
 """
@@ -11,6 +12,8 @@ from __future__ import annotations
 
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -86,13 +89,15 @@ from app.firestore_client import (
     write_product_snapshot,
     upsert_metrics_daily,
     get_active_recipe,
+    get_known_hashes,
+    update_crawl_url_hash,
 )
 from app.http.fetcher import PoliteFetcher, FetchError
 from app.locator.sitemap import discover_from_sitemaps
 from app.locator.crawler import discover_from_category_crawl
-from app.extractor.cascade import extract_product_from_html
+from app.extractor.cascade import extract_product_from_html, extract_products_batch_from_html
 from app.extractor.signals import extract_page_signals
-from app.normalization import canonical_url as canonicalize_url, normalize_material, normalize_color_family, normalize_size_class, infer_color_from_title
+from app.normalization import canonical_url as canonicalize_url, normalize_material, normalize_color_family, normalize_size_class, infer_color_from_title, infer_size_from_title
 from app.monitor.drift import check_drift
 
 
@@ -207,6 +212,35 @@ def _robots_respect(source: dict) -> bool:
     return bool(v) if v is not None else True
 
 
+def _source_browser_fallback(source: dict) -> bool:
+    v = source.get("useBrowserFallback")
+    if v is None:
+        v = source.get("use_browser_fallback")
+    return bool(v) if v is not None else False
+
+
+def _source_quality_refetch(source: dict) -> bool:
+    v = source.get("enableQualityRefetch")
+    if v is None:
+        v = source.get("enable_quality_refetch")
+    return bool(v) if v is not None else False
+
+
+def _missing_fields_for_product(product: Any) -> list[str]:
+    missing: list[str] = []
+    if not (product.description and str(product.description).strip()):
+        missing.append("description")
+    if not product.dimensions_raw:
+        missing.append("dimensions")
+    if not (product.material_raw and str(product.material_raw).strip()):
+        missing.append("material")
+    if not (product.color_raw and str(product.color_raw).strip()):
+        missing.append("color")
+    if not (product.brand and str(product.brand).strip()):
+        missing.append("brand")
+    return missing
+
+
 def _base_url(source: dict) -> str:
     """Get and normalize the base URL, ensuring it has a protocol."""
     url = (source.get("baseUrl") or source.get("base_url") or "").strip()
@@ -263,6 +297,118 @@ def _get_effective_config(source: dict) -> dict:
         }
 
 
+# ============================================================================
+# CONCURRENT EXTRACTION HELPERS
+# ============================================================================
+
+# Default number of concurrent fetch+extract workers per source
+DEFAULT_CONCURRENCY = 5
+MAX_CONCURRENCY = 15
+
+
+@dataclass
+class _ExtractionResult:
+    """Result from a single fetch+extract worker."""
+    url: str
+    fetch_ok: bool = False
+    product: Any = None
+    html_hash: str | None = None
+    error_msg: str | None = None
+    error_type: str | None = None  # "fetch_blocked", "fetch_error", "parse"
+    page_signals: dict | None = None
+    method: str | None = None
+    fetch_method: str = "http"
+    fetch_elapsed_ms: int = 0
+    fetch_final_url: str | None = None
+    fetch_text: str | None = None
+
+
+def _fetch_and_extract_one(
+    url: str,
+    fetcher: "PoliteFetcher",
+    base_url: str,
+    allowlist_policy: dict | None,
+    robots_respect: bool,
+    rate_limit_rps: float | None,
+    source_id: str,
+    extracted_at_iso: str,
+    active_recipe: dict | None,
+    known_hash: str | None = None,
+) -> _ExtractionResult:
+    """
+    Fetch and extract a single URL. Designed to run in a thread pool.
+
+    Returns an _ExtractionResult with all data needed by the main thread
+    to update stats, write to Firestore, and collect items.
+
+    If known_hash is provided and matches the fetched content, extraction is
+    skipped (incremental recrawl optimisation - A3).
+    """
+    result = _ExtractionResult(url=url)
+
+    # 1) Fetch
+    try:
+        r = fetcher.fetch(
+            url,
+            base_url=base_url,
+            allowlist_policy=allowlist_policy,
+            robots_respect=robots_respect,
+            rate_limit_rps=rate_limit_rps,
+        )
+        result.fetch_ok = True
+        result.html_hash = r.html_hash
+        result.fetch_elapsed_ms = r.elapsed_ms
+        result.fetch_method = r.method
+        result.fetch_final_url = r.final_url
+        result.fetch_text = r.text
+    except FetchError as e:
+        msg = str(e)
+        if "robots" in msg.lower() or "allowlist" in msg.lower():
+            result.error_type = "fetch_blocked"
+        else:
+            result.error_type = "fetch_error"
+        result.error_msg = msg
+        return result
+
+    # 1b) Incremental skip: if content hash matches previous crawl, skip extraction
+    if known_hash and r.html_hash == known_hash:
+        result.error_type = "skipped_unchanged"
+        result.error_msg = "Content unchanged (hash match)"
+        return result
+
+    # 2) Extract
+    product = extract_product_from_html(
+        source_id=source_id,
+        fetched_url=url,
+        final_url=r.final_url,
+        html=r.text,
+        extracted_at_iso=extracted_at_iso,
+        recipe=active_recipe,
+    )
+
+    if product is None:
+        sig = extract_page_signals(r.text, final_url=r.final_url)
+        result.error_type = "parse"
+        result.error_msg = (
+            f"No product extracted (JSON-LD blocks: {len(sig.jsonld_blocks)}, og:type: {sig.og_type})"
+        )
+        result.page_signals = {
+            "finalUrl": r.final_url,
+            "canonical": sig.canonical_url,
+            "ogUrl": sig.og_url,
+            "ogType": sig.og_type,
+            "ogImagesCount": len(sig.og_images),
+            "jsonldBlockCount": len(sig.jsonld_blocks),
+            "embeddedJsonCandidatesCount": len(sig.embedded_json_candidates),
+        }
+        return result
+
+    # 3) Success – attach product and snapshot data
+    result.product = product
+    result.method = product.method
+    return result
+
+
 def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = None) -> dict:
     """
     Run crawl ingestion for a source.
@@ -304,6 +450,10 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         "blockedCount": 0,
         "blockedRate": 0.0,
         "avgCompleteness": 0.0,
+        "descriptionRate": 0.0,
+        "dimensionsRate": 0.0,
+        "materialRate": 0.0,
+        "browserFetchCount": 0,
     }
 
     # Get effective configuration (supports both new derived and legacy formats)
@@ -322,6 +472,8 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
     rate_limit_rps = _source_rate_limit(source)
     allowlist_policy = _allowlist_policy(source)
     robots_respect = _robots_respect(source)
+    use_browser_fallback = _source_browser_fallback(source)
+    enable_quality_refetch = _source_quality_refetch(source)
     user_agent = source.get("userAgent") or source.get("user_agent")
 
     log.section("Configuration")
@@ -343,6 +495,8 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         log.info("Category filter: (none - all categories)")
     log.info(f"Rate limit: {rate_limit_rps or 'default'} req/s")
     log.info(f"Robots.txt respect: {robots_respect}")
+    log.info(f"Browser fallback: {use_browser_fallback}")
+    log.info(f"Quality refetch: {enable_quality_refetch}")
 
     if not base_url:
         log.error("baseUrl is required but missing!")
@@ -358,7 +512,10 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
     max_pages = int(source.get("maxPagesPerRun") or 50)
     max_depth = int(source.get("maxDepth") or 2)
 
-    fetcher = PoliteFetcher(user_agent=user_agent or "SwiperBot/0.1 (contact: johannes@branchandleaf.se)")
+    fetcher = PoliteFetcher(
+        user_agent=user_agent or "SwiperBot/0.1 (contact: johannes@branchandleaf.se)",
+        browser_fallback=use_browser_fallback,
+    )
     extracted_at_iso = _utc_now_iso()
 
     try:
@@ -592,21 +749,180 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
             update_run(db, db_run_id, "succeeded", stats)
             return {"runId": db_run_id, "status": "succeeded", "stats": stats}
 
-        # 2) Extract
-        log.section("PHASE 2: Product Extraction")
+        # ──────────────────────────────────────────────────────────────
+        # PHASE 1.5: Batch Extraction from Category Pages
+        # ──────────────────────────────────────────────────────────────
+        # Many retailers embed the full product catalog in the initial
+        # HTML of category pages as a window.* JS state variable.
+        # We fetch the seed/category page once and try to extract all
+        # products from the embedded state.  Products found here are
+        # added directly; their URLs are removed from the individual-
+        # page extraction queue to avoid duplicates.
+        batch_items: list[dict] = []
+        batch_urls_extracted: set[str] = set()
+        batch_category_pages: list[str] = []
+        batch_browser_fetches = 0
+        batch_description_count = 0
+        batch_dimensions_count = 0
+        batch_material_count = 0
+        batch_completeness_sum = 0.0
+
+        # Decide which pages to try: seed URL + any explicit category pages
+        if use_derived and derived_seed_url:
+            batch_category_pages.append(derived_seed_url)
+        elif seed_urls:
+            batch_category_pages.extend(seed_urls[:3])
+        else:
+            # Fallback: use the base_url
+            batch_category_pages.append(base_url)
+
+        if batch_category_pages:
+            log.section("PHASE 1.5: Batch Extraction from Category Pages")
+            for cat_url in batch_category_pages:
+                try:
+                    log.info(f"Fetching category page: {cat_url}")
+                    resp = fetcher.fetch(
+                        cat_url,
+                        rate_limit_rps=rate_limit_rps,
+                        robots_respect=robots_respect,
+                    )
+                    if not resp or not resp.text:
+                        log.warning(f"Empty response from {cat_url}")
+                        continue
+
+                    batch_products = extract_products_batch_from_html(
+                        source_id=source_id,
+                        fetched_url=cat_url,
+                        final_url=resp.final_url or cat_url,
+                        html=resp.text,
+                        extracted_at_iso=extracted_at_iso,
+                    )
+
+                    if not batch_products:
+                        log.info(f"No embedded state products on {cat_url}")
+                        continue
+
+                    if resp.method == "browser":
+                        batch_browser_fetches += len(batch_products)
+
+                    log.success(f"Batch extracted {len(batch_products)} products from embedded state on {cat_url}")
+
+                    for product in batch_products:
+                        batch_completeness_sum += float(product.completeness_score or 0.0)
+                        if product.description:
+                            batch_description_count += 1
+                        if product.dimensions_raw:
+                            batch_dimensions_count += 1
+                        if product.material_raw:
+                            batch_material_count += 1
+                        # Normalise into items schema (same as Phase 2)
+                        canon = canonicalize_url(product.canonical_url)
+                        title = product.title.strip()[:500] if product.title else "Untitled"
+                        img_objs = [
+                            {"url": u, "alt": title[:200]}
+                            for u in (product.images or [])
+                            if isinstance(u, str) and u
+                        ]
+                        price_amount = float(product.price_amount) if product.price_amount is not None else 0.0
+                        price_currency = (product.price_currency or "SEK").strip() or "SEK"
+
+                        batch_items.append({
+                            "sourceId": source_id,
+                            "sourceType": "crawl",
+                            "sourceUrl": product.product_url or cat_url,
+                            "canonicalUrl": canon,
+                            "title": title,
+                            "brand": (product.brand or "").strip() or None,
+                            "descriptionShort": (product.description or "").strip() or None,
+                            "priceAmount": price_amount,
+                            "priceCurrency": price_currency,
+                            "dimensionsCm": product.dimensions_raw,
+                            "sizeClass": normalize_size_class(None, None, title=title),
+                            "material": normalize_material(product.material_raw) or "mixed",
+                            "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(product.title) or "multi",
+                            "styleTags": [],
+                            "newUsed": "new",
+                            "deliveryComplexity": "medium",
+                            "smallSpaceFriendly": False,
+                            "modular": False,
+                            "ecoTags": [],
+                            "availabilityStatus": product.availability or "unknown",
+                            "outboundUrl": product.product_url or cat_url,
+                            "images": img_objs,
+                            "lastUpdatedAt": None,
+                            "firstSeenAt": None,
+                            "lastSeenAt": None,
+                            "isActive": True,
+                            "breadcrumbs": product.breadcrumbs or [],
+                            "productType": product.product_type,
+                            "retailerCategoryLabel": product.retailer_category_label,
+                            "facets": product.facets or {},
+                            "variants": product.variants or [],
+                            "sku": product.sku,
+                            "mpn": product.mpn,
+                            "gtin": product.gtin,
+                            "modelName": product.model_name,
+                            "priceOriginal": product.price_original,
+                            "discountPct": product.discount_pct,
+                            "deliveryEta": product.delivery_eta,
+                            "shippingCost": product.shipping_cost,
+                            "enrichmentEvidence": product.enrichment_evidence or [],
+                            "extractionMeta": {
+                                "method": "browser" if resp.method == "browser" else product.method,
+                                "extractorMethod": product.method,
+                                "completeness": float(product.completeness_score or 0.0),
+                                "missingFields": _missing_fields_for_product(product),
+                                "fetchMethod": resp.method,
+                                "extractedAt": product.extracted_at,
+                            },
+                        })
+                        # Track canonical URLs to skip in Phase 2
+                        if canon:
+                            batch_urls_extracted.add(canon)
+                        if product.product_url:
+                            batch_urls_extracted.add(product.product_url)
+
+                except Exception as e:
+                    log.warning(f"Batch extraction failed for {cat_url}: {e}")
+
+            if batch_items:
+                log.success(f"Total batch-extracted: {len(batch_items)} products from {len(batch_category_pages)} category page(s)")
+                stats["batchExtracted"] = len(batch_items)
+
+                # Remove batch-extracted URLs from the per-page queue to avoid duplicates
+                before = len(product_candidates)
+                product_candidates = [
+                    u for u in product_candidates
+                    if u not in batch_urls_extracted
+                    and canonicalize_url(u) not in batch_urls_extracted
+                ]
+                deduped = before - len(product_candidates)
+                if deduped:
+                    log.info(f"Removed {deduped} URLs already batch-extracted from Phase 2 queue")
+            else:
+                log.info("No products found via batch extraction, proceeding with per-page extraction")
+
+        # 2) Extract (concurrent: multiple pages fetched + extracted in parallel)
+        log.section("PHASE 2: Product Extraction (Concurrent)")
+        concurrency = min(int(source.get("concurrency") or DEFAULT_CONCURRENCY), MAX_CONCURRENCY)
+        log.info(f"Workers: {concurrency} concurrent threads")
         job_id = create_job(
             db,
             source_id,
             db_run_id,
             "extract",
-            {"count": len(product_candidates)},
+            {"count": len(product_candidates), "concurrency": concurrency},
             "running",
         )
         items: list[dict] = []
         successes = 0
-        method_counts = {"jsonld": 0, "embedded_json": 0, "recipe": 0, "dom": 0}
+        method_counts = {"jsonld": 0, "embedded_json": 0, "embedded_state": 0, "recipe": 0, "dom": 0}
         completeness_sum = 0.0
         blocked_count = 0
+        browser_fetch_count = 0
+        description_count = 0
+        dimensions_count = 0
+        material_count = 0
         active_recipe = None
         try:
             rdoc = get_active_recipe(db, source_id=source_id)
@@ -616,193 +932,444 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         except Exception:
             active_recipe = None
         
-        log.info(f"Extracting from {len(product_candidates)} URLs...")
-        stats_update_interval = 10  # Update Firestore every N products for real-time UI
-        
-        for idx, url in enumerate(product_candidates):
-            # Progress update every 5 items or on first/last
-            if idx == 0 or idx == len(product_candidates) - 1 or (idx + 1) % 5 == 0:
-                log.progress(idx + 1, len(product_candidates), url[:60] + "..." if len(url) > 60 else url)
-            
-            # Incremental stats update for real-time UI polling
-            if (idx + 1) % stats_update_interval == 0:
-                stats["success"] = successes
-                update_run(db, db_run_id, "running", stats)
-            
+        total = len(product_candidates)
+        log.info(f"Extracting from {total} URLs with {concurrency} workers...")
+        stats_update_interval = 10  # Update Firestore every N completed for real-time UI
+        extraction_start = time.time()
+
+        # A3: Load known hashes for incremental recrawl
+        known_hashes: dict[str, str] = {}
+        incremental = source.get("incremental", True)  # default on
+        skipped_unchanged = 0
+        if incremental:
             try:
-                r = fetcher.fetch(
-                    url,
-                    base_url=base_url,
-                    allowlist_policy=allowlist_policy,
-                    robots_respect=robots_respect,
-                    rate_limit_rps=rate_limit_rps,
-                )
-                stats["fetched"] += 1
-            except FetchError as e:
-                stats["failed"] += 1
-                msg = str(e)
-                if "robots" in msg.lower() or "allowlist" in msg.lower():
+                known_hashes = get_known_hashes(db, source_id=source_id, urls=product_candidates[:500])
+                if known_hashes:
+                    log.info(f"Incremental mode: {len(known_hashes)} URLs have known hashes (will skip if unchanged)")
+            except Exception:
+                log.warning("Failed to load known hashes, proceeding without incremental skip")
+
+        # Submit all URLs to thread pool for concurrent fetch + extract
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {
+                executor.submit(
+                    _fetch_and_extract_one,
+                    url, fetcher, base_url, allowlist_policy,
+                    robots_respect, rate_limit_rps, source_id,
+                    extracted_at_iso, active_recipe,
+                    known_hashes.get(url),
+                ): url
+                for url in product_candidates
+            }
+
+            completed = 0
+            for future in as_completed(futures):
+                completed += 1
+                er = future.result()  # _ExtractionResult (never raises)
+
+                # --- Progress + stats updates ---
+                if completed == 1 or completed == total or completed % 5 == 0:
+                    elapsed = time.time() - extraction_start
+                    rate = completed / elapsed if elapsed > 0 else 0
+                    eta = int((total - completed) / rate) if rate > 0 else 0
+                    url_short = er.url[:55] + "..." if len(er.url) > 55 else er.url
+                    log.progress(completed, total, f"{url_short}  ({rate:.1f}/s, ETA {eta}s)")
+
+                if completed % stats_update_interval == 0:
+                    stats["success"] = successes
+                    stats["fetched"] = stats.get("fetched", 0)
+                    update_run(db, db_run_id, "running", stats)
+
+                # --- Handle incremental skip (A3) ---
+                if er.error_type == "skipped_unchanged":
+                    skipped_unchanged += 1
+                    continue
+
+                # --- Handle fetch errors ---
+                if er.error_type == "fetch_blocked":
+                    stats["failed"] += 1
                     blocked_count += 1
-                    log.warning(f"Blocked: {url[:50]}... ({msg[:40]})")
-                else:
-                    log.error(f"Fetch failed: {url[:50]}... ({msg[:40]})")
-                record_extraction_failure(
+                    log.warning(f"Blocked: {er.url[:50]}... ({(er.error_msg or '')[:40]})")
+                    record_extraction_failure(
+                        db, source_id=source_id, url=er.url,
+                        failure_type="fetch", error=er.error_msg or "Blocked",
+                        html_hash=None, signals={"url": er.url, "finalUrl": None},
+                    )
+                    continue
+
+                if er.error_type == "fetch_error":
+                    stats["failed"] += 1
+                    log.error(f"Fetch failed: {er.url[:50]}... ({(er.error_msg or '')[:40]})")
+                    record_extraction_failure(
+                        db, source_id=source_id, url=er.url,
+                        failure_type="fetch", error=er.error_msg or "Fetch error",
+                        html_hash=None, signals={"url": er.url, "finalUrl": None},
+                    )
+                    continue
+
+                # Fetch succeeded
+                stats["fetched"] = stats.get("fetched", 0) + 1
+                stats["urlsExtracted"] += 1
+
+                # --- Handle extraction failures ---
+                if er.error_type == "parse":
+                    stats["failed"] += 1
+                    log.warning(f"No product: {er.url[:50]}... ({(er.error_msg or '')[:50]})")
+                    record_extraction_failure(
+                        db, source_id=source_id, url=er.url,
+                        failure_type="parse",
+                        error=er.error_msg or "No product extracted",
+                        html_hash=er.html_hash,
+                        signals=er.page_signals,
+                    )
+                    continue
+
+                # --- Success! ---
+                product = er.product
+                successes += 1
+                method_counts[product.method] = method_counts.get(product.method, 0) + 1
+                completeness_sum += float(product.completeness_score or 0.0)
+                if er.fetch_method == "browser":
+                    browser_fetch_count += 1
+                if product.description:
+                    description_count += 1
+                if product.dimensions_raw:
+                    dimensions_count += 1
+                if product.material_raw:
+                    material_count += 1
+
+                # A3: Store content hash for future incremental recrawl
+                if er.html_hash and incremental:
+                    try:
+                        update_crawl_url_hash(db, url=er.url, html_hash=er.html_hash, source_id=source_id)
+                    except Exception:
+                        pass  # Best-effort
+
+                price_str = f"{product.price_amount} {product.price_currency}" if product.price_amount else "no price"
+                log.success(f"Extracted [{product.method}]: {product.title[:40]}... ({price_str})")
+
+                # Snapshot for history/debug
+                write_product_snapshot(
                     db,
                     source_id=source_id,
-                    url=url,
-                    failure_type="fetch",
-                    error=msg,
-                    html_hash=None,
-                    signals={"url": url, "finalUrl": None},
-                )
-                continue
-
-            product = extract_product_from_html(
-                source_id=source_id,
-                fetched_url=url,
-                final_url=r.final_url,
-                html=r.text,
-                extracted_at_iso=extracted_at_iso,
-                recipe=active_recipe,
-            )
-            stats["urlsExtracted"] += 1
-            if product is None:
-                stats["failed"] += 1
-                # Capture a small, safe \"signals packet\" to support healing later.
-                sig = extract_page_signals(r.text, final_url=r.final_url)
-                signals_packet = {
-                    "finalUrl": r.final_url,
-                    "canonical": sig.canonical_url,
-                    "ogUrl": sig.og_url,
-                    "ogType": sig.og_type,
-                    "ogImagesCount": len(sig.og_images),
-                    "jsonldBlockCount": len(sig.jsonld_blocks),
-                    "embeddedJsonCandidatesCount": len(sig.embedded_json_candidates),
-                }
-                log.warning(f"No product extracted: {url[:50]}... (JSON-LD blocks: {len(sig.jsonld_blocks)}, og:type: {sig.og_type})")
-                record_extraction_failure(
-                    db,
-                    source_id=source_id,
-                    url=url,
-                    failure_type="parse",
-                    error="No strategy produced a valid product (missing title/canonical).",
-                    html_hash=r.html_hash,
-                    signals=signals_packet,
-                )
-                continue
-
-            successes += 1
-            method_counts[product.method] = method_counts.get(product.method, 0) + 1
-            completeness_sum += float(product.completeness_score or 0.0)
-            
-            # Log successful extraction
-            price_str = f"{product.price_amount} {product.price_currency}" if product.price_amount else "no price"
-            log.success(f"Extracted [{product.method}]: {product.title[:40]}... ({price_str})")
-
-            # Snapshot for history/debug
-            write_product_snapshot(
-                db,
-                source_id=source_id,
-                canonical_url=product.canonical_url,
-                snapshot={
-                    "product": {
-                        "retailerId": product.retailer_id,
-                        "retailerDomain": product.retailer_domain,
-                        "productUrl": product.product_url,
-                        "canonicalUrl": product.canonical_url,
-                        "title": product.title,
-                        "price": {
-                            "amount": product.price_amount,
-                            "currency": product.price_currency,
-                            "raw": product.price_raw,
-                        }
-                        if product.price_amount is not None or product.price_raw
-                        else None,
-                        "images": product.images,
-                        "description": product.description,
-                        "brand": product.brand,
-                        "extractedAt": product.extracted_at,
-                        "extraction": {
-                            "method": product.method,
-                            "recipeId": product.recipe_id,
-                            "recipeVersion": product.recipe_version,
-                            "completenessScore": product.completeness_score,
-                            "warnings": product.warnings,
+                    canonical_url=product.canonical_url,
+                    snapshot={
+                        "product": {
+                            "retailerId": product.retailer_id,
+                            "retailerDomain": product.retailer_domain,
+                            "productUrl": product.product_url,
+                            "canonicalUrl": product.canonical_url,
+                            "title": product.title,
+                            "price": {
+                                "amount": product.price_amount,
+                                "currency": product.price_currency,
+                                "raw": product.price_raw,
+                            }
+                            if product.price_amount is not None or product.price_raw
+                            else None,
+                            "images": product.images,
+                            "description": product.description,
+                            "brand": product.brand,
+                            "extractedAt": product.extracted_at,
+                            "extraction": {
+                                "method": product.method,
+                                "recipeId": product.recipe_id,
+                                "recipeVersion": product.recipe_version,
+                                "completenessScore": product.completeness_score,
+                                "warnings": product.warnings,
+                            },
                         },
+                        "debug": product.debug,
                     },
-                    "debug": product.debug,
-                },
-                extracted_at_iso=product.extracted_at,
-            )
+                    extracted_at_iso=product.extracted_at,
+                )
 
-            # Map into existing `items` schema (P1: use extracted dimensions, material, color)
-            canon = canonicalize_url(product.canonical_url)
-            title = product.title.strip()[:500] if product.title else "Untitled"
-            img_objs = [{"url": u, "alt": title[:200]} for u in (product.images or []) if isinstance(u, str) and u]
-            price_amount = float(product.price_amount) if product.price_amount is not None else 0.0
-            price_currency = (product.price_currency or "SEK").strip() or "SEK"
-            dims = product.dimensions_raw
-            width_cm = (dims or {}).get("w") if dims else None
-            items.append(
-                {
-                    "sourceId": source_id,
-                    "sourceType": "crawl",
-                    "sourceUrl": url,
-                    "canonicalUrl": canon,
-                    "title": title,
-                    "brand": (product.brand or "").strip() or None,
-                    "descriptionShort": (product.description or "")[:500] if product.description else None,
-                    "priceAmount": price_amount,
-                    "priceCurrency": price_currency,
-                    "dimensionsCm": dims,
-                    "sizeClass": normalize_size_class(None, width_cm),
-                    "material": normalize_material(product.material_raw) or "mixed",
-                    "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(product.title) or "multi",
-                    "styleTags": [],
-                    "newUsed": "new",
-                    "deliveryComplexity": "medium",
-                    "smallSpaceFriendly": False,
-                    "modular": False,
-                    "ecoTags": [],
-                    "availabilityStatus": "unknown",
-                    "outboundUrl": url,
-                    "images": img_objs,
-                    # Image validation / Creative Health (populated async by validation job)
-                    "imageValidation": None,  # Populated by image validation job
-                    "creativeHealth": None,   # Score 0-100, band (green/yellow/red)
-                    "lastUpdatedAt": None,
-                    "firstSeenAt": None,
-                    "lastSeenAt": None,
-                    "isActive": True,
-                }
-            )
+                # Map into existing `items` schema
+                canon = canonicalize_url(product.canonical_url)
+                title = product.title.strip()[:500] if product.title else "Untitled"
+                img_objs = [{"url": u, "alt": title[:200]} for u in (product.images or []) if isinstance(u, str) and u]
+                price_amount = float(product.price_amount) if product.price_amount is not None else 0.0
+                price_currency = (product.price_currency or "SEK").strip() or "SEK"
+                dims = product.dimensions_raw
+                width_cm = (dims or {}).get("w") if dims else None
+                items.append(
+                    {
+                        "sourceId": source_id,
+                        "sourceType": "crawl",
+                        "sourceUrl": er.url,
+                        "canonicalUrl": canon,
+                        "title": title,
+                        "brand": (product.brand or "").strip() or None,
+                        "descriptionShort": (product.description or "").strip() or None,
+                        "priceAmount": price_amount,
+                        "priceCurrency": price_currency,
+                        "dimensionsCm": dims,
+                        "sizeClass": normalize_size_class(None, width_cm, title=title),
+                        "material": normalize_material(product.material_raw) or "mixed",
+                        "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(product.title) or "multi",
+                        "styleTags": [],
+                        "newUsed": "new",
+                        "deliveryComplexity": "medium",
+                        "smallSpaceFriendly": False,
+                        "modular": False,
+                        "ecoTags": [],
+                        "availabilityStatus": product.availability or "unknown",
+                        "outboundUrl": er.url,
+                        "images": img_objs,
+                        "lastUpdatedAt": None,
+                        "firstSeenAt": None,
+                        "lastSeenAt": None,
+                        "isActive": True,
+                        # EPIC B: Enriched metadata
+                        "breadcrumbs": product.breadcrumbs or [],
+                        "productType": product.product_type,
+                        "retailerCategoryLabel": product.retailer_category_label,
+                        "facets": product.facets or {},
+                        "variants": product.variants or [],
+                        "sku": product.sku,
+                        "mpn": product.mpn,
+                        "gtin": product.gtin,
+                        "modelName": product.model_name,
+                        "priceOriginal": product.price_original,
+                        "discountPct": product.discount_pct,
+                        "deliveryEta": product.delivery_eta,
+                        "shippingCost": product.shipping_cost,
+                        "enrichmentEvidence": product.enrichment_evidence or [],
+                        "extractionMeta": {
+                            "method": "browser" if er.fetch_method == "browser" else product.method,
+                            "extractorMethod": product.method,
+                            "completeness": float(product.completeness_score or 0.0),
+                            "missingFields": _missing_fields_for_product(product),
+                            "fetchMethod": er.fetch_method,
+                            "extractedAt": product.extracted_at,
+                        },
+                    }
+                )
 
+        extraction_elapsed = time.time() - extraction_start
         stats["success"] = successes
-        stats["jsonldRate"] = (method_counts.get("jsonld", 0) / successes) if successes else 0
-        stats["embeddedJsonRate"] = (method_counts.get("embedded_json", 0) / successes) if successes else 0
-        stats["recipeRate"] = (method_counts.get("recipe", 0) / successes) if successes else 0
-        stats["domRate"] = (method_counts.get("dom", 0) / successes) if successes else 0
-        stats["avgCompleteness"] = (completeness_sum / successes) if successes else 0.0
+        stats["skippedUnchanged"] = skipped_unchanged
+        stats["extractionDurationSec"] = round(extraction_elapsed, 1)
+        stats["extractionRatePerSec"] = round(completed / extraction_elapsed, 2) if extraction_elapsed > 0 else 0
+        stats["concurrency"] = concurrency
         stats["blockedCount"] = blocked_count
         stats["blockedRate"] = (blocked_count / stats["urlsCandidateProducts"]) if stats["urlsCandidateProducts"] else 0.0
         update_job(db, job_id, "succeeded")
         
-        log.info(f"Extraction complete: {successes} products from {stats['urlsExtracted']} pages")
-        if successes > 0:
-            log.info(f"Methods used: JSON-LD={method_counts.get('jsonld', 0)}, Embedded={method_counts.get('embedded_json', 0)}, DOM={method_counts.get('dom', 0)}")
+        log.info(f"Extraction complete: {successes} products from {stats['urlsExtracted']} pages in {extraction_elapsed:.1f}s ({stats['extractionRatePerSec']}/s)")
+        if successes > 0 or batch_items:
+            log.info(f"Methods used: JSON-LD={method_counts.get('jsonld', 0)}, EmbeddedJSON={method_counts.get('embedded_json', 0)}, EmbeddedState={method_counts.get('embedded_state', 0)}, DOM={method_counts.get('dom', 0)}")
 
         # 3) Upsert
+        # Merge batch-extracted items from Phase 1.5 into the items list
+        if batch_items:
+            items.extend(batch_items)
+            log.info(f"Added {len(batch_items)} batch-extracted items (total: {len(items)})")
+            method_counts["embedded_state"] = method_counts.get("embedded_state", 0) + len(batch_items)
+            completeness_sum += batch_completeness_sum
+            browser_fetch_count += batch_browser_fetches
+            description_count += batch_description_count
+            dimensions_count += batch_dimensions_count
+            material_count += batch_material_count
+
+        # Optional quality pass: reprocess stale low-completeness items with browser fallback.
+        refetch_successes = 0
+        refetch_failed = 0
+        if enable_quality_refetch:
+            try:
+                from app.refetch_queue import get_refetch_candidates
+
+                refetch_limit = int(source.get("qualityRefetchLimit") or 100)
+                candidates = get_refetch_candidates(db, source_id=source_id, limit=refetch_limit)
+                stats["refetchCandidates"] = len(candidates)
+                if candidates:
+                    log.section("PHASE 2.5: Quality Refetch")
+                    if not use_browser_fallback:
+                        log.warning("Quality refetch requested but useBrowserFallback is disabled; skipping")
+                    else:
+                        candidate_urls: list[str] = []
+                        already_queued = set(product_candidates)
+                        for cand in candidates:
+                            refetch_url = (
+                                cand.get("sourceUrl")
+                                or cand.get("outboundUrl")
+                                or cand.get("canonicalUrl")
+                            )
+                            if not refetch_url or refetch_url in already_queued:
+                                continue
+                            already_queued.add(refetch_url)
+                            candidate_urls.append(refetch_url)
+                        log.info(
+                            f"Reprocessing {len(candidate_urls)} low-quality candidate URLs with browser fallback"
+                        )
+                        for refetch_url in candidate_urls:
+                            rer = _fetch_and_extract_one(
+                                refetch_url,
+                                fetcher,
+                                base_url,
+                                allowlist_policy,
+                                robots_respect,
+                                rate_limit_rps,
+                                source_id,
+                                extracted_at_iso,
+                                active_recipe,
+                                None,
+                            )
+                            if rer.error_type or rer.product is None:
+                                refetch_failed += 1
+                                continue
+                            rp = rer.product
+                            refetch_successes += 1
+                            method_counts[rp.method] = method_counts.get(rp.method, 0) + 1
+                            completeness_sum += float(rp.completeness_score or 0.0)
+                            if rer.fetch_method == "browser":
+                                browser_fetch_count += 1
+                            if rp.description:
+                                description_count += 1
+                            if rp.dimensions_raw:
+                                dimensions_count += 1
+                            if rp.material_raw:
+                                material_count += 1
+
+                            canon = canonicalize_url(rp.canonical_url)
+                            title = rp.title.strip()[:500] if rp.title else "Untitled"
+                            img_objs = [
+                                {"url": u, "alt": title[:200]}
+                                for u in (rp.images or [])
+                                if isinstance(u, str) and u
+                            ]
+                            price_amount = (
+                                float(rp.price_amount) if rp.price_amount is not None else 0.0
+                            )
+                            price_currency = (rp.price_currency or "SEK").strip() or "SEK"
+                            dims = rp.dimensions_raw
+                            width_cm = (dims or {}).get("w") if dims else None
+                            items.append(
+                                {
+                                    "sourceId": source_id,
+                                    "sourceType": "crawl",
+                                    "sourceUrl": refetch_url,
+                                    "canonicalUrl": canon,
+                                    "title": title,
+                                    "brand": (rp.brand or "").strip() or None,
+                                    "descriptionShort": (rp.description or "").strip() or None,
+                                    "priceAmount": price_amount,
+                                    "priceCurrency": price_currency,
+                                    "dimensionsCm": dims,
+                                    "sizeClass": normalize_size_class(None, width_cm, title=title),
+                                    "material": normalize_material(rp.material_raw) or "mixed",
+                                    "colorFamily": normalize_color_family(rp.color_raw)
+                                    or infer_color_from_title(rp.title)
+                                    or "multi",
+                                    "styleTags": [],
+                                    "newUsed": "new",
+                                    "deliveryComplexity": "medium",
+                                    "smallSpaceFriendly": False,
+                                    "modular": False,
+                                    "ecoTags": [],
+                                    "availabilityStatus": rp.availability or "unknown",
+                                    "outboundUrl": refetch_url,
+                                    "images": img_objs,
+                                    "lastUpdatedAt": None,
+                                    "firstSeenAt": None,
+                                    "lastSeenAt": None,
+                                    "isActive": True,
+                                    "breadcrumbs": rp.breadcrumbs or [],
+                                    "productType": rp.product_type,
+                                    "retailerCategoryLabel": rp.retailer_category_label,
+                                    "facets": rp.facets or {},
+                                    "variants": rp.variants or [],
+                                    "sku": rp.sku,
+                                    "mpn": rp.mpn,
+                                    "gtin": rp.gtin,
+                                    "modelName": rp.model_name,
+                                    "priceOriginal": rp.price_original,
+                                    "discountPct": rp.discount_pct,
+                                    "deliveryEta": rp.delivery_eta,
+                                    "shippingCost": rp.shipping_cost,
+                                    "enrichmentEvidence": rp.enrichment_evidence or [],
+                                    "extractionMeta": {
+                                        "method": "browser" if rer.fetch_method == "browser" else rp.method,
+                                        "extractorMethod": rp.method,
+                                        "completeness": float(rp.completeness_score or 0.0),
+                                        "missingFields": _missing_fields_for_product(rp),
+                                        "fetchMethod": rer.fetch_method,
+                                        "extractedAt": rp.extracted_at,
+                                    },
+                                }
+                            )
+                stats["refetchExtracted"] = refetch_successes
+                stats["refetchFailed"] = refetch_failed
+            except Exception as refetch_err:
+                log.warning(f"Quality refetch step failed: {refetch_err}")
+
+        total_successes = successes + len(batch_items) + refetch_successes
+        stats["success"] = total_successes
+        stats["jsonldRate"] = (method_counts.get("jsonld", 0) / total_successes) if total_successes else 0
+        stats["embeddedJsonRate"] = (method_counts.get("embedded_json", 0) / total_successes) if total_successes else 0
+        stats["recipeRate"] = (method_counts.get("recipe", 0) / total_successes) if total_successes else 0
+        stats["domRate"] = (method_counts.get("dom", 0) / total_successes) if total_successes else 0
+        stats["avgCompleteness"] = (completeness_sum / total_successes) if total_successes else 0.0
+        stats["descriptionRate"] = (description_count / total_successes) if total_successes else 0.0
+        stats["dimensionsRate"] = (dimensions_count / total_successes) if total_successes else 0.0
+        stats["materialRate"] = (material_count / total_successes) if total_successes else 0.0
+        stats["browserFetchCount"] = browser_fetch_count
+
         log.section("PHASE 3: Database Upsert")
         job_id = create_job(db, source_id, db_run_id, "upsert", {"count": len(items)}, "running")
         log.info(f"Writing {len(items)} items to Firestore...")
-        upserted, failed = write_items(db, items, source_id)
+        upserted, failed, item_ids = write_items(db, items, source_id)
         stats["upserted"] = upserted
         stats["failed"] = int(stats.get("failed") or 0) + failed
         stats["normalized"] = len(items)
         update_job(db, job_id, "succeeded")
         log.success(f"Upserted {upserted} items, {failed} failed")
 
-        # 4) Daily metrics (best-effort)
+        # 4) Auto-classify + Gold promotion
+        log.section("PHASE 4: Classification + Gold Promotion")
+        classified = 0
+        gold_promoted = 0
+        review_queued = 0
+        try:
+            from app.sorting.policy import classify_and_decide
+            log.info(f"Classifying {len(items)} items...")
+            for item_id, item_data in zip(item_ids, items):
+                if not item_id:
+                    continue  # Skip items that failed to write
+                try:
+                    result = classify_and_decide(item_id=item_id, item_data=item_data)
+                    # Write classification + eligibility back to item
+                    db.collection("items").document(item_id).update({
+                        "classification": result["classification"],
+                        "eligibility": result["decisions"],
+                    })
+                    if result["goldDoc"]:
+                        db.collection("goldItems").document(item_id).set(result["goldDoc"], merge=True)
+                        gold_promoted += 1
+                    else:
+                        has_uncertain = any(
+                            d["decision"] == "UNCERTAIN" for d in result["decisions"].values()
+                        )
+                        if has_uncertain:
+                            db.collection("reviewQueue").document(item_id).set({
+                                "itemId": item_id,
+                                "classification": result["classification"],
+                                "decisions": result["decisions"],
+                                "status": "pending",
+                                "createdAt": extracted_at_iso,
+                            }, merge=True)
+                            review_queued += 1
+                    classified += 1
+                except Exception as cls_err:
+                    log.warning(f"Classification failed for {item_id}: {cls_err}")
+            log.success(f"Classified {classified} items: {gold_promoted} promoted to Gold, {review_queued} sent to review")
+        except Exception as phase_err:
+            log.warning(f"Phase 4 classification skipped: {phase_err}")
+        stats["classified"] = classified
+        stats["goldPromoted"] = gold_promoted
+        stats["reviewQueued"] = review_queued
+
+        # 5) Daily metrics (best-effort)
         upsert_metrics_daily(
             db,
             source_id=source_id,
@@ -815,6 +1382,10 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 "jsonldRate": stats["jsonldRate"],
                 "embeddedJsonRate": stats.get("embeddedJsonRate", 0.0),
                 "domRate": stats["domRate"],
+                "descriptionRate": stats.get("descriptionRate", 0.0),
+                "dimensionsRate": stats.get("dimensionsRate", 0.0),
+                "materialRate": stats.get("materialRate", 0.0),
+                "browserFetchCount": stats.get("browserFetchCount", 0),
                 "blockedRate": stats["blockedRate"],
             },
         )

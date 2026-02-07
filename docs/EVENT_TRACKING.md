@@ -27,13 +27,13 @@ This doc lists what we track today and what we should track for a future ML reco
 | **session_start** | First deck load for session (or after create) | — |
 | **session_resume** | App resumed after ≥30s background | — |
 | **session_end** | App backgrounded / hidden | — |
-| **deck_request** | Deck fetch started | filters.active (if any) |
-| **deck_response** | Deck fetch completed | rank.rankerRunId, rank.algorithmVersion, rank.variant, rank.variantBucket, rank.itemIds (required for offline eval and A/B), perf.latencyMs |
+| **deck_request** | Deck fetch started | filters.active (if any), ext.requestId, ext.requestedLimit |
+| **deck_response** | Deck fetch completed | rank.requestId, rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate), rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, perf.latencyMs |
 | **deck_refresh** | User refreshes deck (Retry, Apply/Clear filters) | — |
 | **card_render** | Top card built (with impression start) | item, rank |
 | **card_impression_start** | Top card becomes visible | item, impression.impressionId, rank |
 | **card_impression_end** | Top card leaves | item, impression.visibleDurationMs, endReason, bucket |
-| **swipe_left / swipe_right** | User swipes card (or button) | item, interaction.gesture, direction, rank |
+| **swipe_left / swipe_right** | User swipes card (or button) | item (itemId, positionInDeck, priceSEKAtTime, snapshot), interaction.gesture, direction, rank |
 | **swipe_cancel** | User releases card without threshold | item, interaction.gesture |
 | **swipe_undo** | User taps undo (when implemented) | item, interaction.direction |
 | **detail_open / detail_close** | User opens/closes detail (deck, likes, shortlist) | item, source; close: ext.durationMs |
@@ -155,6 +155,7 @@ Typical inputs for training:
 - Every swipe has itemId and positionInDeck.
 - Every card_impression_end has a matching impressionId from a start.
 - Deck-origin events include rankerRunId when applicable.
+- deck_request and deck_response share the same requestId (rank.requestId and/or ext.requestId).
 - deck_response includes rank.itemIds, rank.variant, rank.variantBucket for offline eval and A/B segmentation.
 - filters_apply always includes full filters.active snapshot.
 - outbound_click never missing destinationDomain.

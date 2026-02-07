@@ -1,4 +1,4 @@
-import { normalizeScore, scoreItem, scoreItemWithSignals } from "../scoreItem";
+import { normalizeScore, scoreItem, scoreItemWithSignals, toPriceBucket } from "../scoreItem";
 import type { ItemCandidate } from "../types";
 
 describe("scoreItem", () => {
@@ -34,6 +34,43 @@ describe("scoreItem", () => {
   it("scores sizeClass as size:X", () => {
     const item: ItemCandidate = { id: "i1", sizeClass: "large" };
     const weights = { "size:large": 2 };
+    expect(scoreItem(item, weights)).toBe(2);
+  });
+
+  it("scores brand, delivery, and condition signals", () => {
+    const item: ItemCandidate = {
+      id: "i1",
+      brand: "Ikea",
+      deliveryComplexity: "low",
+      newUsed: "new",
+    };
+    const weights = {
+      "brand:ikea": 1.5,
+      "delivery:low": 0.5,
+      "condition:new": 0.75,
+    };
+    expect(scoreItem(item, weights)).toBe(2.75);
+  });
+
+  it("scores eco tags and boolean feature signals", () => {
+    const item: ItemCandidate = {
+      id: "i1",
+      ecoTags: ["fsc", "recycled"],
+      smallSpaceFriendly: true,
+      modular: true,
+    };
+    const weights = {
+      "eco:fsc": 0.6,
+      "eco:recycled": 0.4,
+      "feature:small_space": 1.2,
+      "feature:modular": 0.8,
+    };
+    expect(scoreItem(item, weights)).toBe(3.0);
+  });
+
+  it("scores price bucket signal", () => {
+    const item: ItemCandidate = { id: "i1", priceAmount: 13499 };
+    const weights = { "price_bucket:mid": 2 };
     expect(scoreItem(item, weights)).toBe(2);
   });
 
@@ -93,5 +130,14 @@ describe("scoreItem", () => {
   it("normalizes score by sqrt of signal count", () => {
     const normalized = normalizeScore(9, 4);
     expect(normalized).toBe(4.5);
+  });
+
+  it("maps price amount to expected price bucket", () => {
+    expect(toPriceBucket(2500)).toBe("budget");
+    expect(toPriceBucket(6000)).toBe("affordable");
+    expect(toPriceBucket(12000)).toBe("mid");
+    expect(toPriceBucket(24000)).toBe("premium");
+    expect(toPriceBucket(52000)).toBe("luxury");
+    expect(toPriceBucket(-1)).toBeNull();
   });
 });

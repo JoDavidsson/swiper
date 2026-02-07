@@ -197,7 +197,11 @@
             "sizeClass": { "type": "string" },
             "material": { "type": "string" },
             "colorFamily": { "type": "string" },
-            "styleTags": { "type": "array", "items": { "type": "string" } }
+            "styleTags": { "type": "array", "items": { "type": "string" } },
+            "deliveryComplexity": { "type": "string", "enum": ["low", "medium", "high", "unknown"] },
+            "smallSpaceFriendly": { "type": "boolean" },
+            "modular": { "type": "boolean" },
+            "ecoTags": { "type": "array", "items": { "type": "string" } }
           }
         }
       }
@@ -216,10 +220,20 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "requestId": { "type": "string", "minLength": 8 },
         "rankerRunId": { "type": "string", "minLength": 8 },
         "algorithmVersion": { "type": "string" },
         "modelVersion": { "type": "string" },
         "candidateSetId": { "type": "string" },
+        "candidateCount": { "type": "integer", "minimum": 0 },
+        "rankWindow": { "type": "integer", "minimum": 0 },
+        "retrievalQueues": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["fresh_promoted", "fresh_catalog", "preference_match", "persona_similar", "long_tail", "serendipity"]
+          }
+        },
 
         "variant": { "type": "string", "description": "A/B variant label (e.g. personal_only, personal_only_exploration_5)" },
         "variantBucket": { "type": "integer", "minimum": 0, "maximum": 99, "description": "A/B variant bucket for segmentation" },

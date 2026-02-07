@@ -1,6 +1,8 @@
 /**
  * Ranker types for the recommendations engine.
- * Item attributes used for scoring: styleTags, material, colorFamily, sizeClass.
+ * Item attributes used for scoring: style/material/color/size and richer commerce
+ * attributes such as brand, delivery complexity, condition, eco tags, features,
+ * and price bucket (derived from priceAmount).
  */
 
 export type ItemCandidate = { id: string } & Record<string, unknown>;

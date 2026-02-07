@@ -16,6 +16,9 @@ Content source for ingestion (feed, API, crawl, manual).
 | rateLimitRps | number | Rate limit (requests per second) |
 | allowlistPolicy | map | domains: string[], pathPrefixes: string[] |
 | robotsRespect | boolean | Respect robots.txt |
+| useBrowserFallback | boolean | Enable browser fallback for JS-rendered pages (default false) |
+| enableQualityRefetch | boolean | Optional post-crawl low-quality refetch pass |
+| qualityRefetchLimit | number | Max candidates to refetch per run (default 100) |
 | mediaRights | map | canHotlinkImages, canStoreImages, canStoreDescriptions (bool) |
 | notes | string? | |
 | createdAt | timestamp | |
@@ -36,10 +39,11 @@ Normalized furniture item (sofa). Primary collection for deck.
 | canonicalUrl | string | Normalized URL (dedupe) |
 | title | string | |
 | brand | string? | |
-| descriptionShort | string? | Capped length |
+| descriptionShort | string? | Full product description (no truncation) |
 | priceAmount | number | |
 | priceCurrency | string | "SEK" |
 | dimensionsCm | map | w, h, d (number) |
+| extractionMeta | map | `{ method, extractorMethod, completeness, missingFields[], fetchMethod, extractedAt }` |
 | sizeClass | string | "small" \| "medium" \| "large" |
 | material | string | fabric, leather, velvet, boucle, wood, metal, mixed |
 | colorFamily | string | white, beige, brown, gray, black, green, blue, red, yellow, orange, pink, multi |

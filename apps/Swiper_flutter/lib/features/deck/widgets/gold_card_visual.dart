@@ -186,7 +186,7 @@ class GoldCardVisualState extends State<GoldCardVisual> {
                           fit: StackFit.expand,
                           children: [
                             CachedNetworkImage(
-                              imageUrl: ApiClient.proxyImageUrl(sofa.imageUrl),
+                              imageUrl: ApiClient.proxyImageUrl(sofa.imageUrl, width: ImageWidth.thumbnail),
                               fit: BoxFit.cover,
                               placeholder: (context, url) => Container(
                                 color: AppTheme.background,

@@ -21,7 +21,7 @@ import {
   adminSourcesCreateWithDiscovery,
 } from "./admin_sources";
 import { adminRunsGet, adminRunGet } from "./admin_runs";
-import { adminRunTriggerPost } from "./admin_run_trigger";
+import { adminRunTriggerPost, adminRunBatchPost, adminReExtractImagesPost, adminImageHealthGet, adminExplainGet, adminProxyToSupplyEngine } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
 import { adminItemsGet } from "./admin_items";
 import { requireAdminAuth } from "./admin_auth";
@@ -248,12 +248,81 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
       await adminRunTriggerPost(req, res);
       return;
     }
+    if (method === "POST" && path === "admin/run-batch") {
+      await adminRunBatchPost(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/re-extract-images") {
+      await adminReExtractImagesPost(req, res);
+      return;
+    }
+    if (method === "GET" && path === "admin/image-health") {
+      await adminImageHealthGet(req, res);
+      return;
+    }
+    // Sorting engine proxy endpoints (EPIC C)
+    if (method === "POST" && path === "admin/classify") {
+      await adminProxyToSupplyEngine(req, res, "/classify", "POST");
+      return;
+    }
+    if (method === "GET" && path === "admin/classification-stats") {
+      await adminProxyToSupplyEngine(req, res, "/classification-stats", "GET");
+      return;
+    }
+    // Review queue proxy endpoints (EPIC D)
+    if (method === "GET" && path === "admin/review-queue") {
+      await adminProxyToSupplyEngine(req, res, "/review-queue", "GET");
+      return;
+    }
+    if (method === "POST" && path === "admin/review-action") {
+      await adminProxyToSupplyEngine(req, res, "/review-action", "POST");
+      return;
+    }
+    if (method === "GET" && path === "admin/sampling-candidates") {
+      await adminProxyToSupplyEngine(req, res, "/sampling-candidates", "GET");
+      return;
+    }
+    if (method === "POST" && path === "admin/calibrate") {
+      await adminProxyToSupplyEngine(req, res, "/calibrate", "POST");
+      return;
+    }
+    if (method === "GET" && path === "admin/evaluation-report") {
+      await adminProxyToSupplyEngine(req, res, "/evaluation-report", "GET");
+      return;
+    }
+    // DevOps proxy endpoints (EPIC F)
+    if (method === "POST" && path === "admin/retention-cleanup") {
+      await adminProxyToSupplyEngine(req, res, "/retention-cleanup", "POST");
+      return;
+    }
+    if (method === "GET" && path === "admin/domain-dashboard") {
+      await adminProxyToSupplyEngine(req, res, "/domain-dashboard", "GET");
+      return;
+    }
+    if (method === "POST" && path === "admin/drift-check") {
+      await adminProxyToSupplyEngine(req, res, "/drift-check", "POST");
+      return;
+    }
+    if (method === "POST" && path === "admin/kill-switch") {
+      await adminProxyToSupplyEngine(req, res, "/kill-switch", "POST");
+      return;
+    }
+    if (method === "GET" && path === "admin/cost-telemetry") {
+      await adminProxyToSupplyEngine(req, res, "/cost-telemetry", "GET");
+      return;
+    }
     if (method === "GET" && path === "admin/qa") {
       await adminQaGet(req, res);
       return;
     }
     if (method === "GET" && path === "admin/items") {
       await adminItemsGet(req, res);
+      return;
+    }
+    // E4: Explainability – why was an item accepted/rejected
+    if (method === "GET" && path.match(/^admin\/explain\/[^/]+$/)) {
+      const itemId = path.replace("admin/explain/", "");
+      await adminExplainGet(req, res, itemId);
       return;
     }
     // Admin curated sofas routes

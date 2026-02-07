@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/event_tracker.dart';
+import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart' show currentSurfaceProvider;
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
 
@@ -56,13 +57,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(currentSurfaceProvider.notifier).state = {'name': 'onboarding'};
+      if (mounted)
+        ref.read(currentSurfaceProvider.notifier).state = {
+          'name': 'onboarding'
+        };
     });
     if (!_didEmitOnboardingStart) {
       _didEmitOnboardingStart = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) ref.read(eventTrackerProvider).track('onboarding_start', {});
+        if (mounted)
+          ref.read(eventTrackerProvider).track('onboarding_start', {});
       });
     }
     if (!_emittedStepViews.contains(_currentStep)) {
@@ -80,7 +86,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Step ${_currentStep + 1} of $_totalSteps'),
+        title: Text(strings.onboardingStepOf(_currentStep + 1, _totalSteps)),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -89,7 +95,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             LinearProgressIndicator(
               value: (_currentStep + 1) / _totalSteps,
               backgroundColor: AppTheme.textCaption.withValues(alpha: 0.2),
-              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryAction),
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppTheme.primaryAction),
             ),
             Expanded(
               child: PageView(
@@ -108,7 +115,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _next,
-                  child: Text(_currentStep == _totalSteps - 1 ? 'Building your deck…' : 'Next'),
+                  child: Text(_currentStep == _totalSteps - 1
+                      ? strings.buildingDeck
+                      : strings.next),
                 ),
               ),
             ),
@@ -119,14 +128,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildStep1() {
-    const styleTags = ['Scandinavian', 'Modern', 'Vintage', 'Minimal', 'Industrial', 'Classic'];
+    final strings = ref.watch(appStringsProvider);
+    const styleTags = [
+      'Scandinavian',
+      'Modern',
+      'Vintage',
+      'Minimal',
+      'Industrial',
+      'Classic'
+    ];
     return Padding(
       padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Choose your style', style: Theme.of(context).textTheme.titleLarge),
+          Text(strings.chooseYourStyle,
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppTheme.spacingUnit),
           Wrap(
             spacing: AppTheme.spacingUnit,
@@ -138,10 +156,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 selected: selected,
                 onSelected: (v) {
                   setState(() {
-                    if (v) _selectedStyles.add(tag);
-                    else _selectedStyles.remove(tag);
+                    if (v)
+                      _selectedStyles.add(tag);
+                    else
+                      _selectedStyles.remove(tag);
                   });
-                  ref.read(eventTrackerProvider).track('onboarding_step_change', {
+                  ref
+                      .read(eventTrackerProvider)
+                      .track('onboarding_step_change', {
                     'onboarding': {'stepName': 'style', 'field': 'styleTags'},
                   });
                 },
@@ -154,17 +176,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildStep2() {
+    final strings = ref.watch(appStringsProvider);
     return Padding(
       padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Budget range (SEK)', style: Theme.of(context).textTheme.titleLarge),
+          Text(strings.budgetRangeSek,
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppTheme.spacingUnit),
-          Text('${_budgetMin.round()} – ${_budgetMax.round()} SEK', style: Theme.of(context).textTheme.bodyLarge),
+          Text('${_budgetMin.round()} – ${_budgetMax.round()} SEK',
+              style: Theme.of(context).textTheme.bodyLarge),
           SliderTheme(
-            data: SliderTheme.of(context).copyWith(activeTrackColor: AppTheme.primaryAction),
+            data: SliderTheme.of(context)
+                .copyWith(activeTrackColor: AppTheme.primaryAction),
             child: RangeSlider(
               values: RangeValues(_budgetMin, _budgetMax),
               min: 0,
@@ -187,16 +213,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _buildStep3() {
+    final strings = ref.watch(appStringsProvider);
     return Padding(
       padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: AppTheme.spacingUnit * 2),
-          Text('Preferences', style: Theme.of(context).textTheme.titleLarge),
+          Text(strings.preferencesTitle,
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: AppTheme.spacingUnit * 2),
           SwitchListTile(
-            title: const Text('Eco-friendly only'),
+            title: Text(strings.ecoFriendlyOnly),
             value: _ecoOnly,
             onChanged: (v) {
               setState(() => _ecoOnly = v);
@@ -206,7 +234,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             },
           ),
           SwitchListTile(
-            title: const Text('New only'),
+            title: Text(strings.newOnly),
             value: _newOnly,
             onChanged: (v) {
               setState(() => _newOnly = v);
@@ -216,12 +244,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             },
           ),
           SwitchListTile(
-            title: const Text('Size constraint (small space)'),
+            title: Text(strings.sizeConstraintSmallSpace),
             value: _sizeConstraint,
             onChanged: (v) {
               setState(() => _sizeConstraint = v);
               ref.read(eventTrackerProvider).track('onboarding_step_change', {
-                'onboarding': {'stepName': 'toggles', 'field': 'smallSpaceOnly'},
+                'onboarding': {
+                  'stepName': 'toggles',
+                  'field': 'smallSpaceOnly'
+                },
               });
             },
           ),

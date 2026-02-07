@@ -3,10 +3,165 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, unquote
 
 from app.extractor.money import parse_money_sv
 from app.extractor.signals import extract_page_signals, PageSignals
+from app.extractor.enrichment import enrich_product, EnrichedMetadata
+from app.extractor.embedded_state import extract_products_from_state
+
+
+# ============================================================================
+# IMAGE URL VALIDATION
+# ============================================================================
+
+# File extensions that indicate an image URL
+_IMAGE_EXTENSIONS = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".svg",
+    ".bmp", ".tiff", ".tif", ".ico",
+})
+
+# Path segments that suggest the URL serves images (even without an extension)
+_IMAGE_PATH_HINTS = (
+    "/images/", "/image/", "/img/", "/media/", "/assets/",
+    "/bilder/", "/foto/", "/photos/", "/pics/",
+    "/product-images/", "/product_images/",
+    "/thumbnails/", "/thumb/",
+    "/cdn-cgi/image/",  # Cloudflare image resizing
+    "/pimg/",  # IKEA image pattern
+)
+
+# Domain prefixes/patterns that indicate a dedicated image/media CDN
+_IMAGE_CDN_DOMAINS = (
+    "cdn.", "media.", "img.", "images.", "assets.", "static.",
+    "mcdn.", "imgix.", "cloudinary.",
+)
+
+# Patterns found anywhere in the domain (e.g., "shop.cdn-norce.tech")
+_IMAGE_CDN_DOMAIN_CONTAINS = (
+    ".cdn-", ".cdn.",  # e.g., sleepo.cdn-norce.tech
+    "cloudinary.com",
+    "imgix.net",
+    "shopify.com/cdn",
+)
+
+# URL path patterns that strongly indicate a product PAGE, not an image
+_PAGE_URL_PATTERNS = (
+    "/produkt/", "/produkter/", "/product/", "/products/",
+    "/varumarken/", "/varumärken/",
+    "/kategori/", "/category/",
+    "/shop/", "/butik/",
+    # URL-encoded Swedish characters in category paths (e.g., möbler = m%c3%b6bler)
+    "m%c3%b6bler",  # möbler
+    "b%c3%a4ddsoffor",  # bäddsoffor
+    "l%c3%a4ngsb%c3%a4ddad",  # längsbäddad
+)
+
+
+def _is_likely_image_url(url: str) -> bool:
+    """
+    Heuristic check: is this URL likely an actual image, not a product page?
+
+    Strategy:
+    1. URLs with image file extensions -> YES
+    2. URLs on known image CDN domains -> YES
+    3. URLs with image-related path segments -> YES
+    4. URLs matching product page patterns -> NO
+    5. URLs without any image signals -> NO
+    """
+    if not url or len(url) < 10:
+        return False
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    path_lower = parsed.path.lower()
+    netloc_lower = parsed.netloc.lower()
+    url_lower = url.lower()
+
+    # 1. Check for image file extension (most reliable signal)
+    # Strip query params and fragments from the path for extension check
+    path_clean = path_lower.split("?")[0].split("#")[0]
+    for ext in _IMAGE_EXTENSIONS:
+        if path_clean.endswith(ext):
+            return True
+
+    # 2. Check for image CDN domain
+    for cdn in _IMAGE_CDN_DOMAINS:
+        if netloc_lower.startswith(cdn) or f".{cdn}" in netloc_lower:
+            return True
+    for pattern in _IMAGE_CDN_DOMAIN_CONTAINS:
+        if pattern in netloc_lower or pattern in url_lower:
+            return True
+
+    # 3. Check for image-related path segments
+    for hint in _IMAGE_PATH_HINTS:
+        if hint in path_lower:
+            return True
+
+    # 3b. Check for image CDN query parameters (e.g., ?w=800&h=600, ?format=jpg)
+    query_lower = parsed.query.lower() if parsed.query else ""
+    if query_lower:
+        image_query_hints = ("w=", "h=", "width=", "height=", "format=", "quality=", "scale=", "fit=", "crop=")
+        if any(hint in query_lower for hint in image_query_hints):
+            return True
+
+    # 4. Reject URLs that look like product/category pages
+    decoded_url = unquote(url_lower)
+    for pattern in _PAGE_URL_PATTERNS:
+        decoded_pattern = unquote(pattern)
+        if pattern in url_lower or decoded_pattern in decoded_url:
+            return False
+
+    # 5. No strong signal either way - reject by default
+    # (better to find images via fallback than to store page URLs)
+    return False
+
+
+def _looks_truncated(url: str) -> bool:
+    """
+    Detect URLs that appear truncated / incomplete.
+
+    Truncated URLs often:
+    - End mid-path without a file extension
+    - Have very short final path segments (like a hash cut off)
+    - End with a hyphen or partial word
+    """
+    if not url:
+        return True
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return True
+
+    path = parsed.path.rstrip("/")
+    if not path:
+        return False
+
+    # Get the last path segment
+    last_segment = path.split("/")[-1] if "/" in path else path
+
+    # If the URL has a query string or fragment, it's probably complete
+    if parsed.query or parsed.fragment:
+        return False
+
+    # If it has a file extension, it's probably complete
+    for ext in _IMAGE_EXTENSIONS:
+        if last_segment.lower().endswith(ext):
+            return False
+
+    # Suspiciously short final segment (likely truncated hash or ID)
+    if len(last_segment) < 5 and not last_segment.isdigit():
+        return True
+
+    # Ends with a hyphen (mid-word truncation)
+    if last_segment.endswith("-") or last_segment.endswith("_"):
+        return True
+
+    return False
 
 
 @dataclass(frozen=True)
@@ -33,6 +188,22 @@ class NormalizedProduct:
     dimensions_raw: dict | None = None  # {"w": float, "h": float, "d": float} in cm
     material_raw: str | None = None
     color_raw: str | None = None
+    # EPIC B: Enriched metadata
+    breadcrumbs: list[str] | None = None
+    product_type: str | None = None
+    retailer_category_label: str | None = None
+    facets: dict | None = None
+    variants: list[dict] | None = None
+    sku: str | None = None
+    mpn: str | None = None
+    gtin: str | None = None
+    model_name: str | None = None
+    price_original: float | None = None
+    discount_pct: float | None = None
+    availability: str | None = None
+    delivery_eta: str | None = None
+    shipping_cost: float | None = None
+    enrichment_evidence: list[str] | None = None
 
 
 def _domain(url: str) -> str:
@@ -101,6 +272,282 @@ def _parse_dimensions_from_product(product: dict) -> dict | None:
     return {"w": w or 0, "h": h or 0, "d": d or 0}
 
 
+def _clean_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _normalize_label(value: str | None) -> str:
+    s = _clean_text(value).lower()
+    s = (
+        s.replace("å", "a")
+        .replace("ä", "a")
+        .replace("ö", "o")
+        .replace("é", "e")
+        .replace("è", "e")
+    )
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def _parse_dimension_value_to_cm(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = _clean_text(str(value)).lower().replace(",", ".")
+    if not text:
+        return None
+
+    # Capture the first number and optional unit.
+    m = re.search(r"(-?\d+(?:\.\d+)?)\s*(mm|cm|m)?\b", text)
+    if not m:
+        return None
+    try:
+        num = float(m.group(1))
+    except (TypeError, ValueError):
+        return None
+    unit = m.group(2) or "cm"
+    if unit == "mm":
+        return num / 10.0
+    if unit == "m":
+        return num * 100.0
+    return num
+
+
+def _parse_dimension_triplet_to_cm(value: Any) -> dict | None:
+    if value is None:
+        return None
+    text = _clean_text(str(value)).lower().replace(",", ".")
+    if not text:
+        return None
+    m = re.search(
+        r"(-?\d+(?:\.\d+)?)\s*[x×]\s*(-?\d+(?:\.\d+)?)\s*[x×]\s*(-?\d+(?:\.\d+)?)\s*(mm|cm|m)?",
+        text,
+    )
+    if not m:
+        return None
+    try:
+        w = float(m.group(1))
+        h = float(m.group(2))
+        d = float(m.group(3))
+    except (TypeError, ValueError):
+        return None
+    unit = m.group(4) or "cm"
+    if unit == "mm":
+        return {"w": w / 10.0, "h": h / 10.0, "d": d / 10.0}
+    if unit == "m":
+        return {"w": w * 100.0, "h": h * 100.0, "d": d * 100.0}
+    return {"w": w, "h": h, "d": d}
+
+
+def _iter_spec_pairs_from_dom(soup: Any) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    container_selectors = [
+        ".specifications",
+        ".product-specs",
+        ".spec-table",
+        "[data-specs]",
+        ".product-specifications",
+        ".product-details",
+        ".product-info",
+    ]
+    containers = []
+    for sel in container_selectors:
+        containers.extend(soup.select(sel))
+    if not containers:
+        containers = [soup]
+
+    def _add_pair(k: Any, v: Any) -> None:
+        key = _clean_text(k if isinstance(k, str) else getattr(k, "get_text", lambda **_: "")(strip=True))
+        val = _clean_text(v if isinstance(v, str) else getattr(v, "get_text", lambda **_: "")(strip=True))
+        if not key or not val:
+            return
+        tup = (key, val)
+        if tup in seen:
+            return
+        seen.add(tup)
+        pairs.append(tup)
+
+    for container in containers:
+        for dl in container.find_all("dl"):
+            dts = dl.find_all("dt")
+            dds = dl.find_all("dd")
+            for dt, dd in zip(dts, dds):
+                _add_pair(dt, dd)
+
+        for table in container.find_all("table"):
+            for row in table.find_all("tr"):
+                cells = row.find_all(["th", "td"])
+                if len(cells) >= 2:
+                    _add_pair(cells[0], cells[1])
+
+        for li in container.find_all("li"):
+            text = _clean_text(li.get_text(" ", strip=True))
+            if ":" in text:
+                key, val = text.split(":", 1)
+                _add_pair(key, val)
+
+    return pairs
+
+
+def _extract_description_from_dom(soup: Any) -> str | None:
+    # 1) Most reliable: explicit OG + meta descriptions.
+    og_desc = soup.find("meta", attrs={"property": "og:description"})
+    if og_desc and og_desc.get("content"):
+        v = _clean_text(og_desc.get("content"))
+        if v:
+            return v
+
+    meta_desc = soup.find("meta", attrs={"name": re.compile(r"^description$", re.IGNORECASE)})
+    if meta_desc and meta_desc.get("content"):
+        v = _clean_text(meta_desc.get("content"))
+        if v:
+            return v
+
+    # 2) Product description containers.
+    selectors = [
+        ".product-description",
+        ".product-info__description",
+        "[data-product-description]",
+        "#product-description",
+        ".description",
+        ".produktbeskrivning",
+        "[itemprop='description']",
+    ]
+    for sel in selectors:
+        el = soup.select_one(sel)
+        if not el:
+            continue
+        v = _clean_text(el.get_text(" ", strip=True))
+        if v:
+            return v
+
+    # 3) First substantial paragraph in likely product content.
+    for container_sel in (".product-detail", ".product-content", "main"):
+        container = soup.select_one(container_sel)
+        if not container:
+            continue
+        for p in container.find_all("p"):
+            txt = _clean_text(p.get_text(" ", strip=True))
+            if len(txt) >= 40:
+                return txt
+
+    return None
+
+
+def _extract_dimensions_from_facets(facets: dict | None) -> dict | None:
+    if not isinstance(facets, dict) or not facets:
+        return None
+    w = h = d = None
+    for raw_key, raw_val in facets.items():
+        key = _normalize_label(str(raw_key))
+        val = _clean_text(str(raw_val))
+        if not val:
+            continue
+
+        triplet = _parse_dimension_triplet_to_cm(val)
+        if triplet and key in ("dimensioner", "dimensions", "matt"):
+            return triplet
+
+        parsed = _parse_dimension_value_to_cm(val)
+        if parsed is None:
+            continue
+        if key in ("bredd", "width", "totalbredd", "sittbredd"):
+            w = w if w is not None else parsed
+        elif key in ("hojd", "height", "sitthojd", "totalhojd"):
+            h = h if h is not None else parsed
+        elif key in ("djup", "depth", "sittdjup", "totaldjup"):
+            d = d if d is not None else parsed
+
+    if w is None and h is None and d is None:
+        return None
+    return {"w": w or 0, "h": h or 0, "d": d or 0}
+
+
+def _extract_dimensions_from_dom(soup: Any) -> dict | None:
+    w = h = d = None
+    for raw_key, raw_val in _iter_spec_pairs_from_dom(soup):
+        key = _normalize_label(raw_key)
+        val = _clean_text(raw_val)
+        if not key or not val:
+            continue
+
+        # Common compact dimensions format: "220 x 88 x 95 cm"
+        triplet = _parse_dimension_triplet_to_cm(val)
+        if triplet and key in ("dimensioner", "dimensions", "matt", "storlek", "size"):
+            return triplet
+
+        parsed = _parse_dimension_value_to_cm(val)
+        if parsed is None:
+            continue
+        if key in ("bredd", "width", "totalbredd", "sittbredd"):
+            w = w if w is not None else parsed
+        elif key in ("hojd", "height", "sitthojd", "totalhojd"):
+            h = h if h is not None else parsed
+        elif key in ("djup", "depth", "sittdjup", "totaldjup"):
+            d = d if d is not None else parsed
+
+    if w is None and h is None and d is None:
+        return None
+    return {"w": w or 0, "h": h or 0, "d": d or 0}
+
+
+def _extract_material_from_dom(soup: Any) -> str | None:
+    from app.normalization import normalize_material
+
+    material_labels = {
+        "material",
+        "tyg",
+        "kladsel",
+        "kladselmaterial",
+        "cover",
+        "upholstery",
+        "frame",
+    }
+    for raw_key, raw_val in _iter_spec_pairs_from_dom(soup):
+        key = _normalize_label(raw_key)
+        if key not in material_labels:
+            continue
+        raw = _clean_text(raw_val)
+        if not raw:
+            continue
+        return normalize_material(raw) or raw
+
+    # Microdata fallback
+    el = soup.find(attrs={"itemprop": "material"})
+    if el:
+        raw = _clean_text(el.get("content") or el.get_text(" ", strip=True))
+        if raw:
+            return normalize_material(raw) or raw
+    return None
+
+
+def _extract_brand_from_dom(soup: Any) -> str | None:
+    for prop in ("product:brand", "og:brand"):
+        meta = soup.find("meta", attrs={"property": prop})
+        if meta and meta.get("content"):
+            value = _clean_text(meta.get("content"))
+            if value:
+                return value
+
+    itemprop_brand = soup.find(attrs={"itemprop": "brand"})
+    if itemprop_brand:
+        value = _clean_text(itemprop_brand.get("content") or itemprop_brand.get_text(" ", strip=True))
+        if value:
+            return value
+
+    for sel in (".product-brand", ".brand-name", "[data-brand]"):
+        el = soup.select_one(sel)
+        if not el:
+            continue
+        value = _clean_text(el.get_text(" ", strip=True))
+        if value:
+            return value
+
+    return None
+
+
 def _pick_jsonld_product(blocks: list[Any]) -> dict | None:
     """
     Find the best JSON-LD Product object from parsed blocks.
@@ -138,6 +585,104 @@ def _pick_jsonld_product(blocks: list[Any]) -> dict | None:
     return best
 
 
+def _extract_images_from_dom(html: str, *, base_url: str) -> list[str]:
+    """
+    Extract product images directly from the HTML DOM as a fallback.
+
+    Searches for <img> tags in product-related containers, <picture> sources,
+    and common product image CSS class patterns.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return []
+
+    soup = BeautifulSoup(html, "lxml")
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(url: str | None) -> None:
+        if not url or not url.strip():
+            return
+        abs_url = _absolute(url.strip(), base_url)
+        if abs_url and abs_url not in seen:
+            seen.add(abs_url)
+            candidates.append(abs_url)
+
+    # 1. Product gallery containers (most reliable)
+    gallery_selectors = [
+        ".product-gallery img",
+        ".product-images img",
+        ".product-image img",
+        "#product-image img",
+        "#product-images img",
+        ".pdp-image img",
+        ".product-media img",
+        "[data-gallery] img",
+        ".gallery img",
+        ".swiper-slide img",  # common carousel widget
+        ".slick-slide img",   # another carousel
+        ".splide__slide img", # Splide carousel
+    ]
+    for selector in gallery_selectors:
+        for img_tag in soup.select(selector):
+            # Prefer data-src (lazy-loaded) over src (often a placeholder)
+            for attr in ("data-src", "data-original", "data-image", "data-lazy", "src"):
+                val = img_tag.get(attr)
+                if val and val.strip() and not val.startswith("data:"):
+                    _add(val)
+                    break
+
+    # 2. <picture> elements with <source srcset>
+    for picture in soup.find_all("picture"):
+        for source in picture.find_all("source"):
+            srcset = source.get("srcset")
+            if srcset:
+                # srcset can have multiple URLs with descriptors, take the first/largest
+                first_url = srcset.split(",")[0].strip().split(" ")[0]
+                _add(first_url)
+        # Also check the fallback <img> inside <picture>
+        fallback_img = picture.find("img")
+        if fallback_img:
+            _add(fallback_img.get("src"))
+
+    # 3. Any <img> with product-related CSS classes
+    product_img_classes = re.compile(
+        r"product|pdp|gallery|hero|main-image|primary-image|featured",
+        re.IGNORECASE,
+    )
+    for img_tag in soup.find_all("img"):
+        classes = " ".join(img_tag.get("class", []))
+        img_id = img_tag.get("id", "")
+        if product_img_classes.search(classes) or product_img_classes.search(img_id):
+            for attr in ("data-src", "data-original", "src"):
+                val = img_tag.get(attr)
+                if val and val.strip() and not val.startswith("data:"):
+                    _add(val)
+                    break
+
+    # 4. Large images by dimension hints (width/height attributes > 300)
+    if not candidates:
+        for img_tag in soup.find_all("img"):
+            w = img_tag.get("width", "")
+            h = img_tag.get("height", "")
+            try:
+                w_val = int(str(w).replace("px", "")) if w else 0
+                h_val = int(str(h).replace("px", "")) if h else 0
+            except (ValueError, TypeError):
+                w_val, h_val = 0, 0
+            if w_val >= 300 or h_val >= 300:
+                for attr in ("data-src", "src"):
+                    val = img_tag.get(attr)
+                    if val and val.strip() and not val.startswith("data:"):
+                        _add(val)
+                        break
+
+    # Filter through validation
+    validated = [u for u in candidates if _is_likely_image_url(u) and not _looks_truncated(u)]
+    return validated if validated else candidates[:5]
+
+
 def _extract_from_jsonld(product: dict) -> dict:
     title = (product.get("name") or "").strip()
     canonical = (product.get("url") or product.get("id") or "").strip()
@@ -149,8 +694,11 @@ def _extract_from_jsonld(product: dict) -> dict:
         for el in img:
             if isinstance(el, str) and el.strip():
                 images.append(el.strip())
-            elif isinstance(el, dict) and el.get("url"):
-                images.append(str(el.get("url")).strip())
+            elif isinstance(el, dict):
+                # Prefer contentUrl (Schema.org ImageObject), fall back to url
+                u = el.get("contentUrl") or el.get("url")
+                if u and isinstance(u, str):
+                    images.append(u.strip())
 
     brand = None
     b = product.get("brand")
@@ -217,30 +765,89 @@ def _extract_from_jsonld(product: dict) -> dict:
     }
 
 
+def _encode_non_ascii(url: str) -> str:
+    """
+    Percent-encode non-ASCII characters in a URL while preserving valid structure.
+
+    Many Swedish retailers return image URLs with raw Unicode path segments
+    (e.g., /assets/blobs/möbler-soffor-...).  Browsers and HTTP clients need
+    these encoded as UTF-8 percent-encoding (%C3%B6 for ö, %C3%A4 for ä, etc.).
+
+    Strategy: fully decode the path first (handles mixed / double encoding),
+    then re-encode only non-ASCII characters.
+    """
+    if not url or not any(ord(c) > 127 for c in url):
+        return url
+    try:
+        from urllib.parse import urlsplit, urlunsplit, quote, unquote
+        parts = urlsplit(url)
+        # Fully decode first (handles mixed / double encoding)
+        path = parts.path
+        for _ in range(5):
+            decoded = unquote(path)
+            if decoded == path:
+                break
+            path = decoded
+        # Re-encode non-ASCII characters
+        encoded_path = quote(path, safe="/:@!$&'()*+,;=-._~")
+        query = parts.query or ""
+        for _ in range(5):
+            decoded = unquote(query)
+            if decoded == query:
+                break
+            query = decoded
+        encoded_query = quote(query, safe="=&+?/:@!$'()*,;-._~") if query else ""
+        return urlunsplit((parts.scheme, parts.netloc, encoded_path, encoded_query, parts.fragment))
+    except Exception:
+        return url
+
+
 def _absolute(u: str | None, base: str) -> str | None:
     if not u:
         return None
     u = u.strip()
     if u.startswith("//"):
-        return "https:" + u
-    if u.startswith(("http://", "https://")):
-        return u
-    if u.startswith("/"):
-        return urljoin(base.rstrip("/") + "/", u.lstrip("/"))
-    return urljoin(base.rstrip("/") + "/", u)
+        result = "https:" + u
+    elif u.startswith(("http://", "https://")):
+        result = u
+    elif u.startswith("/"):
+        result = urljoin(base.rstrip("/") + "/", u.lstrip("/"))
+    else:
+        result = urljoin(base.rstrip("/") + "/", u)
+    return _encode_non_ascii(result)
 
 
 def _normalize_images(imgs: list[str], *, base_url: str) -> list[str]:
-    out: list[str] = []
+    """
+    Normalize image URLs: make absolute, deduplicate, validate, filter.
+
+    Applies _is_likely_image_url() to filter out page URLs.
+    If ALL images fail validation, returns the unfiltered list as fallback
+    (better to have a potentially bad image than no image at all).
+    """
+    all_urls: list[str] = []
     seen: set[str] = set()
     for u in imgs:
         uu = _absolute(u, base_url)
         if not uu:
             continue
-        if uu not in seen:
-            seen.add(uu)
-            out.append(uu)
-    return out
+        if uu in seen:
+            continue
+        # Skip obviously truncated URLs
+        if _looks_truncated(uu):
+            continue
+        seen.add(uu)
+        all_urls.append(uu)
+
+    # Filter to likely image URLs
+    validated = [u for u in all_urls if _is_likely_image_url(u)]
+
+    # Fallback: if validation rejected everything, return unfiltered
+    # (better to show a potentially wrong image than no image)
+    if not validated and all_urls:
+        return all_urls
+
+    return validated
 
 
 def _iter_nodes(root: Any, *, max_nodes: int = 20_000, max_depth: int = 8) -> list[dict]:
@@ -271,6 +878,15 @@ def _iter_nodes(root: Any, *, max_nodes: int = 20_000, max_depth: int = 8) -> li
 
 
 def _extract_images_from_any(value: Any) -> list[str]:
+    """
+    Recursively extract image URLs from arbitrary JSON structures.
+
+    Key changes from original:
+    - Prefer 'src' over 'url' (src is almost always an image)
+    - Removed 'href' (too often points to product pages)
+    - Added lazy-loading keys (data-src, data-image, data-original)
+    - Added 'contentUrl' for schema.org ImageObject
+    """
     imgs: list[str] = []
     if isinstance(value, str) and value.strip():
         imgs.append(value.strip())
@@ -278,9 +894,13 @@ def _extract_images_from_any(value: Any) -> list[str]:
         for el in value:
             imgs.extend(_extract_images_from_any(el))
     elif isinstance(value, dict):
-        for k in ("url", "src", "href"):
-            if value.get(k) and isinstance(value.get(k), str):
-                imgs.append(str(value.get(k)).strip())
+        # Prefer src (almost always an image) over url (can be a page URL)
+        # Include lazy-loading and schema.org keys
+        for k in ("src", "contentUrl", "url", "data-src", "data-image", "data-original"):
+            v = value.get(k)
+            if v and isinstance(v, str) and v.strip():
+                imgs.append(v.strip())
+                break  # Take the first match from this dict to avoid duplicates
     return imgs
 
 
@@ -397,8 +1017,31 @@ def _validate_required(*, title: str, canonical_url: str) -> list[str]:
     return errs
 
 
-def _score(*, title: bool, canonical: bool, images: bool, price_amount: bool, price_currency: bool) -> float:
-    weights = {"title": 3, "canonical": 3, "images": 2, "price_amount": 2, "price_currency": 1}
+def _score(
+    *,
+    title: bool,
+    canonical: bool,
+    images: bool,
+    price_amount: bool,
+    price_currency: bool,
+    description: bool = False,
+    dimensions: bool = False,
+    material: bool = False,
+    color: bool = False,
+    brand: bool = False,
+) -> float:
+    weights = {
+        "title": 3,
+        "canonical": 3,
+        "images": 2,
+        "price_amount": 2,
+        "price_currency": 1,
+        "description": 2,
+        "dimensions": 1,
+        "material": 1,
+        "color": 1,
+        "brand": 1,
+    }
     got = 0
     total = sum(weights.values())
     if title:
@@ -411,7 +1054,97 @@ def _score(*, title: bool, canonical: bool, images: bool, price_amount: bool, pr
         got += weights["price_amount"]
     if price_currency:
         got += weights["price_currency"]
+    if description:
+        got += weights["description"]
+    if dimensions:
+        got += weights["dimensions"]
+    if material:
+        got += weights["material"]
+    if color:
+        got += weights["color"]
+    if brand:
+        got += weights["brand"]
     return got / total if total else 0.0
+
+
+def _apply_enrichment(
+    product: NormalizedProduct,
+    *,
+    jsonld_product: dict | None,
+    embedded_node: dict | None,
+    html: str,
+    jsonld_blocks: list | None,
+) -> NormalizedProduct:
+    """Apply EPIC B enrichment to a NormalizedProduct, returning a new enriched version."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+    except Exception:
+        soup = None
+
+    meta = enrich_product(
+        jsonld_product=jsonld_product,
+        embedded_node=embedded_node,
+        soup=soup,
+        jsonld_blocks=jsonld_blocks,
+        title=product.title,
+        current_price=product.price_amount,
+    )
+
+    # Return a new NormalizedProduct with enriched fields
+    # (dataclass is frozen, so we need to reconstruct)
+    promoted_dimensions = product.dimensions_raw or _extract_dimensions_from_facets(meta.facets)
+    completeness_score = _score(
+        title=bool(product.title),
+        canonical=bool(product.canonical_url),
+        images=bool(product.images),
+        price_amount=product.price_amount is not None,
+        price_currency=bool(product.price_currency),
+        description=bool(product.description),
+        dimensions=bool(promoted_dimensions),
+        material=bool(product.material_raw),
+        color=bool(product.color_raw),
+        brand=bool(product.brand),
+    )
+    return NormalizedProduct(
+        retailer_id=product.retailer_id,
+        retailer_domain=product.retailer_domain,
+        product_url=product.product_url,
+        canonical_url=product.canonical_url,
+        title=product.title,
+        price_amount=product.price_amount,
+        price_currency=product.price_currency,
+        price_raw=product.price_raw,
+        images=product.images,
+        description=product.description,
+        brand=product.brand,
+        extracted_at=product.extracted_at,
+        method=product.method,
+        recipe_id=product.recipe_id,
+        recipe_version=product.recipe_version,
+        completeness_score=completeness_score,
+        warnings=product.warnings,
+        debug=product.debug,
+        dimensions_raw=promoted_dimensions,
+        material_raw=product.material_raw,
+        color_raw=product.color_raw,
+        # Enriched fields
+        breadcrumbs=meta.breadcrumbs or None,
+        product_type=meta.product_type,
+        retailer_category_label=meta.retailer_category_label,
+        facets=meta.facets if meta.facets else None,
+        variants=meta.variants if meta.variants else None,
+        sku=meta.sku,
+        mpn=meta.mpn,
+        gtin=meta.gtin,
+        model_name=meta.model_name,
+        price_original=meta.price_original,
+        discount_pct=meta.discount_pct,
+        availability=meta.availability,
+        delivery_eta=meta.delivery_eta,
+        shipping_cost=meta.shipping_cost,
+        enrichment_evidence=meta.evidence_sources if meta.evidence_sources else None,
+    )
 
 
 def extract_product_from_html(
@@ -436,9 +1169,18 @@ def extract_product_from_html(
         canonical2 = (_absolute(raw.get("canonicalUrl"), final_url) or canonical).strip()
         title = (raw.get("title") or "").strip()
         images = [u for u in (raw.get("images") or []) if isinstance(u, str) and u.strip()]
-        if not images and signals.og_images:
-            images = signals.og_images
         images = _normalize_images(images, base_url=final_url)
+
+        # Fallback chain when JSON-LD images fail validation
+        image_source = "jsonld"
+        if not images and signals.og_images:
+            images = _normalize_images(list(signals.og_images), base_url=final_url)
+            image_source = "og_image"
+        if not images:
+            images = _extract_images_from_dom(html, base_url=final_url)
+            image_source = "dom_fallback"
+        if not images:
+            warnings.append("images:none_found")
 
         money = parse_money_sv(raw.get("priceRaw"))
         if money.warnings:
@@ -452,8 +1194,13 @@ def extract_product_from_html(
                 images=bool(images),
                 price_amount=money.amount is not None,
                 price_currency=bool(money.currency),
+                description=bool(raw.get("description")),
+                dimensions=bool(raw.get("dimensionsRaw")),
+                material=bool(raw.get("materialRaw")),
+                color=bool(raw.get("colorRaw")),
+                brand=bool(raw.get("brand")),
             )
-            return NormalizedProduct(
+            product = NormalizedProduct(
                 retailer_id=source_id,
                 retailer_domain=_domain(canonical2 or final_url),
                 product_url=fetched_url,
@@ -471,10 +1218,17 @@ def extract_product_from_html(
                 recipe_version=None,
                 completeness_score=score,
                 warnings=warnings,
-                debug={"strategy": "jsonld", **debug},
+                debug={"strategy": "jsonld", "imageSource": image_source, **debug},
                 dimensions_raw=raw.get("dimensionsRaw"),
                 material_raw=raw.get("materialRaw"),
                 color_raw=raw.get("colorRaw"),
+            )
+            return _apply_enrichment(
+                product,
+                jsonld_product=jsonld_obj,
+                embedded_node=None,
+                html=html,
+                jsonld_blocks=signals.jsonld_blocks,
             )
 
     # Embedded JSON (Next.js and generic blobs) – heuristic extraction
@@ -483,6 +1237,18 @@ def extract_product_from_html(
         canonical2 = (_absolute(embedded.get("canonicalUrl"), final_url) or canonical).strip()
         title = (embedded.get("title") or "").strip()
         images = _normalize_images([u for u in (embedded.get("images") or []) if isinstance(u, str)], base_url=final_url)
+
+        # Fallback chain when embedded JSON images fail validation
+        image_source = "embedded_json"
+        if not images and signals.og_images:
+            images = _normalize_images(list(signals.og_images), base_url=final_url)
+            image_source = "og_image"
+        if not images:
+            images = _extract_images_from_dom(html, base_url=final_url)
+            image_source = "dom_fallback"
+        if not images:
+            warnings.append("images:none_found")
+
         money = parse_money_sv(embedded.get("priceRaw"))
         if embedded.get("priceCurrency") and money.currency and embedded.get("priceCurrency") != money.currency:
             warnings.append("price:currency_mismatch")
@@ -497,8 +1263,13 @@ def extract_product_from_html(
                 images=bool(images),
                 price_amount=money.amount is not None,
                 price_currency=bool(money.currency),
+                description=bool(embedded.get("description")),
+                dimensions=bool(embedded.get("dimensionsRaw")),
+                material=bool(embedded.get("materialRaw")),
+                color=bool(embedded.get("colorRaw")),
+                brand=bool(embedded.get("brand")),
             )
-            return NormalizedProduct(
+            product = NormalizedProduct(
                 retailer_id=source_id,
                 retailer_domain=_domain(canonical2 or final_url),
                 product_url=fetched_url,
@@ -516,10 +1287,17 @@ def extract_product_from_html(
                 recipe_version=None,
                 completeness_score=score,
                 warnings=warnings,
-                debug={"strategy": "embedded_json", "embeddedCandidates": len(signals.embedded_json_candidates), **debug},
+                debug={"strategy": "embedded_json", "imageSource": image_source, "embeddedCandidates": len(signals.embedded_json_candidates), **debug},
                 dimensions_raw=embedded.get("dimensionsRaw"),
                 material_raw=embedded.get("materialRaw"),
                 color_raw=embedded.get("colorRaw"),
+            )
+            return _apply_enrichment(
+                product,
+                jsonld_product=jsonld_obj if isinstance(jsonld_obj, dict) else None,
+                embedded_node=None,  # embedded dict isn't the raw node
+                html=html,
+                jsonld_blocks=signals.jsonld_blocks,
             )
 
     # Recipe runner (deterministic, per-retailer)
@@ -548,13 +1326,6 @@ def extract_product_from_html(
                     warnings.extend([f"price:{w}" for w in money.warnings if w != "missing"])
                 errs = _validate_required(title=title, canonical_url=canonical2)
                 if not errs:
-                    score = _score(
-                        title=bool(title),
-                        canonical=bool(canonical2),
-                        images=bool(images),
-                        price_amount=money.amount is not None,
-                        price_currency=bool(price_currency or money.currency),
-                    )
                     # P1: recipe pass-through for dimensions, material, color
                     dims_out = rr.output.get("dimensionsCm") or rr.output.get("dimensions")
                     dimensions_raw = None
@@ -568,7 +1339,19 @@ def extract_product_from_html(
                     material_raw = str(material_raw).strip() if material_raw else None
                     color_raw = rr.output.get("color") or rr.output.get("colorFamily") or rr.output.get("colorRaw")
                     color_raw = str(color_raw).strip() if color_raw else None
-                    return NormalizedProduct(
+                    score = _score(
+                        title=bool(title),
+                        canonical=bool(canonical2),
+                        images=bool(images),
+                        price_amount=money.amount is not None,
+                        price_currency=bool(price_currency or money.currency),
+                        description=bool(rr.output.get("description")),
+                        dimensions=bool(dimensions_raw),
+                        material=bool(material_raw),
+                        color=bool(color_raw),
+                        brand=bool(rr.output.get("brand")),
+                    )
+                    product = NormalizedProduct(
                         retailer_id=source_id,
                         retailer_domain=_domain(canonical2 or final_url),
                         product_url=fetched_url,
@@ -591,6 +1374,13 @@ def extract_product_from_html(
                         material_raw=material_raw,
                         color_raw=color_raw,
                     )
+                    return _apply_enrichment(
+                        product,
+                        jsonld_product=jsonld_obj if isinstance(jsonld_obj, dict) else None,
+                        embedded_node=None,
+                        html=html,
+                        jsonld_blocks=signals.jsonld_blocks,
+                    )
         except Exception as e:
             warnings.append("recipe:runner_error")
 
@@ -604,7 +1394,16 @@ def extract_product_from_html(
         if not title:
             mt = soup.find("meta", property="og:title")
             title = (mt.get("content") if mt else "").strip()
+
+        # Try og:image first, then DOM image extraction
         imgs = _normalize_images(list(signals.og_images), base_url=final_url)
+        image_source = "og_image"
+        if not imgs:
+            imgs = _extract_images_from_dom(html, base_url=final_url)
+            image_source = "dom_img"
+        if not imgs:
+            warnings.append("images:none_found")
+
         price_raw = None
         mp = soup.find("meta", property="product:price:amount")
         if mp and mp.get("content"):
@@ -622,6 +1421,11 @@ def extract_product_from_html(
         errs = _validate_required(title=title, canonical_url=canonical)
         if not errs:
             from app.normalization import infer_color_from_title
+
+            description_raw = _extract_description_from_dom(soup)
+            dimensions_raw = _extract_dimensions_from_dom(soup)
+            material_raw = _extract_material_from_dom(soup)
+            brand_raw = _extract_brand_from_dom(soup)
             color_raw = infer_color_from_title(title)
             score = _score(
                 title=bool(title),
@@ -629,8 +1433,13 @@ def extract_product_from_html(
                 images=bool(imgs),
                 price_amount=money.amount is not None,
                 price_currency=bool(money.currency),
+                description=bool(description_raw),
+                dimensions=bool(dimensions_raw),
+                material=bool(material_raw),
+                color=bool(color_raw),
+                brand=bool(brand_raw),
             )
-            return NormalizedProduct(
+            product = NormalizedProduct(
                 retailer_id=source_id,
                 retailer_domain=_domain(canonical),
                 product_url=fetched_url,
@@ -640,21 +1449,146 @@ def extract_product_from_html(
                 price_currency=money.currency,
                 price_raw=money.raw or None,
                 images=imgs,
-                description=None,
-                brand=None,
+                description=description_raw,
+                brand=brand_raw,
                 extracted_at=extracted_at_iso,
                 method="dom",
                 recipe_id=None,
                 recipe_version=None,
                 completeness_score=score,
                 warnings=warnings,
-                debug={"strategy": "dom_semantic", **debug},
-                dimensions_raw=None,
-                material_raw=None,
+                debug={"strategy": "dom_semantic", "imageSource": image_source, **debug},
+                dimensions_raw=dimensions_raw,
+                material_raw=material_raw,
                 color_raw=color_raw,
+            )
+            return _apply_enrichment(
+                product,
+                jsonld_product=jsonld_obj if isinstance(jsonld_obj, dict) else None,
+                embedded_node=None,
+                html=html,
+                jsonld_blocks=signals.jsonld_blocks,
             )
     except Exception:
         pass
 
     return None
 
+
+# ============================================================================
+# BATCH EXTRACTION FROM EMBEDDED STATE
+# ============================================================================
+
+def extract_products_batch_from_html(
+    *,
+    source_id: str,
+    fetched_url: str,
+    final_url: str,
+    html: str,
+    extracted_at_iso: str,
+) -> list[NormalizedProduct]:
+    """
+    Extract MULTIPLE products from a single page using embedded JS state.
+
+    This handles category/listing pages where the full product catalog is
+    embedded in window.INITIAL_DATA, window.__INITIAL_STATE__, etc.
+
+    Returns a list of NormalizedProduct objects (may be empty).
+    """
+    signals: PageSignals = extract_page_signals(html, final_url=final_url)
+
+    # Only process embedded state candidates that are window-level state
+    state_candidates = [
+        c for c in signals.embedded_json_candidates
+        if c.get("kind") == "windowState" and isinstance(c.get("data"), dict)
+    ]
+    if not state_candidates:
+        return []
+
+    all_products: list[NormalizedProduct] = []
+
+    for candidate in state_candidates:
+        state_id = candidate.get("id", "")
+        state_data = candidate["data"]
+        base_url = f"{urlparse(final_url).scheme}://{urlparse(final_url).netloc}"
+
+        raw_products = extract_products_from_state(
+            state_id=state_id,
+            data=state_data,
+            base_url=base_url,
+        )
+
+        for raw in raw_products:
+            title = (raw.get("title") or "").strip()
+            if not title:
+                continue
+
+            product_url = (raw.get("url") or "").strip()
+            canonical = product_url or final_url
+
+            # Normalize images
+            raw_images = raw.get("images") or []
+            images = _normalize_images(
+                [u for u in raw_images if isinstance(u, str) and u.strip()],
+                base_url=base_url,
+            )
+
+            # Price
+            price_amount = raw.get("price_amount")
+            price_currency = raw.get("price_currency") or "SEK"
+
+            # Completeness score
+            score = _score(
+                title=bool(title),
+                canonical=bool(canonical and canonical.startswith("http")),
+                images=bool(images),
+                price_amount=price_amount is not None,
+                price_currency=bool(price_currency),
+                description=bool(raw.get("description")),
+                dimensions=False,
+                material=False,
+                color=False,
+                brand=bool(raw.get("brand")),
+            )
+
+            warnings: list[str] = []
+            if not images:
+                warnings.append("images:none_found")
+
+            errs = _validate_required(title=title, canonical_url=canonical)
+            if errs:
+                continue
+
+            product = NormalizedProduct(
+                retailer_id=source_id,
+                retailer_domain=_domain(canonical or final_url),
+                product_url=product_url or fetched_url,
+                canonical_url=canonical,
+                title=title,
+                price_amount=price_amount,
+                price_currency=price_currency,
+                price_raw=str(price_amount) if price_amount is not None else None,
+                images=images,
+                description=raw.get("description"),
+                brand=raw.get("brand"),
+                extracted_at=extracted_at_iso,
+                method="embedded_state",
+                recipe_id=None,
+                recipe_version=None,
+                completeness_score=score,
+                warnings=warnings,
+                debug={
+                    "strategy": "embedded_state",
+                    "stateVar": state_id,
+                    "batchSource": final_url,
+                },
+                dimensions_raw=None,
+                material_raw=None,
+                color_raw=None,
+                breadcrumbs=list(raw.get("category_names", [])) or None,
+                sku=raw.get("sku"),
+                price_original=raw.get("price_original"),
+            )
+            all_products.append(product)
+
+    return all_products

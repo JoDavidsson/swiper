@@ -48,6 +48,21 @@ export function createPersonalPlusPersonaRanker(alpha: number = DEFAULT_ALPHA): 
       );
       const maxPersonaScore = rawPersonaScores.reduce((max, score) => Math.max(max, score), 0);
 
+      // Generate deterministic random seed from runId for reproducible tie-breaking
+      const seedRandom = (seed: string) => {
+        let h = 0;
+        for (let i = 0; i < seed.length; i++) {
+          h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
+        }
+        return () => {
+          h = ((h << 13) ^ h) | 0;
+          h = ((h >> 17) ^ h) | 0;
+          h = ((h << 5) ^ h) | 0;
+          return (h >>> 0) / 4294967296;
+        };
+      };
+      const random = seedRandom(runId);
+
       const scored = candidates.map((c, idx) => {
         const { score: personalScoreRaw, signalCount } = scoreItemWithSignals(c, session.preferenceWeights);
         const personalScore = normalizeScore(personalScoreRaw, signalCount);
@@ -60,12 +75,12 @@ export function createPersonalPlusPersonaRanker(alpha: number = DEFAULT_ALPHA): 
         }
 
         const blend = hasPersona ? effectiveAlpha * personalScore + (1 - effectiveAlpha) * personaScore : personalScore;
-        return { candidate: c, score: blend };
+        return { candidate: c, score: blend, signalCount, tieBreaker: random() };
       });
 
       scored.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        return (a.candidate.id as string).localeCompare(b.candidate.id as string);
+        return a.tieBreaker - b.tieBreaker; // Random tie-breaking instead of ID order
       });
 
       const sliced = scored.slice(0, limit);

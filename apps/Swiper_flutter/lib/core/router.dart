@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'constants.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/deck/deck_screen.dart';
 import '../features/likes/likes_screen.dart';
@@ -41,8 +42,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       String? result;
       // Admin routes: send unauthenticated to login; send /admin or /admin/login to dashboard when logged in.
       if (loc.startsWith('/admin')) {
-        if (isAdmin && (loc == '/admin' || loc == '/admin/login')) result = '/admin/dashboard';
-        else if (!isAdmin && loc != '/admin' && loc != '/admin/login') result = '/admin/login';
+        if (isAdmin && (loc == '/admin' || loc == '/admin/login'))
+          result = '/admin/dashboard';
+        else if (!isAdmin && loc != '/admin' && loc != '/admin/login')
+          result = '/admin/login';
       }
       // When a second router instance is created it can have initialLocation '/' while user is logged in; redirect to dashboard (avoids kick-back to splash).
       else if (isAdmin && loc == '/') result = '/admin/dashboard';
@@ -55,7 +58,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/onboarding',
-        builder: (context, state) => const OnboardingScreen(),
+        builder: (context, state) => AppConstants.enableStandaloneOnboarding
+            ? const OnboardingScreen()
+            : const DeckScreen(),
       ),
       GoRoute(
         path: '/deck',

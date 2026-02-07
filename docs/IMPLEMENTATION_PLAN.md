@@ -1,15 +1,15 @@
 # Swiper – Implementation Plan
 
-> **Last updated:** 2026-02-05  
+> **Last updated:** 2026-02-07  
 > Step-by-step build sequence with dependencies and milestones.
 
 ---
 
 ## Current Status
 
-**Phase:** Phase 11c (Crawler Bug Fixes) Complete  
-**Next Phase:** Phase 12 (Featured Distribution)  
-**Last Milestone:** Crawler Bug Fixes – runtime parity, domain equivalence, filter fallback
+**Phase:** Phase 12 (Featured Distribution) In Progress  
+**Next Phase:** Continue Phase 12 serving/ranking gates, then Phase 13  
+**Last Milestone:** Campaign creation and management APIs are live (`/api/retailer/campaigns*`)
 
 ---
 
@@ -33,6 +33,7 @@
 | 1.2 | Supply Engine scaffolding (FastAPI) | ✅ Done |
 | 1.3 | Feed ingestion (CSV/JSON) | ✅ Done |
 | 1.4 | Basic extraction cascade (JSON-LD, embedded JSON, DOM) | ✅ Done |
+| 1.4b | Image extraction hardening (validation, fallbacks, DOM extraction) | ✅ Done |
 | 1.5 | Normalization pipeline (price, images, URLs) | ✅ Done |
 | 1.6 | Crawl ingestion endpoint | ✅ Done |
 | 1.7 | Admin trigger endpoint | ✅ Done |
@@ -92,6 +93,9 @@
 | 6.3 | Style tag matching | ✅ Done |
 | 6.4 | Exploration sampling | ✅ Done |
 | 6.5 | Deck API integration | ✅ Done |
+| 6.6 | Multi-queue candidate retrieval (promoted/catalog/preference/persona/long-tail/serendipity) | ✅ Done |
+| 6.7 | Wider rank window + request-level rank metadata (`requestId`, `candidateCount`, `rankWindow`, `retrievalQueues`) | ✅ Done |
+| 6.8 | Larger client deck batching (30 cards) + proactive refill threshold (12 cards) | ✅ Done |
 
 ### Phase 7: P1 Enhancements ✅
 
@@ -209,21 +213,66 @@
 
 **Summary:** Fixed runtime parity issues, domain equivalence (www vs apex), stale derived config, and filter fallback. Crawls now work reliably across various site configurations.
 
+### Phase 11d: "Crawl Wide, Show Narrow" Pipeline ✅
+
+| Step | Task | Status |
+|------|------|--------|
+| 11d.1 | A3: Incremental recrawl (html_hash skip logic) | ✅ Done |
+| 11d.2 | A5: Per-domain retry/backoff policy | ✅ Done |
+| 11d.3 | B1-B5: Metadata enrichment (breadcrumbs, facets, variants, identity, offers) | ✅ Done |
+| 11d.4 | C1: Generic category schema (15 furniture categories, SE+EN lexicons) | ✅ Done |
+| 11d.5 | C2: Feature builder with evidence provenance | ✅ Done |
+| 11d.6 | C3: Rule scorer with taxonomy lexicons | ✅ Done |
+| 11d.7 | C4: Decision policy (ACCEPT/REJECT/UNCERTAIN per surface) | ✅ Done |
+| 11d.8 | C5: Gold promotion service (goldItems collection) | ✅ Done |
+| 11d.9 | D1-D3: Review queue + active sampling | ✅ Done |
+| 11d.10 | D4: Calibration job (threshold optimisation from labels) | ✅ Done |
+| 11d.11 | D5: Evaluation report (precision/recall/F1 per category) | ✅ Done |
+| 11d.12 | E1: Deck reads Gold collection first | ✅ Done |
+| 11d.13 | E2: Backfill guard (fallback when Gold empty) | ✅ Done |
+| 11d.14 | E3: Multi-offer dedup (canonicalUrl) | ✅ Done |
+| 11d.15 | E4: Explainability endpoint (/admin/explain/:id) | ✅ Done |
+| 11d.16 | F1-F5: DevOps (retention cleanup, dashboards, drift check, kill-switch, cost telemetry) | ✅ Done |
+
+### Phase 11e: Embedded JS State Extraction ✅
+
+| Step | Task | Status |
+|------|------|--------|
+| 11e.1 | Window state detection in signals.py (INITIAL_DATA, __INITIAL_STATE__, __NUXT__, __PRELOADED_STATE__) | ✅ Done |
+| 11e.2 | Retailer-specific handlers: Chilli (INITIAL_DATA) and RoyalDesign (__INITIAL_STATE__) | ✅ Done |
+| 11e.3 | Generic fallback handler for unknown state structures | ✅ Done |
+| 11e.4 | Batch extraction function (multi-product from single page) | ✅ Done |
+| 11e.5 | Phase 1.5 in crawl pipeline (category page batch extraction + dedup) | ✅ Done |
+| 11e.6 | Live testing: Chilli (24 products) and RoyalDesign (31 products) at 100% completeness | ✅ Done |
+
+### Phase 11f: Supply Engine Data Quality (Cursor Phase 15) ✅
+
+| Step | Task | Status |
+|------|------|--------|
+| 11f.1 | DOM fallback expansion (description, dimensions, material, brand) | ✅ Done |
+| 11f.2 | Completeness scoring update (field richness weighting) | ✅ Done |
+| 11f.3 | Playwright browser fallback for JS-rendered pages | ✅ Done |
+| 11f.4 | JS-render detector + fetch method telemetry (`http` vs `browser`) | ✅ Done |
+| 11f.5 | Per-source `useBrowserFallback` config wiring | ✅ Done |
+| 11f.6 | Item-level `extractionMeta` with missing field tracking | ✅ Done |
+| 11f.7 | Low-quality stale-item refetch queue helper + optional pass | ✅ Done |
+| 11f.8 | Daily quality telemetry (`descriptionRate`, `dimensionsRate`, `materialRate`, `browserFetchCount`) | ✅ Done |
+
 ### Phase 12: Featured Distribution
 
-| Step | Task | Priority | Dependencies |
-|------|------|----------|--------------|
-| 12.1 | Campaign creation API | High | 11.3 |
-| 12.2 | Segment targeting (style + budget + size + geo) | High | 11.2 |
-| 12.3 | Product set selection (manual + recommended) | High | 12.1 |
-| 12.4 | Budget + schedule management | High | 12.1 |
-| 12.5 | Featured serving algorithm | High | 12.1–12.4 |
-| 12.6 | Relevance gate (match score threshold) | High | 12.5 |
-| 12.7 | Frequency cap enforcement (1 in 12) | High | 12.5 |
-| 12.8 | Diversity constraint (retailer repetition) | Medium | 12.5 |
-| 12.9 | "Featured" label in deck UI | High | 12.5 |
-| 12.10 | Campaign pacing (even daily spend) | Medium | 12.4 |
-| 12.11 | Featured impression logging | High | 12.5 |
+| Step | Task | Priority | Dependencies | Status |
+|------|------|----------|--------------|--------|
+| 12.1 | Campaign creation API | High | 11.3 | ✅ Done |
+| 12.2 | Segment targeting (style + budget + size + geo) | High | 11.2 | ⏳ Pending |
+| 12.3 | Product set selection (manual + recommended) | High | 12.1 | ⏳ Pending |
+| 12.4 | Budget + schedule management | High | 12.1 | ⏳ Pending |
+| 12.5 | Featured serving algorithm | High | 12.1–12.4 | ⏳ Pending |
+| 12.6 | Relevance gate (match score threshold) | High | 12.5 | ⏳ Pending |
+| 12.7 | Frequency cap enforcement (1 in 12) | High | 12.5 | ⏳ Pending |
+| 12.8 | Diversity constraint (retailer repetition) | Medium | 12.5 | ⏳ Pending |
+| 12.9 | "Featured" label in deck UI | High | 12.5 | ⏳ Pending |
+| 12.10 | Campaign pacing (even daily spend) | Medium | 12.4 | ⏳ Pending |
+| 12.11 | Featured impression logging | High | 12.5 | ⏳ Pending |
 
 ### Phase 13: Retailer Console v1
 
@@ -414,6 +463,9 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 | 2026-02-05 | Featured frequency cap 1 in 12 | Balance monetization with UX |
 | 2026-02-05 | Retailer Console as Insights Feed, not analytics | Actionable > informational |
 | 2026-02-05 | Smart crawler auto-discovery from single URL | Reduce cognitive overhead, prevent config errors (domain root, protocol) |
+| 2026-02-07 | Image extraction hardening as Week 0 blocker | Without working images, app is unusable; pulled forward from enrichment epic |
+| 2026-02-07 | Crawl Wide, Show Narrow pipeline | Full classification + sorting engine to serve only quality items to deck while ingesting broadly |
+| 2026-02-07 | Embedded JS state extraction | Extract products from window.INITIAL_DATA / __INITIAL_STATE__ without headless browsers, unlocking Chilli and RoyalDesign |
 
 ---
 

@@ -20,7 +20,9 @@ DateTime? _parseDateTime(dynamic value) {
     final nano = value['nanoseconds'] ?? value['_nanoseconds'];
     if (sec != null) {
       final ms = (sec is int ? sec : (sec as num).toInt()) * 1000;
-      final nanoMs = nano != null ? ((nano is int ? nano : (nano as num).toInt()) / 1000000).round() : 0;
+      final nanoMs = nano != null
+          ? ((nano is int ? nano : (nano as num).toInt()) / 1000000).round()
+          : 0;
       return DateTime.fromMillisecondsSinceEpoch(ms + nanoMs);
     }
   }
@@ -54,6 +56,9 @@ class Item {
     this.creativeHealthScore,
     this.creativeHealthBand,
     this.creativeHealthIssues = const [],
+    this.isFeatured = false,
+    this.campaignId,
+    this.featuredLabel,
   });
 
   final String id;
@@ -77,23 +82,34 @@ class Item {
   final List<String> ecoTags;
   final List<ItemImage> images;
   final DateTime? lastUpdatedAt;
-  
+
   // Creative Health fields (from image validation)
   final int? creativeHealthScore;
   final String? creativeHealthBand;
   final List<String> creativeHealthIssues;
 
+  // Featured serving metadata (phase 12+; optional)
+  final bool isFeatured;
+  final String? campaignId;
+  final String? featuredLabel;
+
   String? get firstImageUrl => images.isNotEmpty ? images.first.url : null;
 
   factory Item.fromJson(Map<String, dynamic> json) {
     final imagesRaw = json['images'] as List? ?? [];
-    
+
     // Parse creative health from nested object or flat fields
     final creativeHealth = json['creativeHealth'] as Map<String, dynamic>?;
     final healthScore = creativeHealth?['score'] ?? json['creativeHealthScore'];
     final healthBand = creativeHealth?['band'] ?? json['creativeHealthBand'];
-    final healthIssues = creativeHealth?['issues'] ?? json['creativeHealthIssues'];
-    
+    final healthIssues =
+        creativeHealth?['issues'] ?? json['creativeHealthIssues'];
+    final campaignId =
+        _string(json['campaignId']) ?? _string(json['campaign_id']);
+    final explicitFeatured = json['isFeatured'] == true ||
+        json['is_featured'] == true ||
+        json['featured'] == true;
+
     return Item(
       id: _string(json['id']) ?? '',
       title: _string(json['title']) ?? '',
@@ -105,7 +121,8 @@ class Item {
       brand: _string(json['brand']),
       descriptionShort: _string(json['descriptionShort']),
       dimensionsCm: json['dimensionsCm'] != null && json['dimensionsCm'] is Map
-          ? Map<String, num>.from((json['dimensionsCm'] as Map).map((k, v) => MapEntry(k.toString(), (v is num ? v : 0))))
+          ? Map<String, num>.from((json['dimensionsCm'] as Map)
+              .map((k, v) => MapEntry(k.toString(), (v is num ? v : 0))))
           : null,
       sizeClass: _string(json['sizeClass']),
       material: _string(json['material']),
@@ -116,11 +133,26 @@ class Item {
       smallSpaceFriendly: json['smallSpaceFriendly'] == true,
       modular: json['modular'] == true,
       ecoTags: _stringList(json['ecoTags']),
-      images: imagesRaw.map((e) => ItemImage.fromJson(Map<String, dynamic>.from(e is Map ? e : <String, dynamic>{}))).toList(),
+      images: imagesRaw.map((e) {
+        if (e is String) {
+          // Handle legacy format where images are stored as plain URL strings
+          return ItemImage.fromJson({'url': e});
+        } else if (e is Map) {
+          return ItemImage.fromJson(Map<String, dynamic>.from(e));
+        } else {
+          return ItemImage.fromJson(<String, dynamic>{});
+        }
+      }).toList(),
       lastUpdatedAt: _parseDateTime(json['lastUpdatedAt']),
-      creativeHealthScore: healthScore is int ? healthScore : (healthScore is num ? healthScore.toInt() : null),
+      creativeHealthScore: healthScore is int
+          ? healthScore
+          : (healthScore is num ? healthScore.toInt() : null),
       creativeHealthBand: _string(healthBand),
       creativeHealthIssues: _stringList(healthIssues),
+      isFeatured: explicitFeatured || campaignId != null,
+      campaignId: campaignId,
+      featuredLabel:
+          _string(json['featuredLabel']) ?? _string(json['featured_label']),
     );
   }
 
@@ -146,7 +178,11 @@ class Item {
       'modular': modular,
       'ecoTags': ecoTags,
       'images': images.map((e) => e.toJson()).toList(),
-      if (lastUpdatedAt != null) 'lastUpdatedAt': lastUpdatedAt!.toIso8601String(),
+      if (lastUpdatedAt != null)
+        'lastUpdatedAt': lastUpdatedAt!.toIso8601String(),
+      if (isFeatured) 'isFeatured': isFeatured,
+      if (campaignId != null) 'campaignId': campaignId,
+      if (featuredLabel != null) 'featuredLabel': featuredLabel,
     };
   }
 }
@@ -163,8 +199,12 @@ class ItemImage {
   factory ItemImage.fromJson(Map<String, dynamic> json) {
     return ItemImage(
       url: _string(json['url']) ?? '',
-      width: json['width'] is int ? json['width'] as int : (json['width'] is num ? (json['width'] as num).toInt() : null),
-      height: json['height'] is int ? json['height'] as int : (json['height'] is num ? (json['height'] as num).toInt() : null),
+      width: json['width'] is int
+          ? json['width'] as int
+          : (json['width'] is num ? (json['width'] as num).toInt() : null),
+      height: json['height'] is int
+          ? json['height'] as int
+          : (json['height'] is num ? (json['height'] as num).toInt() : null),
       alt: _string(json['alt']),
       type: _string(json['type']),
     );

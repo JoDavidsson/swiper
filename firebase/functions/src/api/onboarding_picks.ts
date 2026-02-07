@@ -33,11 +33,17 @@ export async function onboardingPicksPost(
       return;
     }
 
-    // Verify session exists
-    const sessionDoc = await db.collection("sessions").doc(sessionId).get();
+    // Ensure anon session exists (session API stores in anonSessions)
+    const sessionRef = db.collection("anonSessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
     if (!sessionDoc.exists) {
-      res.status(404).json({ error: "Session not found" });
-      return;
+      await sessionRef.set(
+        {
+          createdAt: FieldValue.serverTimestamp(),
+          lastSeenAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
     }
 
     // Build the picks document
@@ -101,12 +107,16 @@ export async function onboardingPicksPost(
     // Store in onboardingPicks collection
     await db.collection("onboardingPicks").doc(sessionId).set(picksData, { merge: true });
 
-    // Also update the session document with a reference to picks
-    await db.collection("sessions").doc(sessionId).update({
-      hasOnboardingPicks: true,
-      onboardingPickHash: pickHash,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    // Also update anon session with a reference to picks
+    await sessionRef.set(
+      {
+        hasOnboardingPicks: true,
+        onboardingPickHash: pickHash,
+        updatedAt: FieldValue.serverTimestamp(),
+        lastSeenAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     res.json({ ok: true, pickHash });
   } catch (e) {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/auth_provider.dart';
+import '../../data/locale_provider.dart';
 
 class SignUpScreen extends ConsumerStatefulWidget {
   const SignUpScreen({super.key, this.redirectTo});
@@ -37,9 +38,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     setState(() => _loading = true);
     try {
       await ref.read(authProvider.notifier).signUpWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
       if (mounted) {
         _navigateAfterAuth();
       }
@@ -74,6 +75,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
     final authState = ref.watch(authProvider);
 
     // If already authenticated, redirect
@@ -89,9 +91,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.go('/deck'),
-          tooltip: 'Close',
+          tooltip: strings.close,
         ),
-        title: const Text('Create account'),
+        title: Text(strings.createAccount),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -112,16 +114,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacingUnit),
                 Text(
-                  'Join Swiper',
+                  strings.joinSwiper,
                   style: Theme.of(context).textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 0.5),
                 Text(
-                  'Create an account to save your preferences and collaborate with others',
+                  strings.signupSubtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
+                        color: AppTheme.textSecondary,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),
@@ -150,9 +152,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                     'https://www.google.com/favicon.ico',
                     width: 20,
                     height: 20,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 20),
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.g_mobiledata, size: 20),
                   ),
-                  label: const Text('Continue with Google'),
+                  label: Text(strings.continueWithGoogle),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppTheme.spacingUnit,
@@ -170,9 +173,10 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   children: [
                     const Expanded(child: Divider()),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingUnit),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.spacingUnit),
                       child: Text(
-                        'or',
+                        strings.or,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
@@ -186,9 +190,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'your@email.com',
+                  decoration: InputDecoration(
+                    labelText: strings.email,
+                    hintText: strings.emailHint,
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   validator: (value) {
@@ -208,12 +212,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    labelText: 'Password',
-                    hintText: 'At least 6 characters',
+                    labelText: strings.password,
+                    hintText: strings.passwordAtLeast6,
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(_obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: (value) {
@@ -233,12 +240,15 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
                   decoration: InputDecoration(
-                    labelText: 'Confirm password',
-                    hintText: 'Re-enter your password',
+                    labelText: strings.confirmPassword,
+                    hintText: strings.confirmPasswordHint,
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                      icon: Icon(_obscureConfirmPassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () => setState(() =>
+                          _obscureConfirmPassword = !_obscureConfirmPassword),
                     ),
                   ),
                   validator: (value) {
@@ -266,16 +276,16 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Create account'),
+                      : Text(strings.createAccount),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),
 
                 // Terms text
                 Text(
-                  'By creating an account, you agree to our Terms of Service and Privacy Policy.',
+                  strings.termsNotice,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textCaption,
-                  ),
+                        color: AppTheme.textCaption,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),
@@ -285,12 +295,13 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Already have an account? ',
+                      strings.alreadyHaveAccount,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     TextButton(
-                      onPressed: () => context.go('/auth/login', extra: widget.redirectTo),
-                      child: const Text('Sign in'),
+                      onPressed: () =>
+                          context.go('/auth/login', extra: widget.redirectTo),
+                      child: Text(strings.signIn),
                     ),
                   ],
                 ),

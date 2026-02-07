@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../data/auth_provider.dart';
+import '../../data/locale_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.redirectTo});
@@ -34,9 +35,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _loading = true);
     try {
       await ref.read(authProvider.notifier).signInWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+            _emailController.text.trim(),
+            _passwordController.text,
+          );
       if (mounted) {
         _navigateAfterAuth();
       }
@@ -71,6 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
     final authState = ref.watch(authProvider);
 
     // If already authenticated, redirect
@@ -86,9 +88,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.go('/deck'),
-          tooltip: 'Close',
+          tooltip: strings.close,
         ),
-        title: const Text('Sign in'),
+        title: Text(strings.signIn),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -109,16 +111,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: AppTheme.spacingUnit),
                 Text(
-                  'Welcome to Swiper',
+                  strings.welcomeToSwiper,
                   style: Theme.of(context).textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 0.5),
                 Text(
-                  'Sign in to create Decision Rooms and collaborate with others',
+                  strings.loginSubtitle,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
+                        color: AppTheme.textSecondary,
+                      ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 3),
@@ -147,9 +149,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     'https://www.google.com/favicon.ico',
                     width: 20,
                     height: 20,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.g_mobiledata, size: 20),
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.g_mobiledata, size: 20),
                   ),
-                  label: const Text('Continue with Google'),
+                  label: Text(strings.continueWithGoogle),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppTheme.spacingUnit,
@@ -167,9 +170,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   children: [
                     const Expanded(child: Divider()),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingUnit),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.spacingUnit),
                       child: Text(
-                        'or',
+                        strings.or,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
@@ -183,9 +187,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'your@email.com',
+                  decoration: InputDecoration(
+                    labelText: strings.email,
+                    hintText: strings.emailHint,
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   validator: (value) {
@@ -205,12 +209,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    labelText: 'Password',
-                    hintText: 'Your password',
+                    labelText: strings.password,
+                    hintText: strings.passwordHint,
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      icon: Icon(_obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: (value) {
@@ -229,7 +236,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: TextButton(
                     onPressed: () => _showForgotPasswordDialog(),
                     child: Text(
-                      'Forgot password?',
+                      strings.forgotPassword,
                       style: TextStyle(color: AppTheme.primaryAction),
                     ),
                   ),
@@ -248,7 +255,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Sign in'),
+                      : Text(strings.signIn),
                 ),
                 const SizedBox(height: AppTheme.spacingUnit * 2),
 
@@ -257,12 +264,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Don't have an account? ",
+                      strings.dontHaveAccount,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     TextButton(
-                      onPressed: () => context.go('/auth/signup', extra: widget.redirectTo),
-                      child: const Text('Sign up'),
+                      onPressed: () =>
+                          context.go('/auth/signup', extra: widget.redirectTo),
+                      child: Text(strings.signUp),
                     ),
                   ],
                 ),
@@ -272,7 +280,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 TextButton(
                   onPressed: () => context.go('/deck'),
                   child: Text(
-                    'Continue without signing in',
+                    strings.continueWithoutAccount,
                     style: TextStyle(color: AppTheme.textSecondary),
                   ),
                 ),
@@ -285,23 +293,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _showForgotPasswordDialog() async {
+    final strings = ref.read(appStringsProvider);
     final emailController = TextEditingController(text: _emailController.text);
-    
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset password'),
+        title: Text(strings.resetPassword),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Enter your email address and we\'ll send you a link to reset your password.'),
+            Text(strings.resetPasswordMessage),
             const SizedBox(height: AppTheme.spacingUnit),
             TextField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                hintText: 'your@email.com',
+              decoration: InputDecoration(
+                labelText: strings.email,
+                hintText: strings.emailHint,
               ),
             ),
           ],
@@ -309,11 +318,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(strings.cancel),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, emailController.text.trim()),
-            child: const Text('Send'),
+            onPressed: () =>
+                Navigator.pop(context, emailController.text.trim()),
+            child: Text(strings.send),
           ),
         ],
       ),
@@ -324,13 +334,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await ref.read(authProvider.notifier).sendPasswordResetEmail(result);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Password reset email sent!')),
+            SnackBar(content: Text(strings.passwordResetSent)),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to send email: $e')),
+            SnackBar(content: Text('${strings.failedToSendEmail}: $e')),
           );
         }
       }

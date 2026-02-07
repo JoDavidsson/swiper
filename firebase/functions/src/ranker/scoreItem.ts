@@ -5,49 +5,88 @@ type ScoreItemResult = {
   signalCount: number;
 };
 
+function addWeightedSignal(
+  key: string | null | undefined,
+  weights: Record<string, number>,
+  state: { score: number; signalCount: number }
+): void {
+  if (!key) return;
+  const weight = weights[key];
+  if (typeof weight === "number" && weight !== 0) {
+    state.score += weight;
+    state.signalCount += 1;
+  }
+}
+
+function normalizeToken(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => normalizeToken(v)).filter((v): v is string => v != null);
+}
+
+export function toPriceBucket(amount: unknown): string | null {
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) return null;
+  if (amount <= 3000) return "budget";
+  if (amount <= 8000) return "affordable";
+  if (amount <= 15000) return "mid";
+  if (amount <= 30000) return "premium";
+  return "luxury";
+}
+
 /**
  * Pure scoring function: score an item by preference weights.
- * Uses styleTags, material (material:X), colorFamily (color:X), sizeClass (size:X).
+ * Uses style/material/color/size plus richer furniture signals:
+ * brand, delivery complexity, condition, eco tags, product features, and price bucket.
  */
 export function scoreItemWithSignals(
   data: ItemCandidate,
   weights: Record<string, number>
 ): ScoreItemResult {
-  let score = 0;
-  let signalCount = 0;
-  const tags = (data.styleTags as string[] | undefined) || [];
+  const state = { score: 0, signalCount: 0 };
+  const tags = getStringArray(data.styleTags);
   for (const t of tags) {
-    const weight = weights[t];
-    if (typeof weight === "number" && weight !== 0) {
-      score += weight;
-      signalCount += 1;
-    }
+    addWeightedSignal(t, weights, state);
   }
-  const material = data.material as string | undefined;
-  if (material) {
-    const weight = weights[`material:${material}`];
-    if (typeof weight === "number" && weight !== 0) {
-      score += weight;
-      signalCount += 1;
-    }
+
+  const material = normalizeToken(data.material);
+  addWeightedSignal(material ? `material:${material}` : null, weights, state);
+
+  const color = normalizeToken(data.colorFamily);
+  addWeightedSignal(color ? `color:${color}` : null, weights, state);
+
+  const sizeClass = normalizeToken(data.sizeClass);
+  addWeightedSignal(sizeClass ? `size:${sizeClass}` : null, weights, state);
+
+  const brand = normalizeToken(data.brand);
+  addWeightedSignal(brand ? `brand:${brand}` : null, weights, state);
+
+  const delivery = normalizeToken(data.deliveryComplexity);
+  addWeightedSignal(delivery ? `delivery:${delivery}` : null, weights, state);
+
+  const newUsed = normalizeToken(data.newUsed);
+  addWeightedSignal(newUsed ? `condition:${newUsed}` : null, weights, state);
+
+  const ecoTags = getStringArray(data.ecoTags);
+  for (const ecoTag of ecoTags) {
+    addWeightedSignal(`eco:${ecoTag}`, weights, state);
   }
-  const color = data.colorFamily as string | undefined;
-  if (color) {
-    const weight = weights[`color:${color}`];
-    if (typeof weight === "number" && weight !== 0) {
-      score += weight;
-      signalCount += 1;
-    }
+
+  if (data.smallSpaceFriendly === true) {
+    addWeightedSignal("feature:small_space", weights, state);
   }
-  const sizeClass = data.sizeClass as string | undefined;
-  if (sizeClass) {
-    const weight = weights[`size:${sizeClass}`];
-    if (typeof weight === "number" && weight !== 0) {
-      score += weight;
-      signalCount += 1;
-    }
+  if (data.modular === true) {
+    addWeightedSignal("feature:modular", weights, state);
   }
-  return { score, signalCount };
+
+  const priceBucket = toPriceBucket(data.priceAmount);
+  addWeightedSignal(priceBucket ? `price_bucket:${priceBucket}` : null, weights, state);
+
+  return state;
 }
 
 export function normalizeScore(score: number, signalCount: number): number {

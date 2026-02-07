@@ -1,12 +1,11 @@
 import 'dart:math' as math;
-import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/models/item.dart';
+import '../../l10n/app_strings.dart';
 import 'draggable_swipe_card.dart';
 import 'deck_card.dart';
 import 'detail_sheet.dart';
@@ -38,45 +37,38 @@ class SwipeDeck extends StatefulWidget {
   final String? sessionId;
   final void Function(Item item, int position, {String gesture}) onSwipeLeft;
   final void Function(Item item, int position, {String gesture}) onSwipeRight;
+
   /// Called when the swipe-off animation completes so the list can remove the card (next card is already visible behind).
   final void Function(Item item)? onSwipeAnimationEnd;
   final String? goBaseUrl;
+
   /// If set, called when user taps card (e.g. to log open_detail, show sheet, log detail_dismiss).
   final Future<void> Function(Item item)? onTapDetail;
+
   /// Called when top card becomes visible (for card_impression_start).
   final void Function(Item item, String impressionId)? onCardImpressionStart;
+
   /// Called when top card leaves (for card_impression_end). Only called if visibleDurationMs >= 150. [itemId] is the card that left.
-  final void Function(String impressionId, int visibleDurationMs, String endReason, String itemId)? onCardImpressionEnd;
+  final void Function(String impressionId, int visibleDurationMs,
+      String endReason, String itemId)? onCardImpressionEnd;
+
   /// Called when user releases card without crossing swipe threshold (swipe_cancel).
   final void Function(Item item, int position)? onSwipeCancel;
+
   /// Called when user taps undo (swipe_undo). Wire to event tracker when undo is implemented.
   final void Function(Item item, String direction)? onSwipeUndo;
+
   /// Whether filters are currently applied (for empty state messaging).
   final bool hasFiltersApplied;
+
   /// Callback when user wants to clear filters from empty state.
   final VoidCallback? onClearFilters;
+
   /// Callback when user wants to refresh the deck.
   final VoidCallback? onRefresh;
 
   @override
   State<SwipeDeck> createState() => _SwipeDeckState();
-}
-
-const _kAgentIngestUrl = 'http://127.0.0.1:7245/ingest/ddc9e3c2-ad47-4244-9d77-ce2efa8256ba';
-
-void _deckLayoutLog(String topId, List<String> restIds, int stackDepth) {
-  if (!kDebugMode) return;
-  try {
-    final payload = {
-      'location': 'swipe_deck.dart:build',
-      'message': 'deck_layout',
-      'data': {'topId': topId, 'restIds': restIds, 'stackDepth': stackDepth},
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'sessionId': 'debug-session',
-      'hypothesisId': 'flow',
-    };
-    Dio().post(_kAgentIngestUrl, data: payload).catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: _kAgentIngestUrl))));
-  } catch (_) {}
 }
 
 class _SwipeDeckState extends State<SwipeDeck> {
@@ -90,9 +82,7 @@ class _SwipeDeckState extends State<SwipeDeck> {
   VoidCallback? _triggerSwipeRight;
   // ignore: unused_field
   bool Function()? _isAnimatingGetter;
-  String? _lastLoggedLayoutTopId;
-  List<String>? _lastLoggedRestIds;
-  
+
   // Undo support: track last swiped item and direction
   Item? _lastSwipedItem;
   String? _lastSwipeDirection;
@@ -100,8 +90,10 @@ class _SwipeDeckState extends State<SwipeDeck> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _prefetchUpcomingImages());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeStartImpression());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _prefetchUpcomingImages());
   }
 
   @override
@@ -114,30 +106,52 @@ class _SwipeDeckState extends State<SwipeDeck> {
         _triggerSwipeRight = null;
         _isAnimatingGetter = null;
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartImpression());
-      WidgetsBinding.instance.addPostFrameCallback((_) => _prefetchUpcomingImages());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _maybeStartImpression());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _prefetchUpcomingImages());
     }
   }
 
   void _prefetchUpcomingImages() {
     if (!mounted) return;
-    // Prefetch top + next 4 to avoid image pop-in/flash on promotion.
-    final toPrefetch = widget.items.take(5);
+    // Prefetch top + next 7 to reduce image pop-in with larger deck batches.
+    final toPrefetch = widget.items.take(8);
     for (final item in toPrefetch) {
       final rawUrl = item.firstImageUrl;
       if (rawUrl == null || rawUrl.isEmpty) continue;
-      final url = ApiClient.proxyImageUrl(rawUrl);
-      // Ignore failures (offline/cors/etc). Prefetch is best-effort.
-      precacheImage(CachedNetworkImageProvider(url), context).catchError((_) {});
+      final urls = <String>{
+        ApiClient.proxyImageUrl(rawUrl, width: ImageWidth.card),
+        ApiClient.proxyImageUrl(rawUrl, width: ImageWidth.thumbnail),
+      };
+      // Best-effort prefetch — silently ignore all failures (offline, CORS,
+      // domain not proxied, non-image response, etc.).
+      for (final url in urls) {
+        try {
+          precacheImage(
+            CachedNetworkImageProvider(url),
+            context,
+            onError: (_, __) {
+              // Swallow — logged once via errorWidget in the card itself.
+            },
+          ).catchError((_) {});
+        } catch (_) {
+          // Swallow synchronous errors (e.g. context not mounted).
+        }
+      }
     }
   }
 
   void _endImpressionIfAny(String endReason) {
-    if (_impressionId == null || _impressionStartedAt == null || widget.onCardImpressionEnd == null) return;
+    if (_impressionId == null ||
+        _impressionStartedAt == null ||
+        widget.onCardImpressionEnd == null) return;
     final itemId = _currentTopId ?? '';
-    final durationMs = DateTime.now().difference(_impressionStartedAt!).inMilliseconds;
+    final durationMs =
+        DateTime.now().difference(_impressionStartedAt!).inMilliseconds;
     if (durationMs >= _minImpressionDurationMs) {
-      widget.onCardImpressionEnd!(_impressionId!, durationMs, endReason, itemId);
+      widget.onCardImpressionEnd!(
+          _impressionId!, durationMs, endReason, itemId);
     }
     _impressionId = null;
     _impressionStartedAt = null;
@@ -156,9 +170,6 @@ class _SwipeDeckState extends State<SwipeDeck> {
   }
 
   void _onSwipeAnimationEnd(Item item) {
-    // #region agent log
-    Dio().post(_kAgentIngestUrl, data: {'location': 'swipe_deck.dart:_onSwipeAnimationEnd', 'message': 'animation_end_callback', 'data': {'itemId': item.id}, 'timestamp': DateTime.now().millisecondsSinceEpoch, 'sessionId': 'debug-session', 'hypothesisId': 'flow'}).catchError((_) => Future.value(Response(requestOptions: RequestOptions(path: _kAgentIngestUrl))));
-    // #endregion
     widget.onSwipeAnimationEnd?.call(item);
   }
 
@@ -229,18 +240,6 @@ class _SwipeDeckState extends State<SwipeDeck> {
         ? widget.items.sublist(1, math.min(6, widget.items.length))
         : <Item>[];
 
-    if (kDebugMode) {
-      final restIds = rest.map((e) => e.id).toList();
-      final stackDepth = rest.length + 1;
-      final layoutChanged = _lastLoggedLayoutTopId != top.id ||
-          !listEquals(_lastLoggedRestIds, restIds);
-      if (layoutChanged) {
-        _deckLayoutLog(top.id, restIds, stackDepth);
-        _lastLoggedLayoutTopId = top.id;
-        _lastLoggedRestIds = restIds;
-      }
-    }
-
     return Column(
       children: [
         Expanded(
@@ -269,7 +268,8 @@ class _SwipeDeckState extends State<SwipeDeck> {
                         child: DeckCard(
                           item: rest[i],
                           compact: true,
-                          elevation: 1.0 + (rest.length - 1 - i).clamp(0, 3) * 0.5,
+                          elevation:
+                              1.0 + (rest.length - 1 - i).clamp(0, 3) * 0.5,
                         ),
                       ),
                     ),
@@ -283,8 +283,11 @@ class _SwipeDeckState extends State<SwipeDeck> {
                     onSwipeRight: _onSwipeRight,
                     onSwipeAnimationEnd: _onSwipeAnimationEnd,
                     onTap: _onTapDetail,
-                    onSwipeCancel: widget.onSwipeCancel != null ? (item) => widget.onSwipeCancel!(item, 0) : null,
-                    onRegisterSwipeTriggers: (VoidCallback? left, VoidCallback? right, bool Function()? isAnimating) {
+                    onSwipeCancel: widget.onSwipeCancel != null
+                        ? (item) => widget.onSwipeCancel!(item, 0)
+                        : null,
+                    onRegisterSwipeTriggers: (VoidCallback? left,
+                        VoidCallback? right, bool Function()? isAnimating) {
                       _triggerSwipeLeft = left;
                       _triggerSwipeRight = right;
                       _isAnimatingGetter = isAnimating;
@@ -319,7 +322,8 @@ class _SwipeDeckState extends State<SwipeDeck> {
                   _ControlButton(
                     icon: Icons.undo,
                     color: AppTheme.textSecondary,
-                    onPressed: widget.onSwipeUndo != null && _lastSwipedItem != null
+                    onPressed: widget.onSwipeUndo != null &&
+                            _lastSwipedItem != null
                         ? () {
                             final item = _lastSwipedItem!;
                             final direction = _lastSwipeDirection ?? 'right';
@@ -340,7 +344,8 @@ class _SwipeDeckState extends State<SwipeDeck> {
 }
 
 class _ControlButton extends StatelessWidget {
-  const _ControlButton({required this.icon, required this.color, required this.onPressed});
+  const _ControlButton(
+      {required this.icon, required this.color, required this.onPressed});
 
   final IconData icon;
   final Color color;
@@ -351,7 +356,8 @@ class _ControlButton extends StatelessWidget {
     return IconButton.filled(
       icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
       onPressed: onPressed,
-      style: IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
+      style:
+          IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
     );
   }
 }
@@ -370,6 +376,7 @@ class _EmptyDeckWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings(Localizations.localeOf(context));
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.spacingUnit * 2),
@@ -385,7 +392,9 @@ class _EmptyDeckWidget extends StatelessWidget {
                 borderRadius: BorderRadius.circular(40),
               ),
               child: Icon(
-                hasFiltersApplied ? Icons.filter_alt_off : Icons.inventory_2_outlined,
+                hasFiltersApplied
+                    ? Icons.filter_alt_off
+                    : Icons.inventory_2_outlined,
                 size: 40,
                 color: AppTheme.textCaption,
               ),
@@ -394,19 +403,19 @@ class _EmptyDeckWidget extends StatelessWidget {
             // Message
             Text(
               hasFiltersApplied
-                  ? 'No items match your filters'
-                  : 'No more items to show',
+                  ? strings.noItemsMatchFilters
+                  : strings.noMoreItemsToShow,
               style: Theme.of(context).textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppTheme.spacingUnit),
             Text(
               hasFiltersApplied
-                  ? 'Try adjusting your filters or clearing them to see more sofas.'
-                  : 'Great job! Check back later for new arrivals.',
+                  ? strings.adjustFiltersOrClear
+                  : strings.checkBackLater,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppTheme.textSecondary,
-              ),
+                    color: AppTheme.textSecondary,
+                  ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppTheme.spacingUnit * 3),
@@ -417,7 +426,7 @@ class _EmptyDeckWidget extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: onClearFilters,
                   icon: const Icon(Icons.filter_alt_off),
-                  label: const Text('Clear Filters'),
+                  label: Text(strings.clearFilters),
                 ),
               ),
             if (hasFiltersApplied && onClearFilters != null)
@@ -429,12 +438,12 @@ class _EmptyDeckWidget extends StatelessWidget {
                     ? OutlinedButton.icon(
                         onPressed: onRefresh,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh Deck'),
+                        label: Text(strings.refreshDeck),
                       )
                     : ElevatedButton.icon(
                         onPressed: onRefresh,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh Deck'),
+                        label: Text(strings.refreshDeck),
                       ),
               ),
           ],

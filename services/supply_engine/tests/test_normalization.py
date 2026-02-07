@@ -8,6 +8,7 @@ from app.normalization import (
     canonical_url,
     size_class_from_width_cm,
     infer_color_from_title,
+    infer_size_from_title,
     canonical_domain,
     domains_equivalent,
 )
@@ -35,6 +36,32 @@ def test_normalize_size_class():
     assert normalize_size_class(None, 170) == "small"
     assert normalize_size_class(None, 200) == "medium"
     assert normalize_size_class(None, 250) == "large"
+
+
+def test_normalize_size_class_from_title():
+    """Size should be inferred from title when no width data is available."""
+    assert normalize_size_class(None, title="Bertha Soffa 2-sits") == "small"
+    assert normalize_size_class(None, title="3-sits Bäddsoffa Masin") == "medium"
+    assert normalize_size_class(None, title="4-sits Hörnbäddsoffa Staffin") == "large"
+    assert normalize_size_class(None, title="5-sits U-formad Modulsoffa") == "large"
+    assert normalize_size_class(None, title="Schäslong Lilly Antracit") == "small"
+    assert normalize_size_class(None, title="Unknown Soffa") == "medium"  # fallback
+
+
+def test_infer_size_from_title():
+    """Direct title inference tests."""
+    assert infer_size_from_title("Bertha Soffa 2-sits") == "small"
+    assert infer_size_from_title("3-sits Bäddsoffa Masin") == "medium"
+    assert infer_size_from_title("4-sits Hörnbäddsoffa Staffin") == "large"
+    assert infer_size_from_title("Cubo 5-sits U-formad Djup Modulsoffa") == "large"
+    assert infer_size_from_title("Arken 6-sits U-formad Modulsoffa") == "large"
+    assert infer_size_from_title("Schäslong Lilly Antracit") == "small"
+    assert infer_size_from_title("Fåtölj Klassisk Röd") == "small"
+    assert infer_size_from_title("U-Bäddsoffa Sagardelos Höger") == "large"
+    assert infer_size_from_title("Hörnsoffa Comfy") == "large"
+    assert infer_size_from_title("") is None
+    assert infer_size_from_title(None) is None
+    assert infer_size_from_title("Random Item No Size Info") is None
 
 
 def test_normalize_new_used():

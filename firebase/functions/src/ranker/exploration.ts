@@ -15,7 +15,7 @@ function createSeededRandom(seed: number): () => number {
 /**
  * Apply exploration to a ranked list of item IDs.
  * When explorationRate === 0, returns rankedIds unchanged (deterministic).
- * When rate > 0, uses "sample-from-top-2K" strategy: take top 2*limit from rankedIds,
+ * When rate > 0, uses "sample-from-top-2limit" strategy: take top 2*limit from rankedIds,
  * then randomly sample limit from that set (with optional seed for reproducibility).
  */
 export function applyExploration(

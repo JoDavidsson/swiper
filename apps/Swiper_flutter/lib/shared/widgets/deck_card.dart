@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/models/item.dart';
+import '../../l10n/app_strings.dart';
 
 /// Card displaying a product with premium image rendering.
 ///
@@ -23,7 +24,7 @@ class DeckCard extends StatelessWidget {
   final Item item;
   final double? elevation;
   final bool compact;
-  
+
   /// When true, uses premium image rendering (contain + blurred bg).
   /// When false, uses simple cover fit (legacy behavior).
   final bool usePremiumImage;
@@ -32,13 +33,13 @@ class DeckCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rawImageUrl = item.firstImageUrl;
     // Use optimized image URLs with appropriate widths
-    final cardImageUrl = rawImageUrl != null 
+    final cardImageUrl = rawImageUrl != null
         ? ApiClient.proxyImageUrl(rawImageUrl, width: ImageWidth.card)
         : null;
-    final bgImageUrl = rawImageUrl != null 
+    final bgImageUrl = rawImageUrl != null
         ? ApiClient.proxyImageUrl(rawImageUrl, width: ImageWidth.thumbnail)
         : null;
-    
+
     return Card(
       elevation: elevation,
       clipBehavior: Clip.antiAlias,
@@ -58,7 +59,7 @@ class DeckCard extends StatelessWidget {
                 : _LegacyImageLayer(imageUrl: cardImageUrl)
           else
             const _DeckImagePlaceholder(isError: true),
-          
+
           // Info overlay
           Positioned(
             left: 0,
@@ -69,7 +70,39 @@ class DeckCard extends StatelessWidget {
               compact: compact,
             ),
           ),
+          if (item.isFeatured)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: _FeaturedBadge(label: item.featuredLabel),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _FeaturedBadge extends StatelessWidget {
+  const _FeaturedBadge({this.label});
+
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings(Localizations.localeOf(context));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label ?? strings.featured,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -84,7 +117,7 @@ class _PremiumImageLayer extends StatelessWidget {
 
   /// URL for the foreground (contained) image - higher quality.
   final String imageUrl;
-  
+
   /// URL for the background (blurred) image - can be lower quality.
   final String backgroundUrl;
 
@@ -123,7 +156,8 @@ class _PremiumImageLayer extends StatelessWidget {
               fit: BoxFit.contain,
               memCacheWidth: 800, // Match card size
               placeholder: (_, __) => const SizedBox.shrink(),
-              errorWidget: (_, __, ___) => const _DeckImagePlaceholder(isError: true),
+              errorWidget: (_, __, ___) =>
+                  const _DeckImagePlaceholder(isError: true),
             ),
           ),
         ),
@@ -192,9 +226,9 @@ class _InfoOverlay extends StatelessWidget {
           Text(
             '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white70,
-              fontWeight: FontWeight.w500,
-            ),
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
           ),
           if (!compact && item.sizeClass != null) ...[
             const SizedBox(height: 8),
@@ -257,4 +291,3 @@ class _DeckImagePlaceholder extends StatelessWidget {
     );
   }
 }
-

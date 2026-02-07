@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/auth_provider.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
+import '../../data/locale_provider.dart';
+import '../../l10n/app_strings.dart';
 
 /// Decision Room screen - view and participate in a shared decision room.
 /// Viewing is public; participation (vote/comment) requires authentication.
@@ -39,10 +43,12 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final roomData = await client.getDecisionRoom(widget.roomId);
-      
+
       // Also load comments
       final commentsData = await client.getDecisionRoomComments(widget.roomId);
-      final comments = (commentsData['comments'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final comments =
+          (commentsData['comments'] as List?)?.cast<Map<String, dynamic>>() ??
+              [];
 
       if (mounted) {
         setState(() {
@@ -50,7 +56,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
           _comments = comments;
           _loading = false;
         });
-        
+
         // Track room view
         final tracker = ref.read(eventTrackerProvider);
         final authState = ref.read(authProvider);
@@ -60,13 +66,16 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
             'itemCount': (roomData['items'] as List?)?.length ?? 0,
             'participantCount': roomData['participantCount'] ?? 1,
           },
-          'user': authState.isAuthenticated ? {'userId': authState.user?.uid} : null,
+          'user': authState.isAuthenticated
+              ? {'userId': authState.user?.uid}
+              : null,
         });
       }
     } catch (e) {
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         setState(() {
-          _error = 'Failed to load decision room';
+          _error = strings.failedToLoadDecisionRoom;
           _loading = false;
         });
       }
@@ -91,7 +100,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         itemId: itemId,
         vote: vote,
       );
-      
+
       // Track vote event
       final tracker = ref.read(eventTrackerProvider);
       tracker.track('decisionroom_vote', {
@@ -99,13 +108,14 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         'item': {'itemId': itemId},
         'vote': {'direction': vote},
       });
-      
+
       // Reload room to get updated vote counts
       await _loadRoom();
     } catch (e) {
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to vote: $e')),
+          SnackBar(content: Text('${strings.failedToVote}: $e')),
         );
       }
     }
@@ -128,41 +138,43 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         roomId: widget.roomId,
         text: text,
       );
-      
+
       // Track comment event
       final tracker = ref.read(eventTrackerProvider);
       tracker.track('decisionroom_comment', {
         'room': {'roomId': widget.roomId},
       });
-      
+
       // Reload comments
       await _loadRoom();
     } catch (e) {
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add comment: $e')),
+          SnackBar(content: Text('${strings.failedToAddComment}: $e')),
         );
       }
     }
   }
 
   void _promptLogin() {
+    final strings = ref.read(appStringsProvider);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sign in required'),
-        content: const Text('You need to sign in to vote and comment in Decision Rooms.'),
+        title: Text(strings.signInRequired),
+        content: Text(strings.signInRequiredDecisionRoom),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(strings.cancel),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               context.go('/auth/login', extra: '/r/${widget.roomId}');
             },
-            child: const Text('Sign in'),
+            child: Text(strings.signIn),
           ),
         ],
       ),
@@ -170,37 +182,17 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
   }
 
   Future<void> _shareRoom() async {
+    final strings = ref.read(appStringsProvider);
     final baseUrl = Uri.base.origin;
     final shareUrl = '$baseUrl/r/${widget.roomId}';
-    
-    // For now, show a dialog with the URL
-    // In production, use share_plus package
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Share Decision Room'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Share this link with friends:'),
-            const SizedBox(height: AppTheme.spacingUnit),
-            SelectableText(
-              shareUrl,
-              style: TextStyle(color: AppTheme.primaryAction),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      ),
+    await Share.share(
+      '${strings.shareDecisionRoomPrefix} $shareUrl',
+      subject: strings.decisionRoomShareSubject,
     );
   }
 
   Future<void> _showSuggestDialog() async {
+    final strings = ref.read(appStringsProvider);
     final authState = ref.read(authProvider);
     if (!authState.isAuthenticated) {
       _promptLogin();
@@ -208,11 +200,11 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
     }
 
     final urlController = TextEditingController();
-    
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Suggest alternative'),
+        title: Text(strings.suggestAlternative),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -232,11 +224,11 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(strings.cancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, urlController.text.trim()),
-            child: const Text('Suggest'),
+            child: Text(strings.suggestAlternative),
           ),
         ],
       ),
@@ -258,7 +250,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         roomId: widget.roomId,
         url: url,
       );
-      
+
       // Track suggest event
       final tracker = ref.read(eventTrackerProvider);
       tracker.track('suggest_alternative', {
@@ -266,17 +258,19 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         'item': {'itemId': result['itemId']},
         'ext': {'suggestedUrl': url},
       });
-      
+
       await _loadRoom();
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Alternative suggested!')),
+          SnackBar(content: Text(strings.suggested)),
         );
       }
     } catch (e) {
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to suggest: $e')),
+          SnackBar(content: Text('${strings.failedToSuggest}: $e')),
         );
       }
     }
@@ -284,13 +278,14 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = ref.watch(appStringsProvider);
     final authState = ref.watch(authProvider);
 
     if (_loading) {
       return Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
-          title: const Text('Decision Room'),
+          title: Text(strings.decisionRoomTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
@@ -302,7 +297,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
       return Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
-          title: const Text('Decision Room'),
+          title: Text(strings.decisionRoomTitle),
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
@@ -312,11 +307,12 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
             children: [
               Icon(Icons.error_outline, size: 64, color: AppTheme.textCaption),
               const SizedBox(height: AppTheme.spacingUnit),
-              Text(_error ?? 'Room not found', style: Theme.of(context).textTheme.bodyLarge),
+              Text(_error ?? strings.roomNotFound,
+                  style: Theme.of(context).textTheme.bodyLarge),
               const SizedBox(height: AppTheme.spacingUnit),
               ElevatedButton(
                 onPressed: _loadRoom,
-                child: const Text('Retry'),
+                child: Text(strings.retry),
               ),
             ],
           ),
@@ -326,8 +322,10 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
 
     final title = _roomData!['title'] as String? ?? 'Decision Room';
     final status = _roomData!['status'] as String? ?? 'open';
-    final items = (_roomData!['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final finalistIds = (_roomData!['finalistIds'] as List?)?.cast<String>() ?? [];
+    final items =
+        (_roomData!['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final finalistIds =
+        (_roomData!['finalistIds'] as List?)?.cast<String>() ?? [];
     final creatorUserId = _roomData!['creatorUserId'] as String?;
     final isCreator = authState.user?.uid == creatorUserId;
 
@@ -340,19 +338,20 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         actions: [
           if (!authState.isAuthenticated)
             TextButton(
-              onPressed: () => context.go('/auth/login', extra: '/r/${widget.roomId}'),
-              child: const Text('Sign in'),
+              onPressed: () =>
+                  context.go('/auth/login', extra: '/r/${widget.roomId}'),
+              child: Text(strings.signIn),
             ),
           // Suggest alternative button
           if (status == 'open')
             IconButton(
               icon: const Icon(Icons.add_link),
-              tooltip: 'Suggest alternative',
+              tooltip: strings.suggestAlternative,
               onPressed: () => _showSuggestDialog(),
             ),
           IconButton(
             icon: const Icon(Icons.share),
-            tooltip: 'Share room',
+            tooltip: strings.shareRoom,
             onPressed: () => _shareRoom(),
           ),
         ],
@@ -366,8 +365,9 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
               padding: const EdgeInsets.all(AppTheme.spacingUnit),
               color: AppTheme.primaryAction.withOpacity(0.1),
               child: Text(
-                'Final 2 selected! Vote for your favorite.',
-                style: TextStyle(color: AppTheme.primaryAction, fontWeight: FontWeight.w500),
+                strings.final2Selected,
+                style: TextStyle(
+                    color: AppTheme.primaryAction, fontWeight: FontWeight.w500),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -430,10 +430,11 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
                   padding: const EdgeInsets.all(AppTheme.spacingUnit),
                   child: Row(
                     children: [
-                      Icon(Icons.chat_bubble_outline, size: 20, color: AppTheme.textSecondary),
+                      Icon(Icons.chat_bubble_outline,
+                          size: 20, color: AppTheme.textSecondary),
                       const SizedBox(width: 8),
                       Text(
-                        'Comments (${_comments.length})',
+                        strings.commentsCount(_comments.length),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
@@ -450,14 +451,17 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
                       itemBuilder: (context, index) {
                         final comment = _comments[index];
                         final text = comment['text'] as String? ?? '';
-                        final displayName = comment['displayName'] as String? ?? 'Anonymous';
+                        final displayName =
+                            comment['displayName'] as String? ?? 'Anonymous';
                         return ListTile(
                           dense: true,
                           leading: CircleAvatar(
                             radius: 16,
                             child: Text(displayName[0].toUpperCase()),
                           ),
-                          title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          title: Text(displayName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w500)),
                           subtitle: Text(text),
                         );
                       },
@@ -483,20 +487,21 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
           ? FloatingActionButton.extended(
               onPressed: () => _showFinalistsDialog(items),
               icon: const Icon(Icons.emoji_events),
-              label: const Text('Pick finalists'),
+              label: Text(strings.pickFinalists),
             )
           : null,
     );
   }
 
   Future<void> _showFinalistsDialog(List<Map<String, dynamic>> items) async {
+    final strings = ref.read(appStringsProvider);
     final selected = <String>[];
-    
+
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Pick 2 finalists'),
+          title: Text(strings.pick2Finalists),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView.builder(
@@ -528,7 +533,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+              child: Text(strings.cancel),
             ),
             ElevatedButton(
               onPressed: selected.length == 2
@@ -537,7 +542,7 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
                       await _setFinalists(selected);
                     }
                   : null,
-              child: const Text('Confirm'),
+              child: Text(strings.confirm),
             ),
           ],
         ),
@@ -556,19 +561,20 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
         roomId: widget.roomId,
         finalistIds: finalistIds,
       );
-      
+
       // Track finalists set event
       final tracker = ref.read(eventTrackerProvider);
       tracker.track('finalists_set', {
         'room': {'roomId': widget.roomId},
         'finalists': finalistIds.map((id) => {'itemId': id}).toList(),
       });
-      
+
       await _loadRoom();
     } catch (e) {
       if (mounted) {
+        final strings = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to set finalists: $e')),
+          SnackBar(content: Text('${strings.failedToSetFinalists}: $e')),
         );
       }
     }
@@ -618,10 +624,16 @@ class _ItemCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (imageUrl.isNotEmpty)
-                  Image.network(
-                    ApiClient.proxyImageUrl(imageUrl),
+                  CachedNetworkImage(
+                    imageUrl: ApiClient.proxyImageUrl(imageUrl,
+                        width: ImageWidth.card),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    placeholder: (_, __) => Container(
+                      color: AppTheme.background,
+                      child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                    errorWidget: (_, __, ___) => Container(
                       color: AppTheme.background,
                       child: const Icon(Icons.image_not_supported),
                     ),
@@ -639,27 +651,37 @@ class _ItemCard extends StatelessWidget {
                     children: [
                       if (isFinalist)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryAction,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            'Finalist',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                          child: Text(
+                            AppStrings(Localizations.localeOf(context))
+                                .finalist,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600),
                           ),
                         ),
                       if (isSuggested) ...[
                         if (isFinalist) const SizedBox(width: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.purple,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            'Suggested',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                          child: Text(
+                            AppStrings(Localizations.localeOf(context))
+                                .suggested,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -677,7 +699,10 @@ class _ItemCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -696,9 +721,12 @@ class _ItemCard extends StatelessWidget {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.thumb_up, size: 16, color: AppTheme.positiveLike),
+                              Icon(Icons.thumb_up,
+                                  size: 16, color: AppTheme.positiveLike),
                               const SizedBox(width: 4),
-                              Text('$voteCountUp', style: TextStyle(color: AppTheme.positiveLike)),
+                              Text('$voteCountUp',
+                                  style:
+                                      TextStyle(color: AppTheme.positiveLike)),
                             ],
                           ),
                         ),
@@ -717,9 +745,12 @@ class _ItemCard extends StatelessWidget {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.thumb_down, size: 16, color: AppTheme.negativeDislike),
+                              Icon(Icons.thumb_down,
+                                  size: 16, color: AppTheme.negativeDislike),
                               const SizedBox(width: 4),
-                              Text('$voteCountDown', style: TextStyle(color: AppTheme.negativeDislike)),
+                              Text('$voteCountDown',
+                                  style: TextStyle(
+                                      color: AppTheme.negativeDislike)),
                             ],
                           ),
                         ),
@@ -766,24 +797,27 @@ class _CommentInputState extends State<_CommentInput> {
       widget.onTapWhenDisabled?.call();
       return;
     }
-    
+
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    
+
     widget.onSubmit(text);
     _controller.clear();
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings(Localizations.localeOf(context));
     return Row(
       children: [
         Expanded(
           child: TextField(
             controller: _controller,
             decoration: InputDecoration(
-              hintText: widget.enabled ? 'Add a comment...' : 'Sign in to comment',
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              hintText:
+                  widget.enabled ? strings.addComment : strings.signInToComment,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppTheme.radiusChip),
               ),

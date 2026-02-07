@@ -4,11 +4,20 @@ The recommendations engine ranks items for the deck using **personal** signals (
 
 ---
 
+## Phase 1 Serving Upgrade (2026-02-07)
+
+- **Multi-queue retrieval** in deck API: candidates are assembled from promoted recency, catalog recency, preference-match, persona-similar IDs, long-tail recency, and serendipity queues.
+- **Quota merge**: each queue gets a target share of the candidate set (adaptive for cold-start vs warm sessions), then remaining slots are backfilled by priority.
+- **Larger rank window**: rankers now score a wide window (`rankWindow`) before final slicing, so exploration can replace from a meaningful pool.
+- **Request-level observability**: deck responses include `rank.requestId`, `rank.candidateCount`, `rank.rankWindow`, and `rank.retrievalQueues` for offline eval and debugging.
+
+---
+
 ## Personal vs persona-based ranking
 
 | Mode | Description | Data source |
 |------|-------------|-------------|
-| **Personal** | Rank by this session’s preference weights (onboarding + swipe-right), likes, and (later) dwell/impression. | anonSessions doc, preferenceWeights subcollection, likes, events_v1 (session-scoped). |
+| **Personal** | Rank by this session’s preference weights (onboarding + swipe-right). Likes and dwell/impression are currently analytics inputs and future ranking features. | anonSessions doc, preferenceWeights subcollection, events_v1 (session-scoped). |
 | **Persona-based** | Rank by behaviour of “similar” sessions (e.g. similar preference weights or similar liked items). | Precomputed aggregates: “item scores among similar sessions”, “popular among similar”. |
 
 Persona aggregation is a **separate process** (scheduled function or pipeline) that precomputes `PersonaSignals` per “persona bucket” and writes to e.g. `personaSignals/{bucketId}`. The deck API looks up the bucket for the current session and passes the stored `PersonaSignals` into the ranker.
@@ -21,7 +30,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Public types**:
 
-- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`.
+- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`, `brand`, `deliveryComplexity`, `newUsed`, `ecoTags`, `smallSpaceFriendly`, `modular`, `priceAmount` (bucketed).
 - **SessionContext** – `{ preferenceWeights: Record<string, number> }`.
 - **PersonaSignals** – optional `itemScoresFromSimilarSessions` (itemId → score), `popularAmongSimilar` (ordered itemIds).
 - **RankOptions** – `{ limit: number; algorithmVersion?: string }`.
@@ -30,9 +39,9 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Implementations**:
 
-- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` (styleTags, material, colorFamily, sizeClass), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. Ties preserve input order (recency order from deck candidates). algorithmVersion: `preference_weights_v1`.
+- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` across style/material/color/size plus richer furniture signals (brand, condition, delivery, eco tags, modular/small-space features, price bucket), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. algorithmVersion: `preference_weights_v1`.
 - **PersonalPlusPersonaRanker** – Blends personal score and persona score (configurable alpha). Personal scores use the same normalization; persona scores are normalized to the max persona score in the candidate set for scale alignment. When the session has no personal weights, alpha falls back to 0 (persona-only); when an item has no personal signals, alpha is capped to favor persona. algorithmVersion: `personal_plus_persona_v1`. Falls back to personal-only when `personaSignals` is missing or empty.
-- **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, replaces roughly `rate × limit` positions by sampling from the top 2×limit pool (stochastic rounding), with optional `seed` for reproducibility.
+- **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, replaces roughly `rate × limit` positions by sampling from the top `2×limit` region of the ranked window (stochastic rounding), with optional `seed` for reproducibility.
 
 ---
 
@@ -40,11 +49,11 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 To prevent the ranker from over-exploiting the same top items (filter bubble), **exploration** is applied after ranking.
 
-- **Strategy**: Sample-from-top-2K (take top 2×limit by score). Replace roughly `rate × limit` positions in the top list with items sampled from the pool. Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
-- **Config**: `RANKER_EXPLORATION_RATE` (env, default 0), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
+- **Strategy**: Sample-from-top-2limit (take top 2×limit by score from the ranked window). Replace roughly `rate × limit` positions in the top list with items sampled from that pool. Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
+- **Config**: `RANKER_EXPLORATION_RATE` (env, default `0.08` in deck API), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
 - **Tests**: With rate 0, output equals ranker order; with fixed seed and rate &gt; 0, output is reproducible.
 
-**Exposure bias:** Items that rank higher get more exposure, hence more right-swipes, hence higher weights. We mitigate with exploration (sample-from-top-2K) and optional diversity; long-term consider exposure-aware or causal approaches.
+**Exposure bias:** Items that rank higher get more exposure, hence more right-swipes, hence higher weights. We mitigate with exploration (sample-from-top-2limit), queue-based retrieval, and optional diversity; long-term consider exposure-aware or causal approaches.
 
 ---
 
@@ -52,7 +61,7 @@ To prevent the ranker from over-exploiting the same top items (filter bubble), *
 
 Use historical data to evaluate a ranker without affecting live traffic.
 
-- **Data**: events_v1, likes, swipes (session-scoped feedback: deck_response, swipe_right, like_add, etc.).
+- **Data**: events_v1, likes, swipes (session-scoped feedback: deck_response, swipe_right/left, like_add, detail/outbound signals, etc.).
 - **Primary metric and required fields**: See [docs/OFFLINE_EVAL.md](OFFLINE_EVAL.md). Primary metric: **Liked-in-top-K** (per session): fraction of a session’s liked item IDs that appeared in the union of served slates; average over sessions with at least one like. Required: deck_response with rank.itemIds, rank.variant, rank.variantBucket; likes (Firestore or like_add).
 
 ---
@@ -69,13 +78,13 @@ When comparing algorithms (e.g. personal-only vs personal+persona, or different 
 - **Liked-in-top-K** (primary offline metric): see [OFFLINE_EVAL.md](OFFLINE_EVAL.md).
 - **Diversity**: e.g. variety of styleTags/material in top-K (optional). **Optional implementation:** Add a diversity constraint or MMR-style re-ranking so top-K is not dominated by one styleTag/material (e.g. max N items per styleTag in top-K, or maximal marginal relevance re-rank after PreferenceWeightsRanker).
 
-**Optional – weight decay / normalization:** preferenceWeights grow unbounded on swipe_right; long sessions can over-dominate a few tags. Optional: periodic weight decay (e.g. multiply by 0.99 per day) or normalization of preferenceWeights to avoid runaway dominance.
+**Weight updates:** swipe_right increments preference weights; swipe_left applies a smaller negative delta so the model learns both attraction and avoidance. Consider periodic decay/normalization to avoid runaway dominance over long sessions.
 
 **Optional – explainability:** Log or return score breakdown (e.g. top 3 attribute contributions) for the top item in deck response (e.g. ext.scoreBreakdown) for debugging and support.
 
 **Required fields in events_v1 for offline eval**: sessionId, deck_response with rank.rankerRunId, rank.algorithmVersion, rank.variant, rank.variantBucket, rank.itemIds; like/swipe events.
 
-**Item cold start:** Retrieval is by `lastUpdatedAt` desc; new/updated items surface first. New items have no swipe history, so persona does not help them. They rely on content-based scoring (preferenceWeights) and optional recency boost. Consider a “default” or global persona bucket for new items when persona is enabled.
+**Item cold start:** Retrieval now mixes recency queues with persona and preference-match queues. New items still rely on content-based features and recency lanes, while cold users get stronger allocation toward persona + promoted/catalog recency until personal weights accumulate.
 
 ---
 
@@ -131,9 +140,21 @@ From the repo root, run `./scripts/run_stress_test.sh` to generate a larger synt
 
 ## Deck API integration
 
-The deck API (`GET /api/deck`) fetches preferenceWeights from the subcollection `anonSessions/{sessionId}/preferenceWeights/weights` (swipe-learned weights). It builds candidate items (exclude seen, apply filters), calls `PreferenceWeightsRanker.rank(sessionContext, candidates, { limit })`, applies `applyExploration` with configurable rate and seed, assigns A/B variant, and returns items, rank (rankerRunId, algorithmVersion, variant, variantBucket), and itemScores. Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (when set) raise the Firestore fetch and candidate caps for stress testing. When persona-based ranking is enabled, the API will fetch precomputed PersonaSignals and call PersonalPlusPersonaRanker instead (or in addition, via variant).
+The deck API (`GET /api/items/deck`) fetches preferenceWeights from `anonSessions/{sessionId}/preferenceWeights/weights`, assembles a **multi-queue** candidate set (promoted recency, catalog recency, preference-match, persona-similar IDs, long-tail, serendipity), excludes seen items, applies filters/budget, and merges queues with adaptive quotas.
 
-**Persona cold sessions:** When a session has no preferenceWeights (and no preferences from onboarding), the session cannot be assigned a persona bucket from preference/profile. Use either: (A) a **default** or **global** persona bucket (e.g. `bucketId = "default"` with PersonaSignals aggregated across all sessions), or (B) skip persona for that session and use PreferenceWeightsRanker only. The persona aggregation pipeline should write `personaSignals/default` (or similar) so the deck can fall back when the session’s bucket would otherwise be empty.
+The ranker is then run with a **rank window** (`rankWindow`, larger than response limit), after which `applyExploration` injects controlled exploration into the served top-K. Response includes `items`, `itemScores`, and `rank` metadata:
+
+- `requestId`
+- `rankerRunId`, `algorithmVersion`
+- `candidateSetId`, `candidateCount`, `rankWindow`, `retrievalQueues`
+- `itemIds` (served slate)
+- `variant`, `variantBucket`, `explorationPolicy`
+
+Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` raise fetch and candidate caps for stress testing. When persona signals are available, deck uses `PersonalPlusPersonaRanker`; otherwise it uses `PreferenceWeightsRanker`.
+
+**Persona cold sessions (current):** Persona ranking is only used when `onboardingPicks.pickHash` exists and `personaSignals/{pickHash}` has data; otherwise deck falls back to `PreferenceWeightsRanker` (personal-only).
+
+**Persona cold sessions (planned improvement):** Add a **default/global** persona bucket (e.g. `personaSignals/default`) so users without a populated `pickHash` can still receive persona-based retrieval/ranking.
 
 ---
 

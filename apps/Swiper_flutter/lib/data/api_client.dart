@@ -8,11 +8,32 @@ class DeckRankContext {
   const DeckRankContext({
     required this.rankerRunId,
     required this.algorithmVersion,
+    this.requestId,
+    this.candidateSetId,
+    this.candidateCount,
+    this.rankWindow,
+    this.retrievalQueues = const [],
+    this.itemIds = const [],
+    this.explorationPolicy,
     this.variant,
     this.variantBucket,
   });
   final String rankerRunId;
   final String algorithmVersion;
+  /// Request identifier for this deck response.
+  final String? requestId;
+  /// Candidate set identifier for offline eval/debugging.
+  final String? candidateSetId;
+  /// Number of candidates kept before ranking.
+  final int? candidateCount;
+  /// Number of items scored before exploration/slicing.
+  final int? rankWindow;
+  /// Retrieval queues that contributed candidates.
+  final List<String> retrievalQueues;
+  /// Served item IDs for this deck response (slate used in eval).
+  final List<String> itemIds;
+  /// Exploration policy applied by server (if any).
+  final String? explorationPolicy;
   /// A/B variant label (e.g. personal_only, personal_only_exploration_5).
   final String? variant;
   /// A/B variant bucket (0–99) for segmentation.
@@ -165,19 +186,43 @@ class ApiClient {
   }
 
   /// Get deck items for session. Backend returns items, rank (rankerRunId, algorithmVersion), and optional itemScores.
-  Future<DeckResponse> getDeck({required String sessionId, Map<String, dynamic>? filters, int limit = 10}) async {
+  Future<DeckResponse> getDeck({
+    required String sessionId,
+    Map<String, dynamic>? filters,
+    int limit = 10,
+    String? requestId,
+  }) async {
     final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
       if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),
       'limit': limit,
+      if (requestId != null && requestId.isNotEmpty) 'requestId': requestId,
     });
     final data = r.data ?? {};
     final items = ApiClient.itemsFromDeckResponse(data);
     final rankMap = data['rank'] as Map<String, dynamic>?;
+    final topLevelRequestId = data['requestId'] as String?;
     final rank = rankMap != null
         ? DeckRankContext(
             rankerRunId: rankMap['rankerRunId'] as String? ?? '',
             algorithmVersion: rankMap['algorithmVersion'] as String? ?? '',
+            requestId: (rankMap['requestId'] as String?) ?? topLevelRequestId,
+            candidateSetId: rankMap['candidateSetId'] as String?,
+            candidateCount: rankMap['candidateCount'] is int
+                ? rankMap['candidateCount'] as int
+                : (rankMap['candidateCount'] is num ? (rankMap['candidateCount'] as num).toInt() : null),
+            rankWindow: rankMap['rankWindow'] is int
+                ? rankMap['rankWindow'] as int
+                : (rankMap['rankWindow'] is num ? (rankMap['rankWindow'] as num).toInt() : null),
+            retrievalQueues: (rankMap['retrievalQueues'] as List? ?? const [])
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList(),
+            itemIds: (rankMap['itemIds'] as List? ?? const [])
+                .map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList(),
+            explorationPolicy: rankMap['explorationPolicy'] as String?,
             variant: rankMap['variant'] as String?,
             variantBucket: rankMap['variantBucket'] is int
                 ? rankMap['variantBucket'] as int
@@ -351,6 +396,15 @@ class ApiClient {
 
   Future<Map<String, dynamic>> adminTriggerRun(String sourceId) async {
     final r = await _dio.post<Map<String, dynamic>>('/api/admin/run', data: {'sourceId': sourceId});
+    return r.data ?? {};
+  }
+
+  /// Trigger batch run for multiple sources in parallel.
+  Future<Map<String, dynamic>> adminTriggerBatchRun(List<String> sourceIds) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/admin/run-batch',
+      data: {'sourceIds': sourceIds},
+    );
     return r.data ?? {};
   }
 

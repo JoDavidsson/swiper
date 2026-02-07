@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../data/locale_provider.dart';
 import '../../shared/widgets/app_shell.dart';
@@ -12,7 +13,8 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final strings = ref.watch(appStringsProvider);
     final locale = ref.watch(localeProvider);
-    final currentLabel = locale.languageCode == 'sv' ? strings.swedish : strings.english;
+    final currentLabel =
+        locale.languageCode == 'sv' ? strings.swedish : strings.english;
     return AppShell(
       title: strings.profile,
       body: ListView(
@@ -20,7 +22,8 @@ class ProfileScreen extends ConsumerWidget {
         children: [
           ListTile(
             title: Text(strings.language),
-            subtitle: Text('${strings.swedish} / ${strings.english} – $currentLabel'),
+            subtitle:
+                Text('${strings.swedish} / ${strings.english} – $currentLabel'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showLanguageSheet(context, ref),
           ),
@@ -30,12 +33,13 @@ class ProfileScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/profile/data-privacy'),
           ),
-          ListTile(
-            title: Text(strings.editPreferences),
-            subtitle: Text(strings.reRunOnboarding),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/onboarding'),
-          ),
+          if (AppConstants.enableStandaloneOnboarding)
+            ListTile(
+              title: Text(strings.editPreferences),
+              subtitle: Text(strings.reRunOnboarding),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/onboarding'),
+            ),
         ],
       ),
     );
