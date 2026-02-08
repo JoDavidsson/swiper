@@ -130,6 +130,12 @@ export FIRESTORE_EMULATOR_HOST=localhost:8180
 2. Verify `/go/:itemId` redirect and UTM params.
 3. Verify admin login and QA/stats endpoints.
 
+## Golden Card v2 observability
+
+- Golden Card v2 rollout monitoring, threshold alerts, and triage steps are documented in:
+  - [RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md](RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md)
+- Before increasing rollout cohorts, confirm the admin dashboard `goldenV2` panels in `/admin` are healthy and no alert state is triggered.
+
 ## Post-deploy smoke test (first production deploy)
 
 Run through this checklist after deploying to confirm the app works end-to-end:

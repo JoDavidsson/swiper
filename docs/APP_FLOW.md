@@ -84,6 +84,37 @@ App Launch
 └─────────────────────┘
 ```
 
+### 2.1b Golden Card v2 Flow (Shipped, Feature-Flagged)
+
+```
+App Launch
+    │
+    ▼
+┌─────────────────────┐
+│  Check session ID   │
+│  (Hive local store) │
+└─────────────────────┘
+    │
+    ▼
+┌────────────────────────────────────┐
+│ Check onboardingV2 completion flag │
+└────────────────────────────────────┘
+    │
+    ├── Should prompt + in rollout cohort ──▶ Golden Card v2 flow
+    │                     1) Intro
+    │                     2) Room vibes (pick 2)
+    │                     3) Sofa vibes (pick 2)
+    │                     4) Constraints
+    │                     5) Reaffirmation summary
+    │
+    └── Completed / skipped / out of cohort ──▶ Deck Screen
+                       GET /api/items/deck
+```
+
+Golden Card v2 reference docs:
+- `docs/GOLDEN_CARD_V2_UI_UX_SPEC.md`
+- `docs/GOLDEN_CARD_V2_EXECUTION_ROADMAP.md`
+
 ### 2.2 Core Swipe Flow
 
 ```

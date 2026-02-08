@@ -21,12 +21,13 @@ import {
   adminSourcesCreateWithDiscovery,
 } from "./admin_sources";
 import { adminRunsGet, adminRunGet } from "./admin_runs";
-import { adminRunTriggerPost, adminRunBatchPost, adminReExtractImagesPost, adminImageHealthGet, adminExplainGet, adminProxyToSupplyEngine } from "./admin_run_trigger";
+import { adminRunTriggerPost, adminRunBatchPost, adminReExtractImagesPost, adminImageHealthGet, adminExplainGet, adminProxyToSupplyEngine, adminStopCrawlPost } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
 import { adminItemsGet } from "./admin_items";
 import { requireAdminAuth } from "./admin_auth";
 import { onboardingCuratedSofasGet } from "./onboarding_curated";
 import { onboardingPicksPost, onboardingPicksGet } from "./onboarding_picks";
+import { onboardingV2Post, onboardingV2Get } from "./onboarding_v2";
 import { adminCuratedSofasGet, adminCuratedSofasPost, adminCuratedSofasDelete, adminCuratedSofasReorder } from "./admin_curated";
 import { adminValidateImagesPost, adminCreativeHealthStatsGet } from "./admin_image_validation";
 import { imageProxyGet, imageMetaGet } from "./image_proxy";
@@ -252,6 +253,10 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
       await adminRunBatchPost(req, res);
       return;
     }
+    if (method === "POST" && path === "admin/stop-crawl") {
+      await adminStopCrawlPost(req, res);
+      return;
+    }
     if (method === "POST" && path === "admin/re-extract-images") {
       await adminReExtractImagesPost(req, res);
       return;
@@ -376,6 +381,14 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "GET" && path === "onboarding/picks") {
       await onboardingPicksGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "onboarding/v2") {
+      await onboardingV2Post(req, res);
+      return;
+    }
+    if (method === "GET" && path === "onboarding/v2") {
+      await onboardingV2Get(req, res);
       return;
     }
 

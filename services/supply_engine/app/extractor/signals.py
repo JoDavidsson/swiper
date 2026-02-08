@@ -132,6 +132,34 @@ def extract_page_signals(html: str, *, final_url: str) -> PageSignals:
                 "data": data,
             })
 
+    # ── Next.js App Router (RSC streaming) ──
+    # Next.js 14/15 App Router streams data via self.__next_f.push([1,"..."])
+    # inside regular <script> tags.  JSON-LD and product data are embedded
+    # as escaped strings in these payloads.
+    _RSC_PUSH_RE = re.compile(
+        r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)',
+        re.DOTALL,
+    )
+    rsc_payloads_found = False
+    for script in soup.find_all("script"):
+        txt = script.string or ""
+        if "self.__next_f.push" not in txt:
+            continue
+        for m in _RSC_PUSH_RE.finditer(txt):
+            raw = m.group(1)
+            # Un-escape the JSON string (it's double-escaped)
+            try:
+                decoded: str = json.loads(f'"{raw}"')
+            except Exception:
+                continue
+            decoded_stripped = decoded.strip()
+            # Check if this chunk is a standalone JSON-LD object
+            if decoded_stripped.startswith("{") and '"@type"' in decoded_stripped:
+                obj = _safe_json_loads(decoded_stripped)
+                if isinstance(obj, dict) and obj.get("@type"):
+                    jsonld_blocks.append(obj)
+                    rsc_payloads_found = True
+
     # Generic: large script tags that are valid JSON and contain product-ish keys
     for script in soup.find_all("script"):
         if len(embedded) >= 8:

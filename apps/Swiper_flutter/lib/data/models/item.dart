@@ -59,6 +59,8 @@ class Item {
     this.isFeatured = false,
     this.campaignId,
     this.featuredLabel,
+    this.subCategory,
+    this.roomTypes = const [],
   });
 
   final String id;
@@ -92,6 +94,10 @@ class Item {
   final bool isFeatured;
   final String? campaignId;
   final String? featuredLabel;
+
+  // Classification sub-category and room types
+  final String? subCategory;
+  final List<String> roomTypes;
 
   String? get firstImageUrl => images.isNotEmpty ? images.first.url : null;
 
@@ -153,6 +159,8 @@ class Item {
       campaignId: campaignId,
       featuredLabel:
           _string(json['featuredLabel']) ?? _string(json['featured_label']),
+      subCategory: _string(json['subCategory']),
+      roomTypes: _stringList(json['roomTypes']),
     );
   }
 
@@ -183,6 +191,8 @@ class Item {
       if (isFeatured) 'isFeatured': isFeatured,
       if (campaignId != null) 'campaignId': campaignId,
       if (featuredLabel != null) 'featuredLabel': featuredLabel,
+      if (subCategory != null) 'subCategory': subCategory,
+      if (roomTypes.isNotEmpty) 'roomTypes': roomTypes,
     };
   }
 }

@@ -6,17 +6,35 @@ const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_PROXY_MAX_BYTES = 12 * 1024 * 1024; // 12MB
 const DEFAULT_META_MAX_BYTES = 1024 * 1024; // 1MB prefix for metadata
 const DEFAULT_ALLOWED_DOMAINS = [
-  "media.rum21.se",
+  // --- CDN / media domains ---
   "images.unsplash.com",
-  "www.chilli.se",
   "cdn.shopify.com",
   "cdn.bolia.com",
-  "www.ikea.com",
-  "assets.ikea.com",
-  "www.mio.se",
-  "images.mio.se",
-  "www.mcdn.net",
-  "mcdn.net",
+  "images.prismic.io",           // Prismic CMS (used by Rum21/RoyalDesign)
+  "noga.cdn-norce.tech",         // Norce commerce CDN (Nordic retailers)
+  "picsum.photos",               // Placeholder images (sample data)
+  // --- Retailer domains (wildcard *.domain covers subdomains) ---
+  "*.ikea.com",                  // www.ikea.com, assets.ikea.com
+  "*.mio.se",                    // www.mio.se, images.mio.se
+  "*.chilli.se",
+  "*.rum21.se",                  // media.rum21.se
+  "*.royaldesign.se",            // api-prod.royaldesign.se
+  "*.ellosgroup.com",            // assets.ellosgroup.com (Ellos, Jotex)
+  "*.jotex.se",
+  "*.lannamobler.se",            // cdn.lannamobler.se
+  "*.emhome.se",
+  "*.furniturebox.se",
+  "*.svenskahem.se",
+  "*.trademax.se",
+  "*.soffadirekt.se",
+  "*.sweef.se",
+  "*.sleepo.se",
+  "*.homeroom.se",
+  "*.newport.se",
+  "*.nordiskagalleriet.se",
+  "*.svenssons.se",
+  "*.ilva.se",
+  "*.mcdn.net",                  // mcdn.net, www.mcdn.net
 ];
 
 class ProxyError extends Error {

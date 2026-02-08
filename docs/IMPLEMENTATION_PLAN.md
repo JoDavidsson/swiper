@@ -1,15 +1,15 @@
 # Swiper – Implementation Plan
 
-> **Last updated:** 2026-02-07  
+> **Last updated:** 2026-02-08  
 > Step-by-step build sequence with dependencies and milestones.
 
 ---
 
 ## Current Status
 
-**Phase:** Phase 12 (Featured Distribution) In Progress  
-**Next Phase:** Continue Phase 12 serving/ranking gates, then Phase 13  
-**Last Milestone:** Campaign creation and management APIs are live (`/api/retailer/campaigns*`)
+**Phase:** Phase 12 (Featured Distribution) In Progress + Phase 12a (Golden Card v2) Implemented (controlled rollout validation in progress)  
+**Next Phase:** Complete controlled rollout sequencing gates for Golden Card v2 on top of shipped implementation while continuing Phase 12 serving/ranking delivery  
+**Last Milestone:** Golden Card v2 end-to-end implementation completed (Flutter + API + deck + schema + instrumentation + QA sweep), with production telemetry gates pending
 
 ---
 
@@ -257,13 +257,15 @@
 | 11f.6 | Item-level `extractionMeta` with missing field tracking | ✅ Done |
 | 11f.7 | Low-quality stale-item refetch queue helper + optional pass | ✅ Done |
 | 11f.8 | Daily quality telemetry (`descriptionRate`, `dimensionsRate`, `materialRate`, `browserFetchCount`) | ✅ Done |
+| 11f.9 | Playwright page scrolling for lazy-loaded / infinite-scroll SPA category pages | ✅ Done |
+| 11f.10 | Fix 6 failing sources: switch strategy from sitemap to crawl + enable browser fallback (Sleepo, Nordiska Galleriet, Homeroom, SoffaDirekt, Svenssons, Newport) | ✅ Done |
 
 ### Phase 12: Featured Distribution
 
 | Step | Task | Priority | Dependencies | Status |
 |------|------|----------|--------------|--------|
 | 12.1 | Campaign creation API | High | 11.3 | ✅ Done |
-| 12.2 | Segment targeting (style + budget + size + geo) | High | 11.2 | ⏳ Pending |
+| 12.2 | Segment targeting (style + budget + size + geo) | High | 11.2 | ✅ Done |
 | 12.3 | Product set selection (manual + recommended) | High | 12.1 | ⏳ Pending |
 | 12.4 | Budget + schedule management | High | 12.1 | ⏳ Pending |
 | 12.5 | Featured serving algorithm | High | 12.1–12.4 | ⏳ Pending |
@@ -273,6 +275,23 @@
 | 12.9 | "Featured" label in deck UI | High | 12.5 | ⏳ Pending |
 | 12.10 | Campaign pacing (even daily spend) | Medium | 12.4 | ⏳ Pending |
 | 12.11 | Featured impression logging | High | 12.5 | ⏳ Pending |
+
+### Phase 12a: Golden Card v2 - Style Direction Rehaul
+
+| Step | Task | Priority | Dependencies | Status |
+|------|------|----------|--------------|--------|
+| 12a.1 | UX concept signoff: hybrid 4-step flow (scene -> sofa vibe -> constraints -> reaffirmation) | High | — | ✅ Done |
+| 12a.2 | Curate diverse scene/vibe asset sets with dedupe rules | High | 12a.1 | ✅ Done |
+| 12a.3 | New onboarding API contract (`/api/onboarding/v2`) | High | 12a.1 | ✅ Done |
+| 12a.4 | `onboardingProfiles` schema + index plan | High | 12a.3 | ✅ Done |
+| 12a.5 | Deck cold-start contract update (`rank.onboardingProfile`) | High | 12a.3 | ✅ Done |
+| 12a.6 | Diversity constraints for first slates (family dedupe + style distance) | High | 12a.5 | ✅ Done |
+| 12a.7 | Flutter multi-step Golden flow route + state machine | High | 12a.1 | ✅ Done |
+| 12a.8 | EN/SV copy migration to `app_strings` for all new labels/buttons | Medium | 12a.7 | ✅ Done |
+| 12a.9 | Reaffirmation summary UI with adjust/start-over controls | High | 12a.5, 12a.7 | ✅ Done |
+| 12a.10 | End-to-end event instrumentation (`gold_v2_*`) | High | 12a.3, 12a.7 | ✅ Done |
+| 12a.11 | QA sweep (accessibility, perf, integration, rollout guardrails) | High | 12a.2-12a.10 | ✅ Done |
+| 12a.12 | Progressive rollout (10% -> 50% -> 100%) with kill switch | High | 12a.11 | ⏳ In Progress (controls + kill switch shipped; live cohort expansion gated by telemetry validation) |
 
 ### Phase 13: Retailer Console v1
 
@@ -466,6 +485,8 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 | 2026-02-07 | Image extraction hardening as Week 0 blocker | Without working images, app is unusable; pulled forward from enrichment epic |
 | 2026-02-07 | Crawl Wide, Show Narrow pipeline | Full classification + sorting engine to serve only quality items to deck while ingesting broadly |
 | 2026-02-07 | Embedded JS state extraction | Extract products from window.INITIAL_DATA / __INITIAL_STATE__ without headless browsers, unlocking Chilli and RoyalDesign |
+| 2026-02-08 | Golden Card v2 uses hybrid 4-step style-first onboarding | Increases cold-start signal quality while preserving low-friction swipe UX |
+| 2026-02-08 | Golden Card v2 rollout is hash-bucketed + kill-switch controlled | Enables safe 10/50/100 progressive rollout with immediate fallback via env flags |
 
 ---
 
@@ -477,4 +498,9 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 - [FRONTEND_GUIDELINES.md](FRONTEND_GUIDELINES.md) – UI patterns
 - [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md) – API and schema
 - [COMMERCIAL_STRATEGY.md](COMMERCIAL_STRATEGY.md) – Commercial model
+- [GOLDEN_CARD_V2_UI_UX_SPEC.md](GOLDEN_CARD_V2_UI_UX_SPEC.md) – Complete page/button/copy spec
+- [GOLDEN_CARD_V2_EXECUTION_ROADMAP.md](GOLDEN_CARD_V2_EXECUTION_ROADMAP.md) – Detailed cross-functional delivery plan
+- [GOLDEN_CARD_V2_MANUAL_TEST_SCRIPT.md](GOLDEN_CARD_V2_MANUAL_TEST_SCRIPT.md) – Manual exploratory QA script (30 sessions)
+- [RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md](RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md) – Alerts, thresholds, and rollout triage
+- [DOCUMENTATION_CONSISTENCY_CHECK_2026-02-08.md](DOCUMENTATION_CONSISTENCY_CHECK_2026-02-08.md) – Cross-doc consistency audit and fixes
 - [CHANGELOG.md](../CHANGELOG.md) – Version history

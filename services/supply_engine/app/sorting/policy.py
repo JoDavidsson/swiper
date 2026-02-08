@@ -224,6 +224,8 @@ def promote_to_gold(
         "itemId": item_id,
         "eligibleSurfaces": accepted_surfaces,
         "predictedCategory": classification.predicted_category,
+        "subCategory": classification.sub_category,  # C6: sofa sub-type
+        "roomTypes": classification.room_types or [],  # C7: room placement tags
         "categoryConfidence": classification.top1_confidence,
         "categoryProbabilities": classification.category_probabilities,
         "classificationVersion": classification.classification_version,
@@ -256,6 +258,7 @@ def promote_to_gold(
         "availability": item_data.get("availabilityStatus"),
         "priceOriginal": item_data.get("priceOriginal"),
         "discountPct": item_data.get("discountPct"),
+        "descriptionShort": item_data.get("descriptionShort"),
         "isActive": True,
     }
 
@@ -319,6 +322,8 @@ def classify_and_decide(
     return {
         "classification": {
             "predictedCategory": classification.predicted_category,
+            "subCategory": classification.sub_category,
+            "roomTypes": classification.room_types or [],
             "categoryProbabilities": classification.category_probabilities,
             "top1Confidence": classification.top1_confidence,
             "top1Top2Margin": classification.top1_top2_margin,

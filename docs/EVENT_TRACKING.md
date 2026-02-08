@@ -28,7 +28,7 @@ This doc lists what we track today and what we should track for a future ML reco
 | **session_resume** | App resumed after ≥30s background | — |
 | **session_end** | App backgrounded / hidden | — |
 | **deck_request** | Deck fetch started | filters.active (if any), ext.requestId, ext.requestedLimit |
-| **deck_response** | Deck fetch completed | rank.requestId, rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate), rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, perf.latencyMs |
+| **deck_response** | Deck fetch completed | rank.requestId, rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate), rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min, perf.latencyMs |
 | **deck_refresh** | User refreshes deck (Retry, Apply/Clear filters) | — |
 | **card_render** | Top card built (with impression start) | item, rank |
 | **card_impression_start** | Top card becomes visible | item, impression.impressionId, rank |
@@ -122,6 +122,16 @@ V1 events are sent by the Flutter tracker to POST /api/events/batch and stored i
 - **Optional:** surface, item, rank, impression, interaction, filters, onboarding, compare, share, outbound, perf, error, ext.
 
 **Event names (v1):** app_open, session_start, session_resume, session_end, deck_request, deck_response, deck_refresh, card_render, card_impression_start, card_impression_end, swipe_left, swipe_right, swipe_cancel, swipe_undo, detail_open, detail_close, detail_scroll, detail_gallery_interaction, outbound_click, outbound_redirect_start, outbound_redirect_success, outbound_redirect_fail, filters_open, filters_apply, filters_clear, filter_change, compare_open, compare_close, compare_outbound_click, likes_open, like_add, like_remove, shortlist_create, shortlist_share, share_link_landing_view, deep_link_open, onboarding_start, onboarding_step_view, onboarding_step_change, onboarding_complete, onboarding_skip, consent_updated, client_error, empty_deck, etc. Full enum: [schemas/swiper_event_v1.schema.json](schemas/swiper_event_v1.schema.json).
+
+**Golden Card v2 events (implemented):**
+- `gold_v2_intro_shown`
+- `gold_v2_step_viewed`
+- `gold_v2_option_selected`
+- `gold_v2_option_deselected`
+- `gold_v2_step_completed`
+- `gold_v2_skipped`
+- `gold_v2_summary_confirmed`
+- `gold_v2_summary_adjusted`
 
 **Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion, and for **offline eval and A/B** rank.variant, rank.variantBucket, rank.itemIds (served slate); card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
 

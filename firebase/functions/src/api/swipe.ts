@@ -107,6 +107,17 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
       if (data.smallSpaceFriendly === true) addCount("feature:small_space");
       if (data.modular === true) addCount("feature:modular");
 
+      // Sub-category signal (e.g., "subcat:3_seater", "subcat:corner_sofa")
+      const subCategory = normalizeToken(data.subCategory);
+      if (subCategory) addCount(`subcat:${subCategory}`);
+
+      // Room-type signals (e.g., "room:living_room", "room:outdoor")
+      const roomTypes = Array.isArray(data.roomTypes) ? data.roomTypes : [];
+      for (const roomType of roomTypes) {
+        const normalized = normalizeToken(roomType);
+        if (normalized) addCount(`room:${normalized}`);
+      }
+
       const priceAmount = typeof data.priceAmount === "number" ? data.priceAmount : undefined;
       const priceBucket = toPriceBucket(priceAmount);
       if (priceBucket) addCount(`price_bucket:${priceBucket}`);

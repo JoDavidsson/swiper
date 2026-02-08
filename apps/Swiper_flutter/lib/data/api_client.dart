@@ -17,27 +17,62 @@ class DeckRankContext {
     this.explorationPolicy,
     this.variant,
     this.variantBucket,
+    this.onboardingProfile,
+    this.sameFamilyTop8Rate,
+    this.styleDistanceTop4Min,
   });
   final String rankerRunId;
   final String algorithmVersion;
+
   /// Request identifier for this deck response.
   final String? requestId;
+
   /// Candidate set identifier for offline eval/debugging.
   final String? candidateSetId;
+
   /// Number of candidates kept before ranking.
   final int? candidateCount;
+
   /// Number of items scored before exploration/slicing.
   final int? rankWindow;
+
   /// Retrieval queues that contributed candidates.
   final List<String> retrievalQueues;
+
   /// Served item IDs for this deck response (slate used in eval).
   final List<String> itemIds;
+
   /// Exploration policy applied by server (if any).
   final String? explorationPolicy;
+
   /// A/B variant label (e.g. personal_only, personal_only_exploration_5).
   final String? variant;
+
   /// A/B variant bucket (0–99) for segmentation.
   final int? variantBucket;
+
+  /// Style summary interpreted from onboarding profile (v2).
+  final OnboardingProfileSummary? onboardingProfile;
+
+  /// Duplicate-family exposure signal in served top 8.
+  final double? sameFamilyTop8Rate;
+
+  /// Minimum style distance within served top 4.
+  final double? styleDistanceTop4Min;
+}
+
+class OnboardingProfileSummary {
+  const OnboardingProfileSummary({
+    this.primaryStyle,
+    this.secondaryStyle,
+    this.confidence,
+    this.explanation = const [],
+  });
+
+  final String? primaryStyle;
+  final String? secondaryStyle;
+  final double? confidence;
+  final List<String> explanation;
 }
 
 /// Deck API response: items plus optional rank context and per-item scores.
@@ -50,6 +85,41 @@ class DeckResponse {
   final List<Item> items;
   final DeckRankContext? rank;
   final Map<String, double> itemScores;
+}
+
+class OnboardingV2Submission {
+  const OnboardingV2Submission({
+    required this.sceneArchetypes,
+    required this.sofaVibes,
+    this.budgetBand,
+    this.seatCount,
+    this.modularOnly,
+    this.kidsPets,
+    this.smallSpace,
+  });
+
+  final List<String> sceneArchetypes;
+  final List<String> sofaVibes;
+  final String? budgetBand;
+  final String? seatCount;
+  final bool? modularOnly;
+  final bool? kidsPets;
+  final bool? smallSpace;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'version': 2,
+      'sceneArchetypes': sceneArchetypes,
+      'sofaVibes': sofaVibes,
+      'constraints': {
+        if (budgetBand != null) 'budgetBand': budgetBand,
+        if (seatCount != null) 'seatCount': seatCount,
+        if (modularOnly != null) 'modularOnly': modularOnly,
+        if (kidsPets != null) 'kidsPets': kidsPets,
+        if (smallSpace != null) 'smallSpace': smallSpace,
+      },
+    };
+  }
 }
 
 /// Standard image widths for responsive loading.
@@ -91,14 +161,16 @@ class ApiClient {
     // Don't proxy our own images or already proxied URLs
     if (originalUrl.contains('/api/image-proxy')) return originalUrl;
     // Don't proxy data URIs or local files
-    if (originalUrl.startsWith('data:') || originalUrl.startsWith('file:')) return originalUrl;
+    if (originalUrl.startsWith('data:') || originalUrl.startsWith('file:')) {
+      return originalUrl;
+    }
     // Don't proxy unsplash images - they support CORS and have their own CDN
     if (originalUrl.contains('images.unsplash.com')) return originalUrl;
-    
+
     final params = <String, String>{
       'url': originalUrl,
     };
-    
+
     if (width != null) {
       params['w'] = width.value.toString();
     }
@@ -108,31 +180,37 @@ class ApiClient {
     if (quality != null) {
       params['q'] = quality.toString();
     }
-    
+
     final queryString = params.entries
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
         .join('&');
-    
-    return '${_defaultBaseUrl}/api/image-proxy?$queryString';
+
+    return '$_defaultBaseUrl/api/image-proxy?$queryString';
   }
-  
+
   /// Get the optimized image URL for a given context.
-  /// 
+  ///
   /// Automatically selects appropriate width:
   /// - Card thumbnail: 400w (for background/blur)
   /// - Card main: 800w (for card display)
   /// - Detail view: 1200w (for full-screen detail)
-  static String optimizedImageUrl(String originalUrl, {required ImageWidth width}) {
+  static String optimizedImageUrl(String originalUrl,
+      {required ImageWidth width}) {
     return proxyImageUrl(originalUrl, width: width);
   }
-  ApiClient({String? baseUrl, String? Function()? getAdminToken, String? Function()? getAdminPassword})
+
+  ApiClient(
+      {String? baseUrl,
+      String? Function()? getAdminToken,
+      String? Function()? getAdminPassword})
       : _dio = Dio(BaseOptions(baseUrl: baseUrl ?? _defaultBaseUrl)),
         _getAdminToken = getAdminToken,
         _getAdminPassword = getAdminPassword {
     if (getAdminToken != null || getAdminPassword != null) {
       _dio.interceptors.add(InterceptorsWrapper(
         onRequest: (options, handler) {
-          if (_isAdminPath(options.path) && !options.path.contains('admin/verify')) {
+          if (_isAdminPath(options.path) &&
+              !options.path.contains('admin/verify')) {
             final token = _getAdminToken?.call();
             if (token != null && token.isNotEmpty) {
               options.headers['Authorization'] = 'Bearer $token';
@@ -174,7 +252,8 @@ class ApiClient {
   final Dio _dio;
 
   /// Create or refresh anonymous session. Optionally send device context for ML/analytics.
-  Future<Map<String, dynamic>> createSession({Map<String, dynamic>? body}) async {
+  Future<Map<String, dynamic>> createSession(
+      {Map<String, dynamic>? body}) async {
     final r = await _dio.post<Map<String, dynamic>>('/api/session', data: body);
     return r.data ?? {};
   }
@@ -182,7 +261,9 @@ class ApiClient {
   /// Deck response: items plus rank context for analytics.
   static List<Item> itemsFromDeckResponse(Map<String, dynamic> r) {
     final list = r['items'] as List? ?? [];
-    return list.map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Get deck items for session. Backend returns items, rank (rankerRunId, algorithmVersion), and optional itemScores.
@@ -192,7 +273,8 @@ class ApiClient {
     int limit = 10,
     String? requestId,
   }) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/items/deck', queryParameters: {
       'sessionId': sessionId,
       if (filters != null && filters.isNotEmpty) 'filters': jsonEncode(filters),
       'limit': limit,
@@ -210,10 +292,14 @@ class ApiClient {
             candidateSetId: rankMap['candidateSetId'] as String?,
             candidateCount: rankMap['candidateCount'] is int
                 ? rankMap['candidateCount'] as int
-                : (rankMap['candidateCount'] is num ? (rankMap['candidateCount'] as num).toInt() : null),
+                : (rankMap['candidateCount'] is num
+                    ? (rankMap['candidateCount'] as num).toInt()
+                    : null),
             rankWindow: rankMap['rankWindow'] is int
                 ? rankMap['rankWindow'] as int
-                : (rankMap['rankWindow'] is num ? (rankMap['rankWindow'] as num).toInt() : null),
+                : (rankMap['rankWindow'] is num
+                    ? (rankMap['rankWindow'] as num).toInt()
+                    : null),
             retrievalQueues: (rankMap['retrievalQueues'] as List? ?? const [])
                 .map((e) => e.toString())
                 .where((e) => e.isNotEmpty)
@@ -226,7 +312,33 @@ class ApiClient {
             variant: rankMap['variant'] as String?,
             variantBucket: rankMap['variantBucket'] is int
                 ? rankMap['variantBucket'] as int
-                : (rankMap['variantBucket'] is num ? (rankMap['variantBucket'] as num).toInt() : null),
+                : (rankMap['variantBucket'] is num
+                    ? (rankMap['variantBucket'] as num).toInt()
+                    : null),
+            sameFamilyTop8Rate: rankMap['sameFamilyTop8Rate'] is num
+                ? (rankMap['sameFamilyTop8Rate'] as num).toDouble()
+                : null,
+            styleDistanceTop4Min: rankMap['styleDistanceTop4Min'] is num
+                ? (rankMap['styleDistanceTop4Min'] as num).toDouble()
+                : null,
+            onboardingProfile: rankMap['onboardingProfile'] is Map
+                ? (() {
+                    final profile = Map<String, dynamic>.from(
+                        rankMap['onboardingProfile'] as Map);
+                    final confidenceRaw = profile['confidence'];
+                    return OnboardingProfileSummary(
+                      primaryStyle: profile['primaryStyle'] as String?,
+                      secondaryStyle: profile['secondaryStyle'] as String?,
+                      confidence: confidenceRaw is num
+                          ? confidenceRaw.toDouble()
+                          : null,
+                      explanation: (profile['explanation'] as List? ?? const [])
+                          .map((e) => e.toString())
+                          .where((e) => e.isNotEmpty)
+                          .toList(),
+                    );
+                  })()
+                : null,
           )
         : null;
     final itemScoresRaw = data['itemScores'] as Map<String, dynamic>?;
@@ -244,7 +356,11 @@ class ApiClient {
   }
 
   /// Record swipe.
-  Future<void> swipe({required String sessionId, required String itemId, required String direction, int positionInDeck = 0}) async {
+  Future<void> swipe(
+      {required String sessionId,
+      required String itemId,
+      required String direction,
+      int positionInDeck = 0}) async {
     await _dio.post('/api/swipe', data: {
       'sessionId': sessionId,
       'itemId': itemId,
@@ -256,38 +372,53 @@ class ApiClient {
   /// Get items by ids (for compare / shortlist).
   Future<List<Item>> getItemsBatch(List<String> ids) async {
     if (ids.isEmpty) return [];
-    final r = await _dio.get<Map<String, dynamic>>('/api/items/batch', queryParameters: {'ids': ids.join(',')});
+    final r = await _dio.get<Map<String, dynamic>>('/api/items/batch',
+        queryParameters: {'ids': ids.join(',')});
     final list = r.data?['items'] as List? ?? [];
-    return list.map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Get liked items for session.
   Future<List<Item>> getLikes({required String sessionId}) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/likes', queryParameters: {'sessionId': sessionId});
+    final r = await _dio.get<Map<String, dynamic>>('/api/likes',
+        queryParameters: {'sessionId': sessionId});
     final list = r.data?['items'] as List? ?? [];
-    return list.map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => Item.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Toggle like.
-  Future<bool> toggleLike({required String sessionId, required String itemId}) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/likes/toggle', data: {'sessionId': sessionId, 'itemId': itemId});
+  Future<bool> toggleLike(
+      {required String sessionId, required String itemId}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/likes/toggle',
+        data: {'sessionId': sessionId, 'itemId': itemId});
     return r.data?['liked'] as bool? ?? false;
   }
 
   /// Create shortlist and get share token.
-  Future<Map<String, dynamic>> createShortlist({required String sessionId, required List<String> itemIds}) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/shortlists/create', data: {'sessionId': sessionId, 'itemIds': itemIds});
+  Future<Map<String, dynamic>> createShortlist(
+      {required String sessionId, required List<String> itemIds}) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/shortlists/create',
+        data: {'sessionId': sessionId, 'itemIds': itemIds});
     return r.data ?? {};
   }
 
   /// Get shortlist by share token.
   Future<Map<String, dynamic>> getShortlistByToken(String shareToken) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/shortlists/byToken/$shareToken');
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/shortlists/byToken/$shareToken');
     return r.data ?? {};
   }
 
   /// Log event (legacy). Prefer event_tracker.track() for v1 schema.
-  Future<void> logEvent({required String sessionId, required String eventType, String? itemId, Map<String, dynamic>? metadata}) async {
+  Future<void> logEvent(
+      {required String sessionId,
+      required String eventType,
+      String? itemId,
+      Map<String, dynamic>? metadata}) async {
     await _dio.post('/api/events', data: {
       'sessionId': sessionId,
       'eventType': eventType,
@@ -305,7 +436,8 @@ class ApiClient {
   /// Admin login: verify password against backend (legacy). For full access use Sign in with Google.
   Future<bool> adminLogin(String password) async {
     try {
-      final r = await _dio.post<Map<String, dynamic>>('/api/admin/verify', data: {'password': password});
+      final r = await _dio.post<Map<String, dynamic>>('/api/admin/verify',
+          data: {'password': password});
       return r.data?['ok'] as bool? ?? false;
     } catch (_) {
       return false;
@@ -337,16 +469,19 @@ class ApiClient {
   }
 
   Future<String> adminCreateSource(Map<String, dynamic> body) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources', data: body);
+    final r =
+        await _dio.post<Map<String, dynamic>>('/api/admin/sources', data: body);
     return r.data?['id'] as String? ?? '';
   }
 
   Future<Map<String, dynamic>> adminGetSource(String sourceId) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/sources/$sourceId');
+    final r =
+        await _dio.get<Map<String, dynamic>>('/api/admin/sources/$sourceId');
     return r.data ?? {};
   }
 
-  Future<void> adminUpdateSource(String sourceId, Map<String, dynamic> body) async {
+  Future<void> adminUpdateSource(
+      String sourceId, Map<String, dynamic> body) async {
     await _dio.put('/api/admin/sources/$sourceId', data: body);
   }
 
@@ -355,8 +490,10 @@ class ApiClient {
   }
 
   /// Preview auto-discovery for a URL (before creating source)
-  Future<Map<String, dynamic>> adminPreviewSource(String url, {double rateLimitRps = 1.0}) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources/preview', data: {
+  Future<Map<String, dynamic>> adminPreviewSource(String url,
+      {double rateLimitRps = 1.0}) async {
+    final r = await _dio
+        .post<Map<String, dynamic>>('/api/admin/sources/preview', data: {
       'url': url,
       'rateLimitRps': rateLimitRps,
     });
@@ -372,19 +509,22 @@ class ApiClient {
     List<String>? includeKeywords,
     List<String>? categoryFilter,
   }) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/admin/sources/create-with-discovery', data: {
-      'url': url,
-      if (name != null && name.isNotEmpty) 'name': name,
-      'rateLimitRps': rateLimitRps,
-      'isEnabled': isEnabled,
-      if (includeKeywords != null) 'includeKeywords': includeKeywords,
-      if (categoryFilter != null) 'categoryFilter': categoryFilter,
-    });
+    final r = await _dio.post<Map<String, dynamic>>(
+        '/api/admin/sources/create-with-discovery',
+        data: {
+          'url': url,
+          if (name != null && name.isNotEmpty) 'name': name,
+          'rateLimitRps': rateLimitRps,
+          'isEnabled': isEnabled,
+          if (includeKeywords != null) 'includeKeywords': includeKeywords,
+          if (categoryFilter != null) 'categoryFilter': categoryFilter,
+        });
     return r.data ?? {};
   }
 
   Future<List<Map<String, dynamic>>> adminGetRuns({String? sourceId}) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/runs', queryParameters: sourceId != null ? {'sourceId': sourceId} : null);
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/runs',
+        queryParameters: sourceId != null ? {'sourceId': sourceId} : null);
     final list = r.data?['runs'] as List? ?? [];
     return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
@@ -395,12 +535,21 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> adminTriggerRun(String sourceId) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/admin/run', data: {'sourceId': sourceId});
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/run',
+        data: {'sourceId': sourceId});
+    return r.data ?? {};
+  }
+
+  /// Stop an active crawl for a source.
+  Future<Map<String, dynamic>> adminStopCrawl(String sourceId) async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/stop-crawl',
+        data: {'sourceId': sourceId});
     return r.data ?? {};
   }
 
   /// Trigger batch run for multiple sources in parallel.
-  Future<Map<String, dynamic>> adminTriggerBatchRun(List<String> sourceIds) async {
+  Future<Map<String, dynamic>> adminTriggerBatchRun(
+      List<String> sourceIds) async {
     final r = await _dio.post<Map<String, dynamic>>(
       '/api/admin/run-batch',
       data: {'sourceIds': sourceIds},
@@ -413,8 +562,10 @@ class ApiClient {
     return r.data ?? {};
   }
 
-  Future<Map<String, dynamic>> adminGetItems({int limit = 50, String? retailer}) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/items', queryParameters: {
+  Future<Map<String, dynamic>> adminGetItems(
+      {int limit = 50, String? retailer}) async {
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/admin/items', queryParameters: {
       'limit': limit,
       if (retailer != null) 'retailer': retailer,
     });
@@ -427,7 +578,8 @@ class ApiClient {
     String? retailer,
     bool force = false,
   }) async {
-    final r = await _dio.post<Map<String, dynamic>>('/api/admin/validate-images', data: {
+    final r = await _dio
+        .post<Map<String, dynamic>>('/api/admin/validate-images', data: {
       'limit': limit,
       if (retailer != null) 'retailer': retailer,
       'force': force,
@@ -436,10 +588,13 @@ class ApiClient {
   }
 
   /// Get Creative Health statistics
-  Future<Map<String, dynamic>> adminGetCreativeHealthStats({String? retailer}) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/admin/creative-health-stats', queryParameters: {
-      if (retailer != null) 'retailer': retailer,
-    });
+  Future<Map<String, dynamic>> adminGetCreativeHealthStats(
+      {String? retailer}) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+        '/api/admin/creative-health-stats',
+        queryParameters: {
+          if (retailer != null) 'retailer': retailer,
+        });
     return r.data ?? {};
   }
 
@@ -448,7 +603,8 @@ class ApiClient {
   /// Get curated sofas for the visual gold card
   Future<List<Map<String, dynamic>>> getCuratedSofas() async {
     try {
-      final r = await _dio.get<Map<String, dynamic>>('/api/onboarding/curated-sofas');
+      final r =
+          await _dio.get<Map<String, dynamic>>('/api/onboarding/curated-sofas');
       final list = r.data?['sofas'] as List? ?? [];
       return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } catch (_) {
@@ -470,6 +626,30 @@ class ApiClient {
       if (budgetMin != null) 'budgetMin': budgetMin,
       if (budgetMax != null) 'budgetMax': budgetMax,
     });
+  }
+
+  /// Submit Golden Card v2 onboarding profile.
+  Future<Map<String, dynamic>> submitOnboardingV2({
+    required String sessionId,
+    required OnboardingV2Submission submission,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/onboarding/v2',
+      data: {
+        'sessionId': sessionId,
+        ...submission.toJson(),
+      },
+    );
+    return r.data ?? const {};
+  }
+
+  /// Fetch Golden Card v2 onboarding profile.
+  Future<Map<String, dynamic>> getOnboardingV2(String sessionId) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/onboarding/v2',
+      queryParameters: {'sessionId': sessionId},
+    );
+    return r.data ?? const {};
   }
 
   // ============ Admin Curated Sofas APIs ============
@@ -504,7 +684,8 @@ class ApiClient {
   // ============ User Auth APIs ============
 
   /// Link anonymous session to authenticated user.
-  Future<Map<String, dynamic>> linkSession({required String token, required String sessionId}) async {
+  Future<Map<String, dynamic>> linkSession(
+      {required String token, required String sessionId}) async {
     final r = await _dio.post<Map<String, dynamic>>(
       '/api/auth/link-session',
       data: {'sessionId': sessionId},
@@ -543,7 +724,8 @@ class ApiClient {
 
   /// Get Decision Room by ID (public).
   Future<Map<String, dynamic>> getDecisionRoom(String roomId) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/decision-rooms/$roomId');
+    final r =
+        await _dio.get<Map<String, dynamic>>('/api/decision-rooms/$roomId');
     return r.data ?? {};
   }
 
@@ -582,7 +764,8 @@ class ApiClient {
 
   /// Get comments for a Decision Room (public).
   Future<Map<String, dynamic>> getDecisionRoomComments(String roomId) async {
-    final r = await _dio.get<Map<String, dynamic>>('/api/decision-rooms/$roomId/comments');
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/decision-rooms/$roomId/comments');
     return r.data ?? {};
   }
 

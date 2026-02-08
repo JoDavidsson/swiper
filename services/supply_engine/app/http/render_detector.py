@@ -37,15 +37,58 @@ def _has_jsonld_product(soup: Any) -> bool:
     return False
 
 
-def needs_browser_render(html: str) -> bool:
-    """
-    Heuristic detector for client-side rendered shells.
+def is_waf_block_page(html: str) -> bool:
+    """Detect WAF/CDN block pages (Cloudflare, Akamai, etc.).
 
-    Returns True when 2+ independent signals indicate the raw HTTP response
-    likely needs JS execution to expose product data.
+    These pages return HTTP 200 but contain a challenge or block message
+    instead of the real content.  Browser fallback should always be
+    attempted when a WAF block is detected.
     """
     if not html:
         return False
+
+    lower = html[:8_000].lower()  # Only scan the top of the page
+
+    # Cloudflare challenge / block
+    if "cloudflare" in lower and (
+        "you have been blocked" in lower
+        or "attention required" in lower
+        or "checking your browser" in lower
+        or "cf-challenge" in lower
+        or "cf-error-details" in lower
+    ):
+        return True
+
+    # Akamai bot manager
+    if "akamai" in lower and "access denied" in lower:
+        return True
+
+    # PerimeterX / HUMAN
+    if "perimeterx" in lower or "px-captcha" in lower:
+        return True
+
+    # DataDome
+    if "datadome" in lower and "captcha" in lower:
+        return True
+
+    return False
+
+
+def needs_browser_render(html: str) -> bool:
+    """
+    Heuristic detector for client-side rendered shells and WAF block pages.
+
+    Returns True when:
+    - A WAF/CDN block page is detected (immediate True), OR
+    - 2+ independent signals indicate the raw HTTP response likely needs
+      JS execution to expose product data.
+    """
+    if not html:
+        return False
+
+    # Fast-path: WAF block pages should always trigger browser fallback.
+    if is_waf_block_page(html):
+        return True
 
     try:
         from bs4 import BeautifulSoup

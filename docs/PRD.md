@@ -1,7 +1,7 @@
 # Swiper – Product Requirements Document
 
-> **Last updated:** 2026-02-05  
-> **Status:** MVP Shipped + Phase 8 Complete + Commercial Platform v1 Defined
+> **Last updated:** 2026-02-08  
+> **Status:** MVP Shipped + Phase 12 (Featured Distribution) In Progress + Phase 12a (Golden Card v2) Implemented (controlled rollout gates active)
 
 ---
 
@@ -209,12 +209,18 @@
 
 ### 5.3 Progressive Onboarding (Gold Cards)
 
-- **Visual card:** 2×3 grid of curated sofa images; user picks 3 favorites
-- **Budget card:** Range slider (0–50,000 SEK) with quick-select chips
-- **Trigger:** After first right-swipe (configurable)
-- **Skip behavior:** Card reappears after 20 swipes (max 2 skips)
-- **Styling:** Gold gradient border, distinct background, swipeable
-- **Data storage:** Picks stored in `onboardingPicks` collection with extracted attributes
+- **Current (v1):**
+  - Visual card: 2×3 grid of curated sofa images; user picks 3 favorites
+  - Budget card: Range slider (0–50,000 SEK) with quick-select chips
+  - Trigger: after first right-swipe (configurable)
+  - Data storage: `onboardingPicks` with extracted style/material/color attributes
+- **Current (v2, feature-flagged rollout):**
+  - Step 1: room-vibe scene picks (2 of 4)
+  - Step 2: sofa-vibe picks (2 of 4, hard diversity constraints)
+  - Step 3: practical constraints (budget, seats, modular, pets/kids, small-space)
+  - Step 4: reaffirmation summary ("we got you") with adjust/start-over controls
+  - New profile contract for ranking: `onboardingProfiles` + deck `rank.onboardingProfile` metadata
+- **Reference docs:** `docs/GOLDEN_CARD_V2_UI_UX_SPEC.md`, `docs/GOLDEN_CARD_V2_EXECUTION_ROADMAP.md`
 
 ### 5.4 Decision Room
 

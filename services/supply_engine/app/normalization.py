@@ -180,28 +180,31 @@ def domains_equivalent(d1: str, d2: str) -> bool:
     return canonical_domain(d1) == canonical_domain(d2)
 
 MATERIAL_MAP = {
-    "fabric": ["fabric", "cloth", "textile", "cotton", "linen", "polyester"],
-    "leather": ["leather"],
-    "velvet": ["velvet"],
+    "fabric": ["fabric", "cloth", "textile", "cotton", "bomull", "linen", "linne", "polyester", "tyg", "klädsel", "remix", "hallingdal", "steelcut", "canvas", "tweed", "chenille"],
+    "leather": ["leather", "läder", "skinn", "nubuck", "nappa"],
+    "velvet": ["velvet", "sammet", "velour"],
     "boucle": ["boucle", "bouclé"],
-    "wood": ["wood", "timber", "oak", "birch", "pine"],
-    "metal": ["metal", "steel", "iron", "chrome"],
-    "mixed": ["mixed", "combination"],
+    "wool": ["wool", "ull", "ylle", "merino", "felt", "filt"],
+    "wood": ["wood", "timber", "oak", "ek", "birch", "björk", "pine", "furu", "teak", "walnut", "valnöt", "ash", "ask", "beech", "bok", "bamboo", "bambu"],
+    "metal": ["metal", "metall", "steel", "stål", "iron", "järn", "chrome", "krom", "aluminium", "aluminum", "brass", "mässing", "copper", "koppar"],
+    "rattan": ["rattan", "rotting", "wicker", "korg"],
+    "plastic": ["plastic", "plast", "polypropylene", "polypropen", "acrylic", "akryl", "abs"],
+    "mixed": ["mixed", "combination", "kombination"],
 }
 
 COLOR_MAP = {
-    "white": ["white", "vit", "bianco"],
-    "beige": ["beige", "sand", "cream", "off-white", "natural"],
-    "brown": ["brown", "brun", "marron", "walnut", "oak"],
-    "gray": ["gray", "grey", "grå"],
-    "black": ["black", "svart", "noir"],
-    "green": ["green", "grön", "vert"],
-    "blue": ["blue", "blå", "bleu"],
-    "red": ["red", "röd", "rouge"],
-    "yellow": ["yellow", "gul", "jaune"],
-    "orange": ["orange"],
-    "pink": ["pink", "rosa"],
-    "multi": ["multi", "multicolor", "mixed", "flerfärgad"],
+    "white": ["white", "vit", "bianco", "ivory", "elfenben", "snow", "chalk", "krita"],
+    "beige": ["beige", "sand", "cream", "off-white", "natural", "linen", "linne", "taupe", "ecru", "oat", "wheat", "havremjölk"],
+    "brown": ["brown", "brun", "marron", "walnut", "oak", "cognac", "camel", "tan", "chocolate", "espresso", "mocha", "terracotta", "terrakotta", "rust", "rost", "copper", "koppar"],
+    "gray": ["gray", "grey", "grå", "anthracite", "antracit", "charcoal", "kol", "graphite", "grafit", "silver", "ash", "aska", "slate", "stone", "cement"],
+    "black": ["black", "svart", "noir", "jet", "onyx", "ebony"],
+    "green": ["green", "grön", "vert", "olive", "oliv", "sage", "salvia", "moss", "mossa", "forest", "emerald", "khaki", "mint"],
+    "blue": ["blue", "blå", "bleu", "navy", "marinblå", "marin", "indigo", "cobalt", "teal", "petrol", "ocean", "sky", "denim"],
+    "red": ["red", "röd", "rouge", "burgundy", "vinröd", "bordeaux", "crimson", "wine", "vin", "cherry", "maroon"],
+    "yellow": ["yellow", "gul", "jaune", "mustard", "senap", "gold", "guld", "honey", "honung", "amber", "bärnsten", "curry"],
+    "orange": ["orange", "terracotta", "terrakotta", "peach", "persika", "apricot", "coral", "korall"],
+    "pink": ["pink", "rosa", "blush", "dusty rose", "salmon", "lax", "fuchsia", "magenta"],
+    "multi": ["multi", "multicolor", "mixed", "flerfärgad", "mönstrad", "patterned"],
 }
 
 
@@ -235,6 +238,19 @@ def normalize_color_family(raw: Any) -> str | None:
     return "multi" if s else None
 
 
+def _word_boundary_match(needle: str, haystack: str) -> bool:
+    """Check if *needle* appears as a whole word (or word-prefix) in *haystack*.
+
+    Uses regex word boundaries to avoid false positives like "kol" inside
+    "kollektionen" or "red" inside "inredningsstilar".
+    """
+    # Multi-word needles (e.g. "dusty rose", "off-white") — match literally
+    # Single-word needles — require word boundaries on both sides
+    import re
+    pattern = r"\b" + re.escape(needle) + r"\b"
+    return bool(re.search(pattern, haystack))
+
+
 def infer_color_from_title(title: str) -> str | None:
     """
     Scan title for COLOR_MAP tokens. Returns first matching canonical color or None.
@@ -244,8 +260,45 @@ def infer_color_from_title(title: str) -> str | None:
         return None
     s = title.lower()
     for canonical, variants in COLOR_MAP.items():
-        if any(v in s for v in variants):
+        if any(_word_boundary_match(v, s) for v in variants):
             return canonical
+    return None
+
+
+def infer_material_from_text(title: str | None, description: str | None) -> str | None:
+    """
+    Try to infer a canonical material from title first, then description.
+
+    Checks title first (e.g. "Soffa 3-sits läder"), then falls back to
+    description for more detailed material mentions.
+    """
+    for text in (title, description):
+        if not text or not isinstance(text, str):
+            continue
+        s = text.lower()
+        for canonical, variants in MATERIAL_MAP.items():
+            if any(_word_boundary_match(v, s) for v in variants):
+                return canonical
+    return None
+
+
+def infer_color_from_text(title: str | None, description: str | None) -> str | None:
+    """
+    Try to infer a canonical color from title first, then description.
+
+    Title is checked first because it's more specific (e.g. "Soffa 3-sits svart").
+    Description is a fallback for when the title only has a fabric code
+    (e.g. "Remix 163") but the description mentions the actual color.
+    """
+    if title:
+        result = infer_color_from_title(title)
+        if result:
+            return result
+    if description and isinstance(description, str):
+        s = description.lower()
+        for canonical, variants in COLOR_MAP.items():
+            if any(_word_boundary_match(v, s) for v in variants):
+                return canonical
     return None
 
 

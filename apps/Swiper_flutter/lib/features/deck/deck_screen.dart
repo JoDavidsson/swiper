@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
 import '../../data/event_tracker.dart';
 import '../../data/gold_card_provider.dart';
+import '../../data/onboarding_v2_provider.dart';
 import '../../data/locale_provider.dart';
 import '../../data/session_provider.dart'
     show
@@ -20,8 +21,10 @@ import '../../shared/widgets/detail_sheet.dart';
 import '../../shared/widgets/filter_chip.dart' show AppFilterChip;
 import '../../data/models/item.dart';
 import '../../shared/widgets/swipe_deck.dart';
+import '../../data/api_client.dart' show OnboardingV2Submission;
 import 'widgets/gold_card_visual.dart';
 import 'widgets/gold_card_budget.dart';
+import 'widgets/golden_card_v2_flow.dart';
 
 Map<String, dynamic> _itemSnapshot(Item item) {
   return {
@@ -77,10 +80,68 @@ class DeckScreen extends ConsumerStatefulWidget {
 
 class _DeckScreenState extends ConsumerState<DeckScreen> {
   // Track if we're showing a gold card to prevent duplicate insertions
-  bool _showingGoldCard = false;
+  final bool _showingGoldCard = false;
+  bool _goldV2IntroTracked = false;
+  bool _retryingOnboardingV2Submit = false;
+  DateTime? _lastOnboardingV2RetryAttemptAt;
   // Key for the gold card visual widget to access its state
   final GlobalKey<GoldCardVisualState> _goldCardVisualKey =
       GlobalKey<GoldCardVisualState>();
+
+  bool _isGoldenV2EnabledForSession(String? sessionId) {
+    if (!AppConstants.enableGoldenCardV2) return false;
+    final percent = AppConstants.goldenCardV2RolloutPercent.clamp(0, 100);
+    if (percent >= 100) return true;
+    if (percent <= 0 || sessionId == null || sessionId.isEmpty) return false;
+    var hash = 0;
+    for (final unit in sessionId.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    return (hash % 100) < percent;
+  }
+
+  void _maybeRetryPendingOnboardingV2Submit({
+    required String? sessionId,
+    required OnboardingV2State onboardingV2State,
+    required OnboardingV2Notifier onboardingV2Notifier,
+    required DeckNotifier deckNotifier,
+  }) {
+    final pending = onboardingV2State.pendingSubmission;
+    if (pending == null) return;
+    if (_retryingOnboardingV2Submit) return;
+    if (sessionId == null || sessionId.isEmpty) return;
+    final lastAttempt = _lastOnboardingV2RetryAttemptAt;
+    if (lastAttempt != null &&
+        DateTime.now().difference(lastAttempt) < const Duration(seconds: 10)) {
+      return;
+    }
+
+    _retryingOnboardingV2Submit = true;
+    _lastOnboardingV2RetryAttemptAt = DateTime.now();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await ref.read(apiClientProvider).submitOnboardingV2(
+              sessionId: sessionId,
+              submission: OnboardingV2Submission(
+                sceneArchetypes: pending.sceneArchetypes,
+                sofaVibes: pending.sofaVibes,
+                budgetBand: pending.budgetBand,
+                seatCount: pending.seatCount,
+                modularOnly: pending.modularOnly,
+                kidsPets: pending.kidsPets,
+                smallSpace: pending.smallSpace,
+              ),
+            );
+        await onboardingV2Notifier.clearPendingSubmission();
+        await deckNotifier.refresh();
+      } catch (_) {
+        // Keep queued submission and retry later.
+      } finally {
+        _retryingOnboardingV2Submit = false;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +155,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
     final swipeHintSeen = ref.watch(swipeHintSeenProvider);
     final goldCardState = ref.watch(goldCardProvider);
     final curatedSofasAsync = ref.watch(curatedSofasProvider);
+    final onboardingV2State = ref.watch(onboardingV2Provider);
 
     return AppShell(
       title: AppConstants.appName,
@@ -112,14 +174,45 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           final tracker = ref.read(eventTrackerProvider);
           final swipeHintNotifier = ref.read(swipeHintSeenProvider.notifier);
           final goldCardNotifier = ref.read(goldCardProvider.notifier);
+          final onboardingV2Notifier = ref.read(onboardingV2Provider.notifier);
           final rank = notifier.rankContext;
           final itemScores = notifier.itemScores;
 
+          _maybeRetryPendingOnboardingV2Submit(
+            sessionId: sessionId,
+            onboardingV2State: onboardingV2State,
+            onboardingV2Notifier: onboardingV2Notifier,
+            deckNotifier: notifier,
+          );
+
+          final shouldShowGoldenV2 = _isGoldenV2EnabledForSession(sessionId) &&
+              onboardingV2State.shouldPrompt;
+          if (shouldShowGoldenV2) {
+            if (!_goldV2IntroTracked) {
+              _goldV2IntroTracked = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                tracker.track('gold_v2_intro_shown', {});
+              });
+            }
+            return _buildGoldenCardV2Overlay(
+              strings: strings,
+              sessionId: sessionId,
+              tracker: tracker,
+              onboardingV2State: onboardingV2State,
+              onboardingV2Notifier: onboardingV2Notifier,
+              deckNotifier: notifier,
+            );
+          } else {
+            _goldV2IntroTracked = false;
+          }
+
           // Determine if we should show a gold card
-          final shouldShowVisualCard =
-              goldCardState.shouldShowVisualCard && !_showingGoldCard;
-          final shouldShowBudgetCard =
-              goldCardState.shouldShowBudgetCard && !_showingGoldCard;
+          final shouldShowVisualCard = AppConstants.enableLegacyGoldCard &&
+              goldCardState.shouldShowVisualCard &&
+              !_showingGoldCard;
+          final shouldShowBudgetCard = AppConstants.enableLegacyGoldCard &&
+              goldCardState.shouldShowBudgetCard &&
+              !_showingGoldCard;
           final curatedSofas = curatedSofasAsync.valueOrNull ?? [];
 
           // Show gold card as overlay if conditions are met
@@ -175,8 +268,11 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                   swipeHintNotifier.markSeen();
                   notifier.swipe(item.id, 'right', position,
                       item: item, gesture: gesture);
-                  // Increment right swipe count for gold card triggering
-                  goldCardNotifier.incrementRightSwipes();
+                  if (AppConstants.enableLegacyGoldCard) {
+                    // Increment right swipe count for legacy gold card triggering
+                    goldCardNotifier.incrementRightSwipes();
+                  }
+                  onboardingV2Notifier.incrementRightSwipes();
                 },
                 onSwipeAnimationEnd: (item) {
                   notifier.removeItemById(item.id);
@@ -401,6 +497,162 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildGoldenCardV2Overlay({
+    required dynamic strings,
+    required String? sessionId,
+    required dynamic tracker,
+    required OnboardingV2State onboardingV2State,
+    required OnboardingV2Notifier onboardingV2Notifier,
+    required DeckNotifier deckNotifier,
+  }) {
+    return GoldenCardV2Flow(
+      strings: strings,
+      initialState: onboardingV2State,
+      onMarkInProgress: () async {
+        await onboardingV2Notifier.markInProgress();
+        tracker.track('gold_v2_step_viewed', {
+          'onboarding': {'stepName': 'intro'},
+        });
+      },
+      onSceneArchetypesChanged: (values) async {
+        await onboardingV2Notifier.setSceneArchetypes(values);
+        tracker.track('gold_v2_step_completed', {
+          'onboarding': {
+            'stepName': 'room_vibes',
+          },
+          'ext': {'selectionCount': values.length},
+        });
+      },
+      onSofaVibesChanged: (values) async {
+        await onboardingV2Notifier.setSofaVibes(values);
+        tracker.track('gold_v2_step_completed', {
+          'onboarding': {
+            'stepName': 'sofa_vibes',
+          },
+          'ext': {'selectionCount': values.length},
+        });
+      },
+      onConstraintsChanged: ({
+        String? budgetBand,
+        bool clearBudgetBand = false,
+        String? seatCount,
+        bool clearSeatCount = false,
+        bool? modularOnly,
+        bool clearModularOnly = false,
+        bool? kidsPets,
+        bool clearKidsPets = false,
+        bool? smallSpace,
+        bool clearSmallSpace = false,
+      }) async {
+        await onboardingV2Notifier.setConstraints(
+          budgetBand: budgetBand,
+          clearBudgetBand: clearBudgetBand,
+          seatCount: seatCount,
+          clearSeatCount: clearSeatCount,
+          modularOnly: modularOnly,
+          clearModularOnly: clearModularOnly,
+          kidsPets: kidsPets,
+          clearKidsPets: clearKidsPets,
+          smallSpace: smallSpace,
+          clearSmallSpace: clearSmallSpace,
+        );
+        tracker.track('gold_v2_step_completed', {
+          'onboarding': {'stepName': 'constraints'},
+        });
+      },
+      onOptionToggled: (stepName, optionId, selected) async {
+        tracker.track(
+          selected ? 'gold_v2_option_selected' : 'gold_v2_option_deselected',
+          {
+            'onboarding': {'stepName': stepName, 'field': optionId},
+          },
+        );
+      },
+      onStepChanged: (step) async {
+        await onboardingV2Notifier.setCurrentStep(step);
+      },
+      onSkip: () async {
+        tracker.track('gold_v2_skipped', {
+          'onboarding': {'stepName': 'summary'},
+          'ext': {'skipCount': onboardingV2State.hardSkipCount + 1},
+        });
+        await onboardingV2Notifier.softSkip();
+      },
+      onComplete: (submission) async {
+        tracker.track('gold_v2_summary_confirmed', {
+          'onboarding': {'stepName': 'summary'},
+          'ext': submission.toJson(),
+        });
+        await onboardingV2Notifier
+            .setSceneArchetypes(submission.sceneArchetypes);
+        await onboardingV2Notifier.setSofaVibes(submission.sofaVibes);
+        await onboardingV2Notifier.setConstraints(
+          budgetBand: submission.budgetBand,
+          clearBudgetBand: submission.budgetBand == null,
+          seatCount: submission.seatCount,
+          clearSeatCount: submission.seatCount == null,
+          modularOnly: submission.modularOnly,
+          clearModularOnly: submission.modularOnly == null,
+          kidsPets: submission.kidsPets,
+          clearKidsPets: submission.kidsPets == null,
+          smallSpace: submission.smallSpace,
+          clearSmallSpace: submission.smallSpace == null,
+        );
+
+        final pendingSubmission = OnboardingV2PendingSubmission(
+          sceneArchetypes: List<String>.from(submission.sceneArchetypes),
+          sofaVibes: List<String>.from(submission.sofaVibes),
+          budgetBand: submission.budgetBand,
+          seatCount: submission.seatCount,
+          modularOnly: submission.modularOnly,
+          kidsPets: submission.kidsPets,
+          smallSpace: submission.smallSpace,
+          queuedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+
+        if (sessionId != null && sessionId.isNotEmpty) {
+          try {
+            await ref.read(apiClientProvider).submitOnboardingV2(
+                  sessionId: sessionId,
+                  submission: OnboardingV2Submission(
+                    sceneArchetypes: submission.sceneArchetypes,
+                    sofaVibes: submission.sofaVibes,
+                    budgetBand: submission.budgetBand,
+                    seatCount: submission.seatCount,
+                    modularOnly: submission.modularOnly,
+                    kidsPets: submission.kidsPets,
+                    smallSpace: submission.smallSpace,
+                  ),
+                );
+            await onboardingV2Notifier.clearPendingSubmission();
+          } catch (_) {
+            await onboardingV2Notifier.queuePendingSubmission(
+              pendingSubmission,
+            );
+          }
+        } else {
+          await onboardingV2Notifier.queuePendingSubmission(pendingSubmission);
+        }
+        await onboardingV2Notifier.complete();
+        await deckNotifier.refresh();
+      },
+      onStartFresh: () async {
+        tracker.track('gold_v2_summary_adjusted', {
+          'onboarding': {'stepName': 'summary'},
+          'ext': {'action': 'start_fresh'},
+        });
+        await onboardingV2Notifier.startFresh();
+      },
+      onAdjust: () async {
+        tracker.track('gold_v2_summary_adjusted', {
+          'onboarding': {'stepName': 'summary'},
+          'ext': {'action': 'adjust'},
+        });
+        await onboardingV2Notifier.resetToStepOne();
+      },
     );
   }
 
@@ -694,13 +946,16 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   void _showFiltersSheet(BuildContext context, WidgetRef ref) {
     ref.read(eventTrackerProvider).track('filters_open', {});
     final strings = ref.read(appStringsProvider);
-    showModalBottomSheet<void>(
+    // Key to access the filter sheet state from whenComplete
+    final filterSheetKey = GlobalKey<_DeckFiltersSheetState>();
+    showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(AppTheme.radiusSheet)),
       ),
       builder: (context) => _DeckFiltersSheet(
+        key: filterSheetKey,
         strings: strings,
         currentFilters: ref.read(deckFiltersProvider),
         onFilterChange: (key, from, to) {
@@ -715,17 +970,33 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
               Map<String, dynamic>.from(filters);
           ref.read(deckItemsProvider.notifier).refresh();
           _trackFiltersApply(ref, filters);
-          Navigator.of(context).pop();
+          Navigator.of(context).pop(filters);
         },
         onClear: () {
           ref.read(eventTrackerProvider).track('filters_clear', {});
           ref.read(deckFiltersProvider.notifier).state = <String, dynamic>{};
           ref.read(deckItemsProvider.notifier).refresh();
           _trackFiltersApply(ref, <String, dynamic>{});
-          Navigator.of(context).pop();
+          Navigator.of(context).pop(<String, dynamic>{});
         },
       ),
-    );
+    ).then((result) {
+      // Auto-apply filters when the sheet is dismissed (swiped down / tapped outside)
+      // without explicitly pressing Apply or Clear. result is null in that case.
+      if (result == null) {
+        final currentFilters = filterSheetKey.currentState?.selectedFilters;
+        if (currentFilters != null) {
+          final previousFilters = ref.read(deckFiltersProvider);
+          // Only refresh if filters actually changed
+          if (currentFilters.toString() != previousFilters.toString()) {
+            ref.read(deckFiltersProvider.notifier).state =
+                Map<String, dynamic>.from(currentFilters);
+            ref.read(deckItemsProvider.notifier).refresh();
+            _trackFiltersApply(ref, currentFilters);
+          }
+        }
+      }
+    });
   }
 
   void _trackFiltersApply(WidgetRef ref, Map<String, dynamic> filters) {
@@ -880,8 +1151,31 @@ const List<String> _colorFamilyOptions = [
 /// New/used options.
 const List<String> _newUsedOptions = ['new', 'used'];
 
+/// Sofa sub-category options (C6 taxonomy).
+const List<String> _subCategoryOptions = [
+  '2_seater',
+  '3_seater',
+  '4_seater',
+  'corner_sofa',
+  'u_sofa',
+  'chaise_sofa',
+  'modular_sofa',
+  'sleeper_sofa',
+];
+
+/// Room type options (C7 taxonomy).
+const List<String> _roomTypeOptions = [
+  'living_room',
+  'bedroom',
+  'outdoor',
+  'office',
+  'hallway',
+  'kids_room',
+];
+
 class _DeckFiltersSheet extends StatefulWidget {
   const _DeckFiltersSheet({
+    super.key,
     required this.strings,
     required this.currentFilters,
     required this.onApply,
@@ -903,6 +1197,8 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
   String? _sizeClass;
   String? _colorFamily;
   String? _newUsed;
+  String? _subCategory;
+  String? _roomType;
 
   @override
   void initState() {
@@ -910,7 +1206,12 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
     _sizeClass = widget.currentFilters['sizeClass'] as String?;
     _colorFamily = widget.currentFilters['colorFamily'] as String?;
     _newUsed = widget.currentFilters['newUsed'] as String?;
+    _subCategory = widget.currentFilters['subCategory'] as String?;
+    _roomType = widget.currentFilters['roomType'] as String?;
   }
+
+  /// Current filter state – also accessed externally for auto-apply on dismiss.
+  Map<String, dynamic> get selectedFilters => _selectedFilters;
 
   Map<String, dynamic> get _selectedFilters {
     final map = <String, dynamic>{};
@@ -919,6 +1220,10 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
     if (_colorFamily != null && _colorFamily!.isNotEmpty)
       map['colorFamily'] = _colorFamily!;
     if (_newUsed != null && _newUsed!.isNotEmpty) map['newUsed'] = _newUsed!;
+    if (_subCategory != null && _subCategory!.isNotEmpty)
+      map['subCategory'] = _subCategory!;
+    if (_roomType != null && _roomType!.isNotEmpty)
+      map['roomType'] = _roomType!;
     return map;
   }
 
@@ -941,6 +1246,71 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                 .bodyMedium
                 ?.copyWith(color: AppTheme.textSecondary),
           ),
+          // --- Sofa Type (sub-category) ---
+          const SizedBox(height: AppTheme.spacingUnit * 2),
+          Text(strings.sofaType,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Wrap(
+            spacing: AppTheme.spacingUnit / 2,
+            runSpacing: AppTheme.spacingUnit / 2,
+            children: [
+              AppFilterChip(
+                label: Text(strings.any),
+                selected: _subCategory == null,
+                onSelected: (_) {
+                  widget.onFilterChange
+                      ?.call('subCategory', _subCategory, null);
+                  setState(() => _subCategory = null);
+                },
+              ),
+              ..._subCategoryOptions.map((v) => AppFilterChip(
+                    label: Text(strings.subCatLabel(v)),
+                    selected: _subCategory == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('subCategory', _subCategory,
+                          _subCategory == v ? null : v);
+                      setState(
+                          () => _subCategory = _subCategory == v ? null : v);
+                    },
+                  )),
+            ],
+          ),
+          // --- Room Type ---
+          const SizedBox(height: AppTheme.spacingUnit * 2),
+          Text(strings.roomType,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Wrap(
+            spacing: AppTheme.spacingUnit / 2,
+            runSpacing: AppTheme.spacingUnit / 2,
+            children: [
+              AppFilterChip(
+                label: Text(strings.any),
+                selected: _roomType == null,
+                onSelected: (_) {
+                  widget.onFilterChange?.call('roomType', _roomType, null);
+                  setState(() => _roomType = null);
+                },
+              ),
+              ..._roomTypeOptions.map((v) => AppFilterChip(
+                    label: Text(strings.roomTypeLabel(v)),
+                    selected: _roomType == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call(
+                          'roomType', _roomType, _roomType == v ? null : v);
+                      setState(() => _roomType = _roomType == v ? null : v);
+                    },
+                  )),
+            ],
+          ),
+          // --- Size ---
           const SizedBox(height: AppTheme.spacingUnit * 2),
           Text(strings.size,
               style: Theme.of(context)

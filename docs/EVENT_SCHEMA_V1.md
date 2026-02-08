@@ -18,7 +18,7 @@ Server adds **createdAtServer** on ingestion.
 
 | Event | Required payload |
 |-------|------------------|
-| **deck_response** | rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate); recommended rank.requestId, rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket; perf.latencyMs |
+| **deck_response** | rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate); recommended rank.requestId, rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min; perf.latencyMs |
 | **card_impression_start** | item.itemId, item.positionInDeck, impression.impressionId |
 | **card_impression_end** | impression.visibleDurationMs, impression.endReason; same impressionId as start; optional impression.bucket (0_1s, 1_3s, 3_8s, 8s_plus) |
 | **deck_refresh** | — (no required payload) |

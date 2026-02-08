@@ -435,6 +435,35 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
     db = get_firestore_client()
     db_run_id = create_run(db, source_id, "running")
     started_at = time.time()
+
+    # --- Stop-signal helper -------------------------------------------
+    _stop_check_counter = 0
+
+    def _is_stopped(every: int = 10) -> bool:
+        """Check Firestore every *every* calls for a 'stopped' status.
+
+        This avoids hammering Firestore on every single URL while still
+        being responsive (within ~10 iterations).
+        """
+        nonlocal _stop_check_counter
+        _stop_check_counter += 1
+        if _stop_check_counter % every != 0:
+            return False
+        try:
+            snap = db.collection("ingestionRuns").document(db_run_id).get()
+            if snap.exists and snap.to_dict().get("status") == "stopped":
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _handle_stop(log, stats):
+        """Finalise a stopped run — update Firestore and return result dict."""
+        log.warning("Stop signal received — aborting crawl")
+        stats["stoppedByUser"] = True
+        update_run(db, db_run_id, "stopped", stats, error_summary="Stopped by user")
+        return {"runId": db_run_id, "status": "stopped", "stats": stats}
+    # ------------------------------------------------------------------
     stats: dict[str, Any] = {
         "fetched": 0,
         "parsed": 0,
@@ -512,8 +541,15 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
     max_pages = int(source.get("maxPagesPerRun") or 50)
     max_depth = int(source.get("maxDepth") or 2)
 
+    # Use a realistic browser user-agent by default.  Many sites (especially
+    # those behind Cloudflare) will hard-block requests with a bot-style UA.
+    _DEFAULT_UA = (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    )
     fetcher = PoliteFetcher(
-        user_agent=user_agent or "SwiperBot/0.1 (contact: johannes@branchandleaf.se)",
+        user_agent=user_agent or _DEFAULT_UA,
         browser_fallback=use_browser_fallback,
     )
     extracted_at_iso = _utc_now_iso()
@@ -964,6 +1000,14 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
 
             completed = 0
             for future in as_completed(futures):
+                # --- Check for user-initiated stop ---
+                if _is_stopped(every=10):
+                    # Cancel remaining futures
+                    for f in futures:
+                        if not f.done():
+                            f.cancel()
+                    return _handle_stop(log, stats)
+
                 completed += 1
                 er = future.result()  # _ExtractionResult (never raises)
 
@@ -1338,11 +1382,19 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                     continue  # Skip items that failed to write
                 try:
                     result = classify_and_decide(item_id=item_id, item_data=item_data)
-                    # Write classification + eligibility back to item
-                    db.collection("items").document(item_id).update({
-                        "classification": result["classification"],
+                    # Write classification + eligibility + sub-category + room types back to item
+                    cls = result["classification"]
+                    update_fields: dict = {
+                        "classification": cls,
                         "eligibility": result["decisions"],
-                    })
+                    }
+                    # Promote subCategory and roomTypes to top-level fields for
+                    # fast Firestore queries and deck filtering
+                    if cls.get("subCategory"):
+                        update_fields["subCategory"] = cls["subCategory"]
+                    if cls.get("roomTypes"):
+                        update_fields["roomTypes"] = cls["roomTypes"]
+                    db.collection("items").document(item_id).update(update_fields)
                     if result["goldDoc"]:
                         db.collection("goldItems").document(item_id).set(result["goldDoc"], merge=True)
                         gold_promoted += 1

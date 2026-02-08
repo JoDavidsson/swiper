@@ -4,6 +4,13 @@ import * as admin from "firebase-admin";
 import { applyExploration, PreferenceWeightsRanker, PersonalPlusPersonaRanker } from "../ranker";
 import type { ItemCandidate, PersonaSignals, SessionContext } from "../ranker";
 import { getPersonaSignals } from "../scheduled/persona_aggregation";
+import {
+  buildSessionTargetingProfile,
+  DEFAULT_SEGMENT_MATCH_THRESHOLD,
+  evaluateSegmentMatch,
+  toSegmentCriteria,
+} from "../targeting/segment_targeting";
+import type { SessionTargetingProfile } from "../targeting/segment_targeting";
 
 const DEFAULT_LIMIT = 30;
 const MIN_ITEMS_FETCH_LIMIT = 240;
@@ -14,6 +21,7 @@ const MAX_PERSONA_RETRIEVAL_IDS = 120;
 
 /** Default boost value for onboarding pick attributes (cold-start) */
 const ONBOARDING_PICK_BOOST = 3;
+const ONBOARDING_V2_BOOST = 2.5;
 
 const MAX_LIMIT = parseInt(String(process.env.DECK_RESPONSE_LIMIT || "500"), 10) || 500;
 
@@ -24,6 +32,77 @@ type QueueName =
   | "persona_similar"
   | "long_tail"
   | "serendipity";
+
+type OnboardingV2Constraints = {
+  budgetBand?: string;
+  seatCount?: string;
+  modularOnly?: boolean;
+  kidsPets?: boolean;
+  smallSpace?: boolean;
+};
+
+type OnboardingV2Profile = {
+  sceneArchetypes: string[];
+  sofaVibes: string[];
+  constraints: OnboardingV2Constraints;
+  derivedProfile?: {
+    primaryStyle?: string | null;
+    secondaryStyle?: string | null;
+    confidence?: number;
+    explanation?: string[];
+  };
+  pickHash?: string;
+};
+
+type CampaignTargetingContext = {
+  campaignId: string;
+  segmentId: string;
+  segmentCriteria: ReturnType<typeof toSegmentCriteria>;
+  threshold: number;
+  productMode: "all" | "selected" | "auto";
+  productIds: Set<string>;
+};
+
+type PromotedTargetingDecision = {
+  eligible: boolean;
+  reason:
+    | "legacy_promoted"
+    | "eligible_campaign"
+    | "campaign_not_found"
+    | "segment_mismatch"
+    | "product_set_mismatch";
+  campaignId: string | null;
+  segmentId: string | null;
+  relevanceScore: number | null;
+  threshold: number | null;
+};
+
+const ONBOARDING_V2_SCENE_SIGNAL_MAP: Record<string, string[]> = {
+  calm_minimal: ["minimal", "scandinavian", "modern", "color:white", "color:grey"],
+  warm_organic: ["scandinavian", "material:wood", "color:beige", "color:brown"],
+  bold_eclectic: ["vintage", "color:green", "color:blue"],
+  urban_industrial: ["industrial", "modern", "color:black", "material:metal"],
+};
+
+const ONBOARDING_V2_SOFA_SIGNAL_MAP: Record<string, string[]> = {
+  rounded_boucle: ["material:boucle", "material:fabric", "color:beige"],
+  low_profile_linen: ["material:linen", "size:medium", "feature:small_space"],
+  structured_leather: ["material:leather", "color:brown", "color:black"],
+  modular_cloud: ["feature:modular", "subcat:modular_sofa"],
+};
+
+const ONBOARDING_V2_BUDGET_BANDS: Record<string, { min?: number; max?: number }> = {
+  lt_5k: { max: 5000 },
+  "5k_15k": { min: 5000, max: 15000 },
+  "15k_30k": { min: 15000, max: 30000 },
+  "30k_plus": { min: 30000 },
+};
+
+const ONBOARDING_V2_SEAT_SUBCATEGORIES: Record<string, string[]> = {
+  "2": ["2_seater"],
+  "3": ["3_seater"],
+  "4_plus": ["4_seater", "corner_sofa", "u_sofa"],
+};
 
 const QUEUE_ORDER: QueueName[] = [
   "preference_match",
@@ -46,6 +125,255 @@ const BACKFILL_QUEUE_ORDER: QueueName[] = [
   "serendipity",
   "fresh_promoted",
 ];
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function toStringSet(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set<string>();
+  const out = new Set<string>();
+  for (const entry of value) {
+    const id = asTrimmedString(entry);
+    if (id) out.add(id);
+  }
+  return out;
+}
+
+function timestampToMillis(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value === "object") {
+    const candidate = value as { toMillis?: () => number; toDate?: () => Date };
+    if (typeof candidate.toMillis === "function") {
+      const ms = candidate.toMillis();
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof candidate.toDate === "function") {
+      const date = candidate.toDate();
+      const ms = date.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    }
+  }
+  return null;
+}
+
+function toCampaignProductMode(value: unknown): "all" | "selected" | "auto" {
+  if (value === "selected" || value === "auto" || value === "all") return value;
+  return "all";
+}
+
+function toMatchThreshold(value: unknown): number {
+  const parsed = asFiniteNumber(value);
+  if (parsed == null) return DEFAULT_SEGMENT_MATCH_THRESHOLD;
+  return Math.max(0, Math.min(1, parsed));
+}
+
+function campaignHasBudgetRemaining(campaignData: Record<string, unknown>): boolean {
+  const budgetTotal = asFiniteNumber(campaignData.budgetTotal);
+  if (budgetTotal == null) return true;
+  const budgetSpent = asFiniteNumber(campaignData.budgetSpent) ?? 0;
+  return budgetSpent < budgetTotal;
+}
+
+function campaignIsInScheduleWindow(campaignData: Record<string, unknown>, nowMs: number): boolean {
+  const startMs = timestampToMillis(campaignData.startDate);
+  const endMs = timestampToMillis(campaignData.endDate);
+  if (startMs != null && nowMs < startMs) return false;
+  if (endMs != null && nowMs > endMs) return false;
+  return true;
+}
+
+function extractCampaignIdFromPromotedItem(data: Record<string, unknown>): string | null {
+  const direct =
+    asTrimmedString(data.campaignId) ||
+    asTrimmedString(data.featuredCampaignId) ||
+    asTrimmedString(data.sponsoredCampaignId);
+  if (direct) return direct;
+
+  const campaignObject = toRecord(data.campaign);
+  if (campaignObject) {
+    const nested = asTrimmedString(campaignObject.id) || asTrimmedString(campaignObject.campaignId);
+    if (nested) return nested;
+  }
+
+  const featuredObject = toRecord(data.featured);
+  if (featuredObject) {
+    const nested = asTrimmedString(featuredObject.campaignId) || asTrimmedString(featuredObject.id);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+async function loadActiveCampaignTargetingContexts(
+  db: admin.firestore.Firestore,
+  nowMs: number
+): Promise<Map<string, CampaignTargetingContext>> {
+  const activeCampaignsSnap = await db
+    .collection("campaigns")
+    .where("status", "==", "active")
+    .limit(300)
+    .get();
+
+  const contexts = new Map<string, CampaignTargetingContext>();
+  const pendingBySegmentId = new Map<
+    string,
+    Array<{
+      campaignId: string;
+      threshold: number;
+      productMode: "all" | "selected" | "auto";
+      productIds: Set<string>;
+    }>
+  >();
+
+  for (const doc of activeCampaignsSnap.docs) {
+    const campaignData = (doc.data() || {}) as Record<string, unknown>;
+    if (!campaignHasBudgetRemaining(campaignData)) continue;
+    if (!campaignIsInScheduleWindow(campaignData, nowMs)) continue;
+
+    const threshold = toMatchThreshold(
+      campaignData.relevanceThreshold ?? campaignData.segmentMatchThreshold
+    );
+    const productMode = toCampaignProductMode(campaignData.productMode);
+    const productIds = toStringSet(campaignData.productIds);
+    const segmentId = asTrimmedString(campaignData.segmentId);
+    if (!segmentId) continue;
+
+    const segmentSnapshot = toRecord(campaignData.segmentSnapshot);
+    if (segmentSnapshot) {
+      contexts.set(doc.id, {
+        campaignId: doc.id,
+        segmentId,
+        segmentCriteria: toSegmentCriteria(segmentSnapshot),
+        threshold,
+        productMode,
+        productIds,
+      });
+      continue;
+    }
+
+    const pending = pendingBySegmentId.get(segmentId) || [];
+    pending.push({
+      campaignId: doc.id,
+      threshold,
+      productMode,
+      productIds,
+    });
+    pendingBySegmentId.set(segmentId, pending);
+  }
+
+  if (pendingBySegmentId.size > 0) {
+    const segmentRefs = Array.from(pendingBySegmentId.keys()).map((id) =>
+      db.collection("segments").doc(id)
+    );
+    const segmentDocs = await db.getAll(...segmentRefs);
+    const segmentDataById = new Map<string, Record<string, unknown>>();
+    for (const segmentDoc of segmentDocs) {
+      if (!segmentDoc.exists) continue;
+      segmentDataById.set(segmentDoc.id, (segmentDoc.data() || {}) as Record<string, unknown>);
+    }
+
+    for (const [segmentId, campaigns] of pendingBySegmentId.entries()) {
+      const segmentData = segmentDataById.get(segmentId);
+      if (!segmentData) continue;
+      for (const campaign of campaigns) {
+        contexts.set(campaign.campaignId, {
+          campaignId: campaign.campaignId,
+          segmentId,
+          segmentCriteria: toSegmentCriteria(segmentData),
+          threshold: campaign.threshold,
+          productMode: campaign.productMode,
+          productIds: campaign.productIds,
+        });
+      }
+    }
+  }
+
+  return contexts;
+}
+
+function evaluatePromotedItemTargeting(
+  itemId: string,
+  itemData: Record<string, unknown>,
+  campaignContexts: Map<string, CampaignTargetingContext>,
+  profile: SessionTargetingProfile
+): PromotedTargetingDecision {
+  const campaignId = extractCampaignIdFromPromotedItem(itemData);
+  if (!campaignId) {
+    return {
+      eligible: true,
+      reason: "legacy_promoted",
+      campaignId: null,
+      segmentId: null,
+      relevanceScore: null,
+      threshold: null,
+    };
+  }
+
+  const campaignContext = campaignContexts.get(campaignId);
+  if (!campaignContext) {
+    return {
+      eligible: false,
+      reason: "campaign_not_found",
+      campaignId,
+      segmentId: null,
+      relevanceScore: null,
+      threshold: null,
+    };
+  }
+
+  if (
+    campaignContext.productMode === "selected" &&
+    campaignContext.productIds.size > 0 &&
+    !campaignContext.productIds.has(itemId)
+  ) {
+    return {
+      eligible: false,
+      reason: "product_set_mismatch",
+      campaignId,
+      segmentId: campaignContext.segmentId,
+      relevanceScore: null,
+      threshold: campaignContext.threshold,
+    };
+  }
+
+  const matchResult = evaluateSegmentMatch(
+    campaignContext.segmentCriteria,
+    profile,
+    campaignContext.threshold
+  );
+  if (!matchResult.isMatch) {
+    return {
+      eligible: false,
+      reason: "segment_mismatch",
+      campaignId,
+      segmentId: campaignContext.segmentId,
+      relevanceScore: matchResult.overallScore,
+      threshold: campaignContext.threshold,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: "eligible_campaign",
+    campaignId,
+    segmentId: campaignContext.segmentId,
+    relevanceScore: matchResult.overallScore,
+    threshold: campaignContext.threshold,
+  };
+}
 
 function hashSessionId(sessionId: string): number {
   let h = 0;
@@ -228,7 +556,153 @@ async function getDocsByIds(
   return db.getAll(...refs);
 }
 
+function parseOnboardingV2Profile(data: unknown): OnboardingV2Profile | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = data as Record<string, unknown>;
+  const sceneArchetypes = getStringArray(raw.sceneArchetypes);
+  const sofaVibes = getStringArray(raw.sofaVibes);
+  const constraintsRaw =
+    raw.constraints && typeof raw.constraints === "object"
+      ? (raw.constraints as Record<string, unknown>)
+      : {};
+  const constraints: OnboardingV2Constraints = {
+    budgetBand: normalizeToken(constraintsRaw.budgetBand) ?? undefined,
+    seatCount: normalizeToken(constraintsRaw.seatCount) ?? undefined,
+    modularOnly: constraintsRaw.modularOnly === true,
+    kidsPets: constraintsRaw.kidsPets === true,
+    smallSpace: constraintsRaw.smallSpace === true,
+  };
+  const derivedRaw =
+    raw.derivedProfile && typeof raw.derivedProfile === "object"
+      ? (raw.derivedProfile as Record<string, unknown>)
+      : null;
+
+  if (sceneArchetypes.length === 0 && sofaVibes.length === 0) return null;
+
+  return {
+    sceneArchetypes,
+    sofaVibes,
+    constraints,
+    derivedProfile: derivedRaw
+      ? {
+          primaryStyle: normalizeToken(derivedRaw.primaryStyle),
+          secondaryStyle: normalizeToken(derivedRaw.secondaryStyle),
+          confidence:
+            typeof derivedRaw.confidence === "number" && Number.isFinite(derivedRaw.confidence)
+              ? derivedRaw.confidence
+              : undefined,
+          explanation: getStringArray(derivedRaw.explanation),
+        }
+      : undefined,
+    pickHash: normalizeToken(raw.pickHash) ?? undefined,
+  };
+}
+
+function buildOnboardingV2Weights(profile: OnboardingV2Profile): Record<string, number> {
+  const next: Record<string, number> = {};
+  const add = (key: string, weight: number) => {
+    next[key] = Math.max(next[key] || 0, weight);
+  };
+
+  for (const sceneToken of profile.sceneArchetypes) {
+    const mapped = ONBOARDING_V2_SCENE_SIGNAL_MAP[sceneToken] || [];
+    for (const key of mapped) {
+      add(key, ONBOARDING_V2_BOOST);
+    }
+  }
+
+  for (const sofaToken of profile.sofaVibes) {
+    const mapped = ONBOARDING_V2_SOFA_SIGNAL_MAP[sofaToken] || [];
+    for (const key of mapped) {
+      add(key, ONBOARDING_V2_BOOST + 0.25);
+    }
+  }
+
+  if (profile.constraints.modularOnly) add("feature:modular", ONBOARDING_V2_BOOST + 0.5);
+  if (profile.constraints.smallSpace) add("feature:small_space", ONBOARDING_V2_BOOST + 0.4);
+  if (profile.constraints.kidsPets) add("material:fabric", ONBOARDING_V2_BOOST);
+
+  return next;
+}
+
+function titleFamilyKey(title: unknown): string | null {
+  if (typeof title !== "string") return null;
+  const normalized = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return null;
+  const parts = normalized.split(" ").filter((p) => p.length > 1);
+  if (parts.length === 0) return null;
+  return parts.slice(0, 2).join("_");
+}
+
+function computeSameFamilyTop8Rate(items: Array<Record<string, unknown>>): number {
+  const top = items.slice(0, 8);
+  const seen = new Set<string>();
+  let familyCount = 0;
+  let duplicateCount = 0;
+
+  for (const item of top) {
+    const family = titleFamilyKey(item.title);
+    if (!family) continue;
+    familyCount += 1;
+    if (seen.has(family)) {
+      duplicateCount += 1;
+    } else {
+      seen.add(family);
+    }
+  }
+
+  if (familyCount === 0) return 0;
+  return Number((duplicateCount / familyCount).toFixed(4));
+}
+
+function buildStyleTokenSet(data: Record<string, unknown>): Set<string> {
+  const tokens = new Set<string>();
+  for (const tag of getStringArray(data.styleTags)) tokens.add(`style:${tag}`);
+  const material = normalizeToken(data.material);
+  if (material) tokens.add(`material:${material}`);
+  const color = normalizeToken(data.colorFamily);
+  if (color) tokens.add(`color:${color}`);
+  const subCategory = normalizeToken(data.subCategory);
+  if (subCategory) tokens.add(`subcat:${subCategory}`);
+  for (const roomType of getStringArray(data.roomTypes)) tokens.add(`room:${roomType}`);
+  if (data.modular === true) tokens.add("feature:modular");
+  if (data.smallSpaceFriendly === true) tokens.add("feature:small_space");
+  return tokens;
+}
+
+function jaccardDistance(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection += 1;
+  }
+  const union = a.size + b.size - intersection;
+  if (union === 0) return 0;
+  return 1 - intersection / union;
+}
+
+function computeMinStyleDistanceTop4(items: Array<Record<string, unknown>>): number | null {
+  const top = items.slice(0, 4);
+  const tokenSets = top
+    .map((item) => buildStyleTokenSet(item))
+    .filter((tokens) => tokens.size >= 2);
+  if (tokenSets.length < 2) return null;
+
+  let minDistance = 1;
+  for (let i = 0; i < tokenSets.length; i += 1) {
+    for (let j = i + 1; j < tokenSets.length; j += 1) {
+      minDistance = Math.min(minDistance, jaccardDistance(tokenSets[i], tokenSets[j]));
+    }
+  }
+  return Number(minDistance.toFixed(4));
+}
+
 export async function deckGet(req: Request, res: Response): Promise<void> {
+  const startedAtMs = Date.now();
   const sessionId = req.query.sessionId as string;
   const requested = parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT;
   const limit = Math.min(Math.max(0, requested), MAX_LIMIT);
@@ -236,54 +710,84 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const debugMode = req.query.debug === "true";
   const providedRequestId = typeof req.query.requestId === "string" ? req.query.requestId.trim() : "";
   const requestId = providedRequestId.length > 0 ? providedRequestId : createDeckRequestId(sessionId || "unknown");
+  const logDeckEvent = (eventName: string, payload: Record<string, unknown>): void => {
+    console.info(eventName, {
+      requestId,
+      sessionId: sessionId || null,
+      ...payload,
+    });
+  };
 
   if (!sessionId) {
+    logDeckEvent("deck_request_rejected", {
+      reason: "missing_session_id",
+      latencyMs: Date.now() - startedAtMs,
+    });
     res.status(400).json({ error: "sessionId required" });
     return;
   }
 
-  const db = admin.firestore();
+  try {
+    const db = admin.firestore();
 
-  const [swipesSnap, _likesSnap, sessionSnap, weightsSnap, onboardingPicksSnap] = await Promise.all([
-    db.collection("swipes").where("sessionId", "==", sessionId).orderBy("createdAt", "desc").limit(500).get(),
-    db.collection("likes").where("sessionId", "==", sessionId).get(),
-    db.collection("anonSessions").doc(sessionId).get(),
-    db.collection("anonSessions").doc(sessionId).collection("preferenceWeights").doc("weights").get(),
-    db.collection("onboardingPicks").doc(sessionId).get(),
-  ]);
+    const [
+      swipesSnap,
+      _likesSnap,
+      sessionSnap,
+      weightsSnap,
+      onboardingPicksSnap,
+      onboardingV2Snap,
+    ] = await Promise.all([
+      db.collection("swipes").where("sessionId", "==", sessionId).orderBy("createdAt", "desc").limit(500).get(),
+      db.collection("likes").where("sessionId", "==", sessionId).get(),
+      db.collection("anonSessions").doc(sessionId).get(),
+      db.collection("anonSessions").doc(sessionId).collection("preferenceWeights").doc("weights").get(),
+      db.collection("onboardingPicks").doc(sessionId).get(),
+      db.collection("onboardingProfiles").doc(sessionId).get(),
+    ]);
 
   // Start with existing preference weights
   let preferenceWeights = weightsSnap.exists
     ? (weightsSnap.data() as Record<string, number>) || {}
     : (sessionSnap.exists ? (sessionSnap.data()?.preferenceWeights as Record<string, number> | undefined) : undefined) || {};
 
+  const sessionData = (sessionSnap.data() || {}) as Record<string, unknown>;
+  const onboardingPicksData = (onboardingPicksSnap.data() || {}) as Record<string, unknown>;
+  const onboardingExtractedAttributes =
+    onboardingPicksData.extractedAttributes && typeof onboardingPicksData.extractedAttributes === "object"
+      ? (onboardingPicksData.extractedAttributes as Record<string, unknown>)
+      : null;
+
+  const onboardingV2Profile = onboardingV2Snap.exists
+    ? parseOnboardingV2Profile(onboardingV2Snap.data())
+    : null;
+
   // Cold-start: if user has onboarding picks but few/no swipes, boost attributes from picked items
   const hasLimitedHistory = swipesSnap.size < 5;
-  if (hasLimitedHistory && onboardingPicksSnap.exists) {
-    const picksData = onboardingPicksSnap.data();
-    const extractedAttributes = picksData?.extractedAttributes as {
-      styleTags?: string[];
-      materials?: string[];
-      colorFamilies?: string[];
-    } | undefined;
+  if (hasLimitedHistory && onboardingV2Profile != null) {
+    const v2Weights = buildOnboardingV2Weights(onboardingV2Profile);
+    // Merge: existing weights take precedence over onboarding priors.
+    preferenceWeights = { ...v2Weights, ...preferenceWeights };
+  }
 
-    if (extractedAttributes) {
+  if (hasLimitedHistory && onboardingPicksSnap.exists) {
+    if (onboardingExtractedAttributes) {
       const coldStartWeights: Record<string, number> = {};
 
-      if (Array.isArray(extractedAttributes.styleTags)) {
-        for (const tag of extractedAttributes.styleTags) {
+      if (Array.isArray(onboardingExtractedAttributes.styleTags)) {
+        for (const tag of onboardingExtractedAttributes.styleTags) {
           coldStartWeights[tag] = ONBOARDING_PICK_BOOST;
         }
       }
 
-      if (Array.isArray(extractedAttributes.materials)) {
-        for (const material of extractedAttributes.materials) {
+      if (Array.isArray(onboardingExtractedAttributes.materials)) {
+        for (const material of onboardingExtractedAttributes.materials) {
           coldStartWeights[`material:${material}`] = ONBOARDING_PICK_BOOST;
         }
       }
 
-      if (Array.isArray(extractedAttributes.colorFamilies)) {
-        for (const color of extractedAttributes.colorFamilies) {
+      if (Array.isArray(onboardingExtractedAttributes.colorFamilies)) {
+        for (const color of onboardingExtractedAttributes.colorFamilies) {
           coldStartWeights[`color:${color}`] = ONBOARDING_PICK_BOOST;
         }
       }
@@ -301,6 +805,10 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     try {
       filters = JSON.parse(filtersJson) as Record<string, unknown>;
     } catch (e) {
+      logDeckEvent("deck_request_rejected", {
+        reason: "invalid_filters_json",
+        latencyMs: Date.now() - startedAtMs,
+      });
       res.status(400).json({ error: "filters must be valid JSON" });
       return;
     }
@@ -309,19 +817,68 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const sizeClassFilter = typeof filters.sizeClass === "string" ? filters.sizeClass : undefined;
   const colorFamilyFilter = typeof filters.colorFamily === "string" ? filters.colorFamily : undefined;
   const newUsedFilter = typeof filters.newUsed === "string" ? filters.newUsed : undefined;
+  const subCategoryFilter = typeof filters.subCategory === "string" ? filters.subCategory : undefined;
+  const roomTypeFilter = typeof filters.roomType === "string" ? filters.roomType : undefined;
   const explicitPriceMin = asFiniteNumber(filters.priceMin);
   const explicitPriceMax = asFiniteNumber(filters.priceMax);
+  const onboardingV2Constraints = onboardingV2Profile?.constraints ?? {};
+  const onboardingSeatSubcats =
+    onboardingV2Constraints.seatCount != null
+      ? ONBOARDING_V2_SEAT_SUBCATEGORIES[onboardingV2Constraints.seatCount] || []
+      : [];
+  const requireModular = onboardingV2Constraints.modularOnly === true;
+  const requireSmallSpace = onboardingV2Constraints.smallSpace === true;
 
-  // Apply budget filter from onboarding picks if available and no explicit price filter is set
+  // Apply budget filter from onboarding v2/v1 if no explicit price filter is set.
   let budgetMin: number | undefined;
   let budgetMax: number | undefined;
-  if (onboardingPicksSnap.exists && explicitPriceMin == null && explicitPriceMax == null) {
-    const picksData = onboardingPicksSnap.data();
-    if (typeof picksData?.budgetMin === "number") budgetMin = picksData.budgetMin;
-    if (typeof picksData?.budgetMax === "number") budgetMax = picksData.budgetMax;
+  if (explicitPriceMin == null && explicitPriceMax == null) {
+    const budgetBand = onboardingV2Constraints.budgetBand;
+    if (budgetBand && ONBOARDING_V2_BUDGET_BANDS[budgetBand]) {
+      const range = ONBOARDING_V2_BUDGET_BANDS[budgetBand];
+      budgetMin = range.min;
+      budgetMax = range.max;
+    } else if (onboardingPicksSnap.exists) {
+      if (typeof onboardingPicksData.budgetMin === "number") budgetMin = onboardingPicksData.budgetMin;
+      if (typeof onboardingPicksData.budgetMax === "number") budgetMax = onboardingPicksData.budgetMax;
+    }
   }
   const minPriceFilter = explicitPriceMin ?? budgetMin;
   const maxPriceFilter = explicitPriceMax ?? budgetMax;
+
+  const onboardingStyleTokens = [
+    ...getStringArray(onboardingExtractedAttributes?.styleTags),
+    ...getStringArray(onboardingV2Profile?.sceneArchetypes),
+    ...getStringArray(onboardingV2Profile?.sofaVibes),
+    ...(onboardingV2Profile?.derivedProfile?.primaryStyle != null
+      ? [onboardingV2Profile.derivedProfile.primaryStyle]
+      : []),
+    ...(onboardingV2Profile?.derivedProfile?.secondaryStyle != null
+      ? [onboardingV2Profile.derivedProfile.secondaryStyle]
+      : []),
+  ];
+
+  const inferredSizeClasses: string[] = [];
+  if (onboardingV2Constraints.seatCount === "2") inferredSizeClasses.push("small");
+  if (onboardingV2Constraints.seatCount === "3") inferredSizeClasses.push("medium");
+  if (onboardingV2Constraints.seatCount === "4_plus") inferredSizeClasses.push("large");
+  if (onboardingV2Constraints.smallSpace === true) {
+    inferredSizeClasses.push("small");
+    inferredSizeClasses.push("compact");
+  }
+
+  const sessionTargetingProfile = buildSessionTargetingProfile({
+    locale: asTrimmedString(req.query.locale) || asTrimmedString(sessionData.locale),
+    geoRegion: asTrimmedString(req.query.geoRegion) || asTrimmedString(sessionData.geoRegion),
+    geoCity: asTrimmedString(req.query.geoCity) || asTrimmedString(sessionData.geoCity),
+    geoPostcode: asTrimmedString(req.query.geoPostcode) || asTrimmedString(sessionData.geoPostcode),
+    preferenceWeights,
+    onboardingStyleTokens,
+    preferredBudgetMin: minPriceFilter ?? null,
+    preferredBudgetMax: maxPriceFilter ?? null,
+    explicitSizeClass: sizeClassFilter ?? null,
+    inferredSizeClasses,
+  });
 
   const dynamicFetchLimit = Math.max(limit * 18, MIN_ITEMS_FETCH_LIMIT);
   const dynamicCandidateCap = Math.max(limit * 10, MIN_CANDIDATE_CAP);
@@ -340,33 +897,33 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   let personaSignals: PersonaSignals | undefined;
   let usePersonaRanker = false;
   let personaCandidateIds: string[] = [];
-  if (onboardingPicksSnap.exists) {
-    const picksData = onboardingPicksSnap.data();
-    const pickHash = picksData?.pickHash as string | undefined;
-
-    if (pickHash) {
-      const itemScoresFromSimilar = await getPersonaSignals(pickHash);
-      if (itemScoresFromSimilar && Object.keys(itemScoresFromSimilar).length > 0) {
-        const sortedPersonaIds = Object.keys(itemScoresFromSimilar).sort(
-          (a, b) => (itemScoresFromSimilar[b] || 0) - (itemScoresFromSimilar[a] || 0)
-        );
-        personaSignals = {
-          itemScoresFromSimilarSessions: itemScoresFromSimilar,
-          popularAmongSimilar: sortedPersonaIds.slice(0, Math.max(20, Math.min(MAX_PERSONA_RETRIEVAL_IDS * 2, limit * 12))),
-        };
-        personaCandidateIds = sortedPersonaIds.slice(0, MAX_PERSONA_RETRIEVAL_IDS);
-        usePersonaRanker = true;
-      }
+  const onboardingPickHash = onboardingV2Profile?.pickHash ||
+    (onboardingPicksSnap.exists ? (onboardingPicksSnap.data()?.pickHash as string | undefined) : undefined);
+  if (onboardingPickHash) {
+    const itemScoresFromSimilar = await getPersonaSignals(onboardingPickHash);
+    if (itemScoresFromSimilar && Object.keys(itemScoresFromSimilar).length > 0) {
+      const sortedPersonaIds = Object.keys(itemScoresFromSimilar).sort(
+        (a, b) => (itemScoresFromSimilar[b] || 0) - (itemScoresFromSimilar[a] || 0)
+      );
+      personaSignals = {
+        itemScoresFromSimilarSessions: itemScoresFromSimilar,
+        popularAmongSimilar: sortedPersonaIds.slice(0, Math.max(20, Math.min(MAX_PERSONA_RETRIEVAL_IDS * 2, limit * 12))),
+      };
+      personaCandidateIds = sortedPersonaIds.slice(0, MAX_PERSONA_RETRIEVAL_IDS);
+      usePersonaRanker = true;
     }
   }
 
   // Multi-queue retrieval sources: promoted feed + recency feed (+ persona item IDs).
+  // The deck surface determines which items are eligible (default: sofas only).
+  const deckSurface = (req.query.surface as string) || "swiper_deck_sofas";
   const useGold = process.env.DECK_USE_GOLD !== "false";
-  const [goldSnapOrNull, catalogSnap] = await Promise.all([
+  const [goldSnapOrNull, catalogSnap, activeCampaignTargeting] = await Promise.all([
     useGold
       ? db
           .collection("goldItems")
           .where("isActive", "==", true)
+          .where("eligibleSurfaces", "array-contains", deckSurface)
           .orderBy("promotedAt", "desc")
           .limit(sourceFetchLimit)
           .get()
@@ -377,6 +934,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       .orderBy("lastUpdatedAt", "desc")
       .limit(useGold ? secondaryFetchLimit : itemsFetchLimit)
       .get(),
+    loadActiveCampaignTargetingContexts(db, Date.now()),
   ]);
 
   const freshPromotedDocs = goldSnapOrNull?.docs ?? [];
@@ -460,8 +1018,49 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
 
   const acceptedIds = new Set<string>();
   const seenCanonicals = new Set<string>();
+  const seenFamilyKeys = new Set<string>();
   const candidateDocs: admin.firestore.DocumentSnapshot[] = [];
   const candidateQueueById = new Map<string, QueueName>();
+  const featuredContextByItemId = new Map<
+    string,
+    {
+      campaignId: string;
+      segmentId: string;
+      relevanceScore: number;
+      threshold: number;
+    }
+  >();
+  const featuredTargetingStats = {
+    legacyPromotedAccepted: 0,
+    campaignMatched: 0,
+    campaignNotFound: 0,
+    campaignSegmentMismatch: 0,
+    campaignProductSetMismatch: 0,
+  };
+
+  // Categories allowed on the sofa deck surface
+  const SOFA_SURFACE_CATEGORIES = new Set(["sofa", "corner_sofa", "bed_sofa"]);
+  // Quick title keywords to identify sofas in unclassified items
+  const SOFA_TITLE_KEYWORDS = [
+    "soffa", "soffor", "sofa", "sofás", "sofá", "couch",
+    "divansoffa", "hörnsoffa", "modulsoffa", "bäddsoffa",
+    "2-sits", "3-sits", "4-sits", "chaise",
+  ];
+  // Title keywords that indicate accessories, not actual sofas
+  const SOFA_NEGATIVE_KEYWORDS = [
+    "dynset", "sittdyna", "ryggdyna", "soffdyna", "dyna soffa",
+    "soffbord", "soffkudde", "sofftäcke", "sofföverdrag", "överdrag",
+    "klädsel", "sofa table", "sofa cushion", "sofa cover",
+    "funda", // Spanish "cover" (IKEA multi-locale)
+  ];
+
+  const titleLooksLikeSofa = (title: string): boolean => {
+    const lower = title.toLowerCase();
+    const hasPositive = SOFA_TITLE_KEYWORDS.some((kw) => lower.includes(kw));
+    if (!hasPositive) return false;
+    const hasNegative = SOFA_NEGATIVE_KEYWORDS.some((kw) => lower.includes(kw));
+    return !hasNegative;
+  };
 
   const tryAcceptCandidate = (doc: admin.firestore.DocumentSnapshot, queue: QueueName): boolean => {
     if (!doc.exists) return false;
@@ -470,9 +1069,86 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     if (acceptedIds.has(doc.id)) return false;
 
     const data = (doc.data() || {}) as Record<string, unknown>;
+
+    // Surface eligibility gate: for catalog items (non-gold queues), check that the
+    // item's classification matches the deck surface. Gold items are pre-filtered at
+    // query time via eligibleSurfaces, but catalog items need a client-side check.
+    if (deckSurface === "swiper_deck_sofas" && queue !== "fresh_promoted") {
+      const classification = data.classification as Record<string, unknown> | undefined;
+      const eligibility = data.eligibility as Record<string, Record<string, unknown>> | undefined;
+
+      // First check: if eligibility data exists, use the surface decision
+      const surfaceDecision = eligibility?.[deckSurface]?.decision;
+      if (surfaceDecision === "REJECT") return false;
+
+      if (surfaceDecision === "ACCEPT") {
+        // Explicitly accepted – pass through
+      } else if (classification) {
+        // Has classification but no explicit accept – check category
+        const category = classification.predictedCategory as string | undefined;
+        if (category && SOFA_SURFACE_CATEGORIES.has(category)) {
+          // Classified as a sofa type – pass through
+        } else {
+          // Not a sofa category (or "unknown") – fall back to title heuristic
+          const title = typeof data.title === "string" ? data.title : "";
+          if (!titleLooksLikeSofa(title)) return false;
+        }
+      } else {
+        // No classification at all (e.g., sample feed items) – use title heuristic
+        const title = typeof data.title === "string" ? data.title : "";
+        if (!titleLooksLikeSofa(title)) return false;
+      }
+    }
+
+    if (queue === "fresh_promoted") {
+      const targetingDecision = evaluatePromotedItemTargeting(
+        doc.id,
+        data,
+        activeCampaignTargeting,
+        sessionTargetingProfile
+      );
+      if (!targetingDecision.eligible) {
+        if (targetingDecision.reason === "campaign_not_found") featuredTargetingStats.campaignNotFound += 1;
+        if (targetingDecision.reason === "segment_mismatch") featuredTargetingStats.campaignSegmentMismatch += 1;
+        if (targetingDecision.reason === "product_set_mismatch") featuredTargetingStats.campaignProductSetMismatch += 1;
+        return false;
+      }
+
+      if (targetingDecision.reason === "legacy_promoted") {
+        featuredTargetingStats.legacyPromotedAccepted += 1;
+      }
+
+      if (
+        targetingDecision.reason === "eligible_campaign" &&
+        targetingDecision.campaignId &&
+        targetingDecision.segmentId &&
+        targetingDecision.relevanceScore != null &&
+        targetingDecision.threshold != null
+      ) {
+        featuredTargetingStats.campaignMatched += 1;
+        featuredContextByItemId.set(doc.id, {
+          campaignId: targetingDecision.campaignId,
+          segmentId: targetingDecision.segmentId,
+          relevanceScore: targetingDecision.relevanceScore,
+          threshold: targetingDecision.threshold,
+        });
+      }
+    }
+
     if (sizeClassFilter && data.sizeClass !== sizeClassFilter) return false;
+    if (!sizeClassFilter && requireSmallSpace && data.smallSpaceFriendly !== true) return false;
     if (colorFamilyFilter && data.colorFamily !== colorFamilyFilter) return false;
     if (newUsedFilter && data.newUsed !== newUsedFilter) return false;
+    if (subCategoryFilter && data.subCategory !== subCategoryFilter) return false;
+    if (!subCategoryFilter && onboardingSeatSubcats.length > 0) {
+      const candidateSubCategory = normalizeToken(data.subCategory);
+      if (!candidateSubCategory || !onboardingSeatSubcats.includes(candidateSubCategory)) return false;
+    }
+    if (requireModular && data.modular !== true) return false;
+    if (roomTypeFilter) {
+      const roomTypes = Array.isArray(data.roomTypes) ? data.roomTypes : [];
+      if (!roomTypes.includes(roomTypeFilter)) return false;
+    }
 
     const price = asFiniteNumber(data.priceAmount);
     if (price != null) {
@@ -482,6 +1158,32 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
 
     const canonical = typeof data.canonicalUrl === "string" ? data.canonicalUrl.trim() : "";
     if (canonical && seenCanonicals.has(canonical)) return false;
+
+    // For v2 cold-start flows, avoid repeated product families in the first visible group.
+    if (onboardingV2Profile != null && candidateDocs.length < 8) {
+      const familyKey = normalizeToken(data.familyId) ||
+        normalizeToken(data.collectionId) ||
+        normalizeToken(data.groupId) ||
+        titleFamilyKey(data.title);
+      if (familyKey && seenFamilyKeys.has(familyKey)) return false;
+      if (familyKey) seenFamilyKeys.add(familyKey);
+    }
+
+    // For v2 cold-start first slate, enforce minimum visual/style distance.
+    if (onboardingV2Profile != null && candidateDocs.length < 4) {
+      const thisTokens = buildStyleTokenSet(data);
+      if (thisTokens.size >= 2) {
+        for (const existingDoc of candidateDocs.slice(0, 4)) {
+          const existingData = (existingDoc.data() || {}) as Record<string, unknown>;
+          const existingTokens = buildStyleTokenSet(existingData);
+          if (existingTokens.size < 2) continue;
+          const distance = jaccardDistance(thisTokens, existingTokens);
+          if (distance < 0.4) {
+            return false;
+          }
+        }
+      }
+    }
 
     acceptedIds.add(doc.id);
     if (canonical) seenCanonicals.add(canonical);
@@ -551,14 +1253,26 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       const queue = candidateQueueById.get(String(c.id));
       const fromPromotedQueue = queue === "fresh_promoted";
       if (!fromPromotedQueue) return { ...c };
+      const featuredContext = featuredContextByItemId.get(String(c.id));
 
       // Explicit featured flag for client rendering and analytics.
       return {
         ...c,
         isFeatured: true,
         featuredLabel: "Featured",
+        ...(featuredContext
+          ? {
+              campaignId: featuredContext.campaignId,
+              segmentId: featuredContext.segmentId,
+              featuredRelevanceScore: featuredContext.relevanceScore,
+              featuredMatchThreshold: featuredContext.threshold,
+            }
+          : {}),
       };
     });
+  const itemsForMetrics = items.map((item) => item as Record<string, unknown>);
+  const sameFamilyTop8Rate = computeSameFamilyTop8Rate(itemsForMetrics);
+  const styleDistanceTop4Min = computeMinStyleDistanceTop4(itemsForMetrics);
 
   const itemScores: Record<string, number> = {};
   exploredIds.forEach((id) => {
@@ -585,6 +1299,22 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   };
 
   const retrievalQueuesUsed = QUEUE_ORDER.filter((queue) => queueContributions[queue] > 0);
+  const onboardingProfileSummary = onboardingV2Profile != null
+    ? {
+        primaryStyle:
+          onboardingV2Profile.derivedProfile?.primaryStyle ||
+          onboardingV2Profile.sceneArchetypes[0] ||
+          onboardingV2Profile.sofaVibes[0] ||
+          null,
+        secondaryStyle:
+          onboardingV2Profile.derivedProfile?.secondaryStyle ||
+          onboardingV2Profile.sceneArchetypes[1] ||
+          onboardingV2Profile.sofaVibes[1] ||
+          null,
+        confidence: onboardingV2Profile.derivedProfile?.confidence ?? null,
+        explanation: onboardingV2Profile.derivedProfile?.explanation || [],
+      }
+    : null;
 
   const response: Record<string, unknown> = {
     requestId,
@@ -602,6 +1332,9 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       variantBucket,
       explorationPolicy: explorationRate > 0 ? "sample_from_top_2limit" : "none",
       scoreStats,
+      sameFamilyTop8Rate,
+      styleDistanceTop4Min,
+      ...(onboardingProfileSummary != null ? { onboardingProfile: onboardingProfileSummary } : {}),
     },
     itemScores,
   };
@@ -624,6 +1357,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         freshCatalog: freshCatalogDocs.length,
         personaById: personaDocs.length,
       },
+      featuredTargeting: {
+        activeCampaignCount: activeCampaignTargeting.size,
+        ...featuredTargetingStats,
+      },
+      sessionTargetingProfile,
       queueTargets,
       queueContributions,
       queueSizes: {
@@ -645,5 +1383,38 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     };
   }
 
+  logDeckEvent("deck_request_served", {
+    latencyMs: Date.now() - startedAtMs,
+    limit,
+    candidateCount: candidates.length,
+    servedCount: items.length,
+    retrievalQueues: retrievalQueuesUsed,
+    hasOnboardingV2: onboardingV2Profile != null,
+    sameFamilyTop8Rate,
+    styleDistanceTop4Min,
+    activeCampaignCount: activeCampaignTargeting.size,
+    featuredTargetingStats,
+  });
   res.status(200).json(response);
+  } catch (error) {
+    console.error("deck_request_failed", {
+      requestId,
+      sessionId,
+      latencyMs: Date.now() - startedAtMs,
+      limit,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
+
+export const __deckTestUtils = {
+  parseOnboardingV2Profile,
+  buildOnboardingV2Weights,
+  buildStyleTokenSet,
+  jaccardDistance,
+  computeSameFamilyTop8Rate,
+  computeMinStyleDistanceTop4,
+  extractCampaignIdFromPromotedItem,
+  evaluatePromotedItemTargeting,
+};

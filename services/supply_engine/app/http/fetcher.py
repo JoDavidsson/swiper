@@ -236,7 +236,8 @@ class PoliteFetcher:
         return self._browser_fetcher
 
     def _should_refetch_with_browser(self, html: str) -> bool:
-        if not self._browser_fallback or not html:
+        """Always run render detection — auto-fallback doesn't need a config flag."""
+        if not html:
             return False
         try:
             from app.http.render_detector import needs_browser_render
@@ -251,8 +252,12 @@ class PoliteFetcher:
         domain: str,
         rate_limit_rps: float | None,
         verbose: bool,
+        auto_detect: bool = False,
+        scroll_for_content: bool = False,
     ) -> FetchResult | None:
-        if not self._browser_fallback:
+        # Error-based fallback (4xx/5xx/429/timeout) requires the per-source flag.
+        # Auto-detected JS shells always attempt browser fetch.
+        if not auto_detect and not self._browser_fallback:
             return None
         try:
             # Use same per-domain pacing as HTTP requests.
@@ -260,7 +265,11 @@ class PoliteFetcher:
                 self._sleep_for_rate_limit(domain=domain, rate_limit_rps=rate_limit_rps)
                 self._last_request_ms_by_domain[domain] = _now_ms()
             with self._browser_lock:
-                br = self._get_browser_fetcher().fetch(url, timeout_ms=self._browser_timeout_ms)
+                br = self._get_browser_fetcher().fetch(
+                    url,
+                    timeout_ms=self._browser_timeout_ms,
+                    scroll_for_content=scroll_for_content,
+                )
             if verbose:
                 print(f"         [fetch] Browser fallback succeeded: {url[:80]}", flush=True)
             return FetchResult(
@@ -287,6 +296,7 @@ class PoliteFetcher:
         robots_respect: bool = True,
         rate_limit_rps: float | None = None,
         verbose: bool = False,
+        scroll_for_content: bool = False,
     ) -> FetchResult:
         if not _allowlisted(url, allowlist_policy=allowlist_policy):
             if verbose:
@@ -333,6 +343,7 @@ class PoliteFetcher:
                         domain=domain,
                         rate_limit_rps=rate_limit_rps,
                         verbose=verbose,
+                        scroll_for_content=scroll_for_content,
                     )
                     if browser is not None:
                         return browser
@@ -350,6 +361,7 @@ class PoliteFetcher:
                         domain=domain,
                         rate_limit_rps=rate_limit_rps,
                         verbose=verbose,
+                        scroll_for_content=scroll_for_content,
                     )
                     if browser is not None:
                         return browser
@@ -362,6 +374,7 @@ class PoliteFetcher:
                         domain=domain,
                         rate_limit_rps=rate_limit_rps,
                         verbose=verbose,
+                        scroll_for_content=scroll_for_content,
                     )
                     if browser is not None:
                         return browser
@@ -377,11 +390,17 @@ class PoliteFetcher:
                     method="http",
                 )
                 if self._should_refetch_with_browser(http_result.text):
+                    if verbose:
+                        from app.http.render_detector import is_waf_block_page
+                        reason = "WAF/CDN block page" if is_waf_block_page(http_result.text) else "JS-rendered shell"
+                        print(f"         [fetch] {reason} detected, trying browser: {url[:80]}", flush=True)
                     browser = self._try_browser_fetch(
                         url=url,
                         domain=domain,
                         rate_limit_rps=rate_limit_rps,
                         verbose=verbose,
+                        auto_detect=True,
+                        scroll_for_content=scroll_for_content,
                     )
                     if browser is not None:
                         return browser
@@ -405,6 +424,7 @@ class PoliteFetcher:
                     domain=domain,
                     rate_limit_rps=rate_limit_rps,
                     verbose=verbose,
+                    scroll_for_content=scroll_for_content,
                 )
                 if browser is not None:
                     return browser

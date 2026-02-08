@@ -1,5 +1,276 @@
 # Changelog
 
+## 2026-02-08 - Featured distribution phase 12.2 (segment targeting gate)
+
+- Added reusable segment targeting module in `firebase/functions/src/targeting/segment_targeting.ts`:
+  - Criteria normalization + validation (`styleTags`, `budget`, `sizeClasses`, `geoRegion`/`geoCity`/`geoPostcodes`)
+  - Session targeting profile builder from locale + preference weights + onboarding cues
+  - Weighted segment match evaluator with threshold support and component-level diagnostics
+- Hardened segments API in `firebase/functions/src/api/segments.ts`:
+  - Create/update now validate and normalize all segment criteria
+  - Added support for updating `geoCity` and `geoPostcodes`
+  - Added budget range conflict guard (`budgetMin <= budgetMax`)
+- Hardened campaigns API in `firebase/functions/src/api/campaigns.ts`:
+  - Segment ownership/access checks now enforced for selected retailer
+  - Campaign writes now persist `segmentSnapshot` for stable serve-time targeting
+  - Patch flow validates product mode/product IDs consistency and date/number fields
+- Integrated segment targeting into deck serving in `firebase/functions/src/api/deck.ts`:
+  - Loads active campaigns and campaign segment criteria (snapshot-first, segment fallback)
+  - Campaign-backed promoted items are filtered by segment match before candidate acceptance
+  - Match metadata is attached on featured cards (`campaignId`, `segmentId`, `featuredRelevanceScore`, `featuredMatchThreshold`)
+  - Added featured targeting debug/log telemetry in deck responses and serve logs
+- Added test coverage:
+  - `firebase/functions/src/targeting/segment_targeting.test.ts`
+  - Expanded `firebase/functions/src/api/deck_v2_helpers.test.ts` for promoted campaign targeting decisions
+- Documentation synced:
+  - Marked phase `12.2` done in `docs/IMPLEMENTATION_PLAN.md`
+  - Added `segmentSnapshot` + product mode updates in `docs/BACKEND_STRUCTURE.md`
+  - Added deck featured segment-gate note in `docs/RECOMMENDATIONS_ENGINE.md`
+- Validation:
+  - `npm run build` (firebase/functions): **pass**
+  - `npm test -- --runInBand` (firebase/functions): **pass**
+
+## 2026-02-08 - Golden Card v2 implementation (Flutter + API + deck integration)
+
+- **Flutter onboarding flow:** Added `apps/Swiper_flutter/lib/features/deck/widgets/golden_card_v2_flow.dart` with a new multi-step style-first onboarding sequence:
+  - Intro -> Room vibes (pick 2) -> Sofa vibes (pick 2) -> Practical constraints -> Reaffirmation summary
+  - Supports adjust/start-fresh actions and localized EN/SV copy.
+- **State and persistence:** Added `apps/Swiper_flutter/lib/data/onboarding_v2_provider.dart` with Hive-backed state machine:
+  - Status tracking (`not_started`, `in_progress`, `skipped`, `completed`)
+  - Skip/re-prompt logic (`15` right-swipes delay, max 2 hard skips)
+  - Per-step persisted selections/constraints.
+- **Deck integration:** Updated `apps/Swiper_flutter/lib/features/deck/deck_screen.dart`:
+  - Golden Card v2 now renders before legacy gold cards (feature-flagged)
+  - New events (`gold_v2_*`) emitted for step/summarization actions
+  - Completion submits v2 profile and refreshes deck serving.
+- **Feature flags:** Added flags in `apps/Swiper_flutter/lib/core/constants.dart`:
+  - `ENABLE_GOLDEN_CARD_V2` (default `true`)
+  - `ENABLE_LEGACY_GOLD_CARD` (default `false`)
+- **API client:** Extended `apps/Swiper_flutter/lib/data/api_client.dart`:
+  - Added `/api/onboarding/v2` submit/fetch methods
+  - Added deck rank parsing for optional `rank.onboardingProfile` summary payload.
+- **Backend onboarding API:** Added `firebase/functions/src/api/onboarding_v2.ts` and routed in `firebase/functions/src/api/index.ts`:
+  - `POST /api/onboarding/v2` stores style selections, constraints, derived profile, and pick hash
+  - `GET /api/onboarding/v2` returns profile data for session.
+- **Deck cold-start integration:** Updated `firebase/functions/src/api/deck.ts`:
+  - Reads `onboardingProfiles/{sessionId}` and seeds preference weights in cold-start
+  - Applies v2 constraints (budget band, seat count sub-category mapping, modular/small-space filters)
+  - Reuses v2 pick hash for persona retrieval when available
+  - Adds early-slate family dedupe guard for v2 sessions
+  - Returns `rank.onboardingProfile` summary metadata when v2 profile exists.
+- **Localization:** Expanded `apps/Swiper_flutter/lib/l10n/app_strings.dart` with Golden Card v2 EN/SV copy and helper formatters.
+- **Validation:**
+  - `flutter test` (apps/Swiper_flutter): **pass**
+  - `npm run build` (firebase/functions): **pass**
+  - `npm test -- --runInBand` (firebase/functions): **pass**
+  - `flutter analyze`: reports pre-existing warnings/info in unrelated files; no new compile errors from this implementation.
+- **Rollout and resilience hardening (same day continuation):**
+  - Added `GOLDEN_CARD_V2_ROLLOUT_PERCENT` hash-bucket gating in `apps/Swiper_flutter/lib/core/constants.dart` + `deck_screen.dart` for 10/50/100 rollout control.
+  - Added local retry queue for failed v2 submit payloads in `apps/Swiper_flutter/lib/data/onboarding_v2_provider.dart`, with automatic background retry in `apps/Swiper_flutter/lib/features/deck/deck_screen.dart`.
+  - Added option-level interaction callbacks/events and persisted step index resume behavior in Golden Card v2 flow.
+  - Added ranking quality metrics in deck response: `rank.sameFamilyTop8Rate` and `rank.styleDistanceTop4Min`.
+  - Added new automated coverage:
+    - Flutter widget tests for v2 flow state/selection/resume in `apps/Swiper_flutter/test/widgets/golden_card_v2_flow_test.dart`
+    - Functions tests for onboarding/deck v2 helpers in `firebase/functions/src/api/onboarding_v2.test.ts` and `firebase/functions/src/api/deck_v2_helpers.test.ts`
+  - Added/updated rollout schema plumbing:
+    - Firestore indexes/rules for `onboardingProfiles` (`firebase/firestore.indexes.json`, `firebase/firestore.rules`)
+    - Event schema and tracking docs updated for implemented `gold_v2_*` events.
+- **Observability and rollout guardrails (same day continuation):**
+  - Added Golden Card v2 dashboard panels directly in admin stats payload/UI:
+    - Backend aggregation in `firebase/functions/src/api/admin_stats.ts`
+    - Admin panel rendering in `apps/Swiper_flutter/lib/features/admin/admin_screen.dart`
+  - Added in-app alert thresholds and status flags:
+    - Onboarding submit failure alert (`>2%` with minimum sample gate)
+    - Deck latency p95 regression alert (`>15%` vs baseline with minimum sample gate)
+  - Added backend structured logging for deck serving lifecycle and onboarding failures:
+    - `deck_request_served`, `deck_request_rejected`, `deck_request_failed`
+    - `onboarding_v2_post_failed`, `onboarding_v2_get_failed`
+  - Added Golden v2 observability runbook:
+    - `docs/RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md`
+  - Added automated unit coverage for observability calculations:
+    - `firebase/functions/src/api/admin_stats_observability.test.ts`
+  - Added weekly experiment cohort slices to admin stats + dashboard:
+    - Backend cohort aggregation by `rank.variant` in `firebase/functions/src/api/admin_stats.ts` (`goldenV2.experimentWeeklyByCohort`)
+    - Admin panel cohort cards in `apps/Swiper_flutter/lib/features/admin/admin_screen.dart`
+    - Runbook updated with weekly cohort interpretation guidance in `docs/RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md`
+- **Documentation consistency pass (same day continuation):**
+  - Updated PRD status/date to align with current execution state (`docs/PRD.md`).
+  - Reconciled Golden Card v2 rollout wording in implementation status vs milestone table (`docs/IMPLEMENTATION_PLAN.md`).
+  - Updated project plan backlog wording to avoid contradiction with shipped admin auth state (`docs/PROJECT_PLAN.md`).
+  - Expanded backend API docs with current deck rank metadata and concrete admin stats contract (`docs/BACKEND_STRUCTURE.md`), including `goldenV2.experimentWeeklyByCohort`.
+  - Added audit artifact `docs/DOCUMENTATION_CONSISTENCY_CHECK_2026-02-08.md`.
+
+## 2026-02-08 - Golden Card v2 rehaul blueprint (UI/UX, architecture, roadmap, QA)
+
+- Added `docs/GOLDEN_CARD_V2_UI_UX_SPEC.md` with full Golden Card v2 product specification:
+  - Public role discussion and option evaluation (CPO, CMO, design, frontend)
+  - Final CPO decision: hybrid 4-step style-first flow
+  - Detailed page-by-page UX contract (GC0-GC5), exact EN/SV copy, every button/state/action
+  - Visual system extension, persistence contract, API payload draft, analytics and acceptance criteria
+- Added `docs/GOLDEN_CARD_V2_EXECUTION_ROADMAP.md` with cross-functional delivery roadmap:
+  - Public delivery council alignment (CPO, CTO, Tech Lead, Data Science, Systems Architect)
+  - Milestones M0-M5 with dated phases, dependencies, owner mapping, rollout gates
+  - Extremely detailed implementation TODO lists for product/design, Flutter, backend, data science, platform, and QA
+- Added `docs/GOLDEN_CARD_V2_MANUAL_TEST_SCRIPT.md` with a 30-session exploratory QA execution script and pass/fail gates.
+- Updated `docs/IMPLEMENTATION_PLAN.md`:
+  - New `Phase 12a: Golden Card v2 - Style Direction Rehaul`
+  - Added 12a task breakdown, dependencies, and status tracking
+  - Added decision-log and references to v2 spec docs
+- Updated `docs/RECOMMENDATIONS_ENGINE.md` with Golden Card v2 cold-start serving contract:
+  - New profile inputs, diversity constraints, and deck metadata extension
+- Updated `docs/APP_FLOW.md` and `docs/PRD.md` to document v2 user flow and product behavior
+- Updated `docs/BACKEND_STRUCTURE.md` and `docs/EVENT_TRACKING.md` with v2 schema/events notes
+- Completed documentation QA sweep checklist (consistency, link integrity, contract alignment, rollout guardrails) in `docs/GOLDEN_CARD_V2_QA_SWEEP.md`
+
+## 2026-02-08 – Data cleanup, accessory filtering, filter UX
+
+- **Removed sample data:** Deleted 60 placeholder items (`sample_feed`) and 54 associated `goldItems` from Firestore. Only real crawled data remains (6,325 items).
+- **Accessory classification fix:** Added negative keywords (`dynset`, `sittdyna`, `ryggdyna`, `soffdyna`, `överdrag`, `klädsel`, etc.) to the sofa category in `classifier.py`. Cushion sets like "MENTON dynset soffa" are no longer classified as sofas.
+- **Deck negative keyword gate:** Added `SOFA_NEGATIVE_KEYWORDS` list to the deck endpoint's `titleLooksLikeSofa` heuristic in `deck.ts`. Items containing accessory keywords are blocked even if they contain "soffa" in the title.
+- **Filter auto-apply on dismiss:** The filter sheet now automatically applies the current filter state when dismissed (swiped down or tapped outside), in addition to the explicit Apply button. Uses a `GlobalKey` to read the sheet state after close.
+
+## 2026-02-08 – Sofa sub-categories + room type tagging (full stack)
+
+- **Sub-category taxonomy (C6):** Added 8 sofa sub-types extracted from title + description: `2_seater`, `3_seater`, `4_seater`, `corner_sofa`, `u_sofa`, `chaise_sofa`, `modular_sofa`, `sleeper_sofa`. Keywords cover Swedish, English, and Spanish (IKEA multi-locale).
+- **Room type tagging (C7):** Added 6 non-hierarchical room placement tags: `living_room`, `bedroom`, `outdoor`, `office`, `hallway`, `kids_room`. Multiple can apply to one item.
+- **Classifier updated:** `classifier.py` now returns `sub_category` and `room_types` in `ClassificationResult`. Version bumped to 2.
+- **Data model:** Added `subCategory` (string) and `roomTypes` (string[]) as top-level fields on both `items` and `goldItems` collections for fast Firestore queries.
+- **Deck filtering:** Deck endpoint supports `?filters={"subCategory":"3_seater","roomType":"outdoor"}`. Candidate gate in `tryAcceptCandidate` filters by both fields.
+- **Recommendation engine:** `scoreItem.ts` now uses `subcat:{id}` and `room:{id}` as preference weight signals. Swipe handler (`swipe.ts`) extracts both for weight updates. Users who like corner sofas will see more corner sofas.
+- **Flutter UI:**
+  - Filter sheet: Added "Sofa Type" and "Room" filter chip sections (appears above Size/Color/Condition)
+  - Detail sheet: Shows sub-category and room type as styled chips below material info
+  - Localization: Both English and Swedish labels for all sub-categories and room types
+- **Backfill:** Re-classified all 6,385 existing items. 62.5% got a specific sub-type assigned. 35% got room type tags.
+
+## 2026-02-08 – Fix deck serving non-sofa items (surface eligibility gate)
+
+- **Problem:** The deck endpoint (`/api/items/deck`) served items from ALL categories (lamps, shelves, tableware, etc.) in the sofa deck. A "String Pocket Hylla" (wall shelf) was appearing alongside sofas because there was no category filtering.
+- **Root cause:** Two issues in `firebase/functions/src/api/deck.ts`:
+  1. The `goldItems` query fetched all promoted items regardless of surface eligibility
+  2. The `items` (catalog) query had zero category filtering – any active item was served
+- **Fix:** Added a multi-layer surface eligibility gate:
+  1. **Gold query:** Added `where("eligibleSurfaces", "array-contains", "swiper_deck_sofas")` to only fetch gold items explicitly accepted for the sofa surface
+  2. **Candidate acceptance:** Added `tryAcceptCandidate` checks for catalog items:
+     - Items with `eligibility.swiper_deck_sofas.decision === "REJECT"` are blocked
+     - Items with `eligibility.swiper_deck_sofas.decision === "ACCEPT"` pass through
+     - Items classified as sofa/corner_sofa/bed_sofa pass through
+     - All other items (unknown category, unclassified) must pass a title keyword heuristic (Swedish + English sofa keywords)
+  3. **Configurable surface:** Added `?surface=` query parameter (default: `swiper_deck_sofas`) for future multi-surface support
+- **Result:** 50/50 deck items are now sofas (was 33/50 before). Zero non-sofa items leak through.
+
+## 2026-02-08 – Fix broken images: expand image proxy domain allowlist
+
+- **Root cause:** The image proxy (`firebase/functions/src/api/image_proxy.ts`) had a hardcoded allowlist of only 10 domains, but crawled items used images from 13+ domains. This caused the proxy to return 403 "Target domain is not allowed" for most images, making them appear broken in the app.
+- **Fix:** Expanded `DEFAULT_ALLOWED_DOMAINS` from 10 entries to 27 entries, covering all current retailer CDN domains. Switched to wildcard patterns (e.g., `*.royaldesign.se`) for future-proofing.
+- **Domains added:** `images.prismic.io`, `noga.cdn-norce.tech`, `*.royaldesign.se`, `*.ellosgroup.com`, `*.jotex.se`, `*.lannamobler.se`, `*.emhome.se`, `*.furniturebox.se`, `*.svenskahem.se`, `*.trademax.se`, `*.soffadirekt.se`, `*.sweef.se`, `*.sleepo.se`, `*.homeroom.se`, `*.newport.se`, `*.nordiskagalleriet.se`, `*.svenssons.se`, `*.ilva.se`.
+- **Data audit (6,385 items):** 87.3% have valid prices, 83.4% classified as sofas, 3,188 accepted for sofa deck, 2,362 pending review. All 13 image domains now pass the proxy.
+
+## 2026-02-08 – Browser scrolling for SPA category pages + fix 6 failing sources
+
+- **Playwright page scrolling:** Added `scroll_for_content` option to `BrowserFetcher.fetch()`. When enabled, the browser scrolls down the page in increments (800 px) after initial load, waiting for lazy-loaded content to render. Stops after 3 consecutive scrolls with no new content or 15 max scrolls. This is critical for SPA category pages that use infinite scroll to load product listings.
+- **Fetcher stack threading:** `scroll_for_content` flag is threaded from `PoliteFetcher.fetch()` through `_try_browser_fetch()` to `BrowserFetcher.fetch()`, so any caller can request scrolling.
+- **Category crawler scrolling:** `discover_from_category_crawl` now passes `scroll_for_content=True` when fetching category pages, ensuring lazy-loaded product grids are fully rendered before link extraction.
+- **Config migration script:** Added `scripts/fix_spa_sources.py` to update 6 failing Firestore sources:
+  - **Sleepo**, **Nordiska Galleriet**, **Homeroom** (JS-rendered SPAs): switched from sitemap to crawl strategy, enabled browser fallback.
+  - **SoffaDirekt**, **Svenssons**, **Newport** (sitemaps have only category URLs): switched to crawl strategy for product URL discovery from category pages.
+  - All 6 sources get `maxPagesPerRun: 80` (or 100 for SoffaDirekt) and `maxDepth: 3` to allow deeper category crawling.
+
+## 2026-02-08 – Supply Engine Phase 15 implementation (data quality + browser hybrid)
+
+- **DOM fallback quality (Layer 1):** Added extraction for `description`, `dimensions`, `material`, and `brand` in `services/supply_engine/app/extractor/cascade.py` using meta tags, product description selectors, spec tables/definition lists, and microdata fallbacks.
+- **Completeness scoring update:** `_score()` now includes field richness signals (`description`, `dimensions`, `material`, `color`, `brand`) so quality scoring reflects usable recommendation data.
+- **Browser hybrid fetch (Layer 2):**
+  - Added `services/supply_engine/app/http/render_detector.py` (`needs_browser_render` heuristics for JS shells).
+  - Added `services/supply_engine/app/http/browser_fetcher.py` (Playwright Chromium, lazy init, per-request context isolation, graceful shutdown).
+  - Extended `services/supply_engine/app/http/fetcher.py` with browser fallback flow and `FetchResult.method` (`http`/`browser`).
+- **Quality loop + metadata (Layer 3):**
+  - Added source config support in crawl ingestion: `useBrowserFallback`, `enableQualityRefetch`, `qualityRefetchLimit`.
+  - Added item-level `extractionMeta` (`method`, `extractorMethod`, `completeness`, `missingFields`, `fetchMethod`, `extractedAt`).
+  - Added `services/supply_engine/app/refetch_queue.py` with low-quality stale candidate lookup (`get_refetch_candidates`).
+  - Added daily telemetry metrics: `descriptionRate`, `dimensionsRate`, `materialRate`, `avgCompleteness`, `browserFetchCount`.
+- **Dependencies/infra:** Added `playwright==1.49.1` in `services/supply_engine/requirements.txt` and Chromium install in `services/supply_engine/Dockerfile`.
+- **Tests:** Added/updated tests for DOM extraction enrichment, render detection, and browser fallback behavior; targeted test suite passes.
+
+## 2026-02-08 – Full crawl diagnostics and fixes for all 20 sources
+
+**Code fix:** Fixed Jotex `'list' object has no attribute 'strip'` crash — the JSON-LD `description` field was an array of paragraphs. `_extract_from_jsonld` now joins list descriptions into a single string.
+
+**Diagnosis of all 9 struggling sources:**
+
+| Source | Root Cause | Fix |
+|--------|-----------|-----|
+| Jotex | `description` is list, `.strip()` crashes | **Fixed** in `cascade.py` |
+| Länna Möbler | HAY products removed (404). Other brands work. | Re-crawl picks up fresh sitemap |
+| EM Home | Previous crawl stored products without images. Extraction now works (og:image found). `www.em.com` returns 403 but `emhome.se` works. | Re-crawl with current code |
+| Sleepo | JS-rendered SPA, no JSON-LD, sitemap has category URLs only | Needs browser fallback |
+| SoffaDirekt | All 10,199 sitemap URLs are `index.html` category pages — no product URLs | Category crawl needed to discover product links |
+| Svenssons | Sitemap has only category pages, no product-level URLs | Category crawl needed |
+| Homeroom | Minimal HTML (2,535 chars body). JS-rendered. | Needs browser fallback |
+| Nordiska Galleriet | Fully JS-rendered (55 chars body text) | Needs browser fallback |
+| Newport | Sitemap has category pages, product URLs have different pattern | Category crawl needed |
+| Sweef | All URLs returning 404 (stale from previous sitemap) | Re-crawl with fresh sitemap |
+
+## 2026-02-08 – Fix crawl failures: ILVA, Jotex, Mio
+
+Diagnosed and fixed three failing/struggling sources:
+
+- **Mio – URL deduplication:** Mio's sitemap had 590K+ URLs but only ~400 unique products (rest were bed/sofa configuration variants with different query params). Added `_dedup_key()` in `sitemap.py` that strips query parameters to deduplicate URLs by base path. Reduces 590K variant URLs to a few thousand unique products.
+- **ILVA – URL classifier fix:** ILVA's product URL pattern `/p-bXXXXXX-XXXXXXXXXX/` wasn't recognized by the classifier. Added `_PRODUCT_BUNDLE_RE` regex to match this pattern. Also set reduced category penalty when strong product signals are present (breadcrumb paths like `/soffor/` in the URL no longer penalize URLs that also have `/p-b` or article numbers).
+- **ILVA – Browser fallback needed:** ILVA is a Nuxt.js SPA with product data in obfuscated `window.__NUXT__` IIFE. No JSON-LD Product data in HTTP response. Needs `useBrowserFallback: true` in Firestore (manual config change required).
+- **Jotex – Sitemap blocked + ItemList discovery:** Jotex's sitemap returns 403 (blocked). Added `_extract_itemlist_urls()` to `crawler.py` that parses JSON-LD `ItemList` on category pages to discover product URLs. This finds 58 products from a single category page vs. only 5 from `<a>` tags (rest are lazy-loaded).
+- **Jotex – Article number classifier:** Added `_ARTICLE_NUMBER_RE` pattern to recognize Nordic retail product URLs ending with `/1737345-02` (6+ digit article number).
+- **Tests:** Updated classifier tests for new patterns (ILVA bundle, Jotex article, Mio /p/). All pass.
+
+## 2026-02-08 – Stop crawl button on Runs page
+
+- **Supply Engine:** Added `POST /stop/{source_id}` endpoint that sets the active run's status to "stopped" in Firestore.
+- **Crawl cancellation:** Added periodic stop-signal checks (every 10 iterations) inside the main extraction loop in `crawl_ingestion.py`. When a stop signal is detected, remaining futures are cancelled, partial stats are saved, and the run is finalised with status "stopped".
+- **Firebase Functions:** Added `POST /api/admin/stop-crawl` endpoint that writes directly to both `runs` and `ingestionRuns` Firestore collections (bypasses the supply engine since the single-threaded server is blocked by the running crawl).
+- **Flutter UI:** Added a red stop button in the `_RunDetailSheet` header (visible only when a crawl is running). Includes a confirmation dialog and loading state. "Stopped" runs now show with an orange badge/icon across the card list and detail sheet.
+- **Firestore:** `update_run` now treats "stopped" as a terminal status (sets `finishedAt`).
+
+## 2026-02-08 – Next.js App Router RSC extraction support
+
+- **RSC payload parsing:** Added React Server Component streaming payload extraction (`self.__next_f.push(...)`) to `signals.py`. JSON-LD embedded in RSC payloads is now detected and parsed, enabling product extraction from Next.js 14/15 App Router sites.
+- **Verified:** Länna Möbler product pages now extract successfully — title, price (SEK), brand, images, description at 82% completeness via JSON-LD embedded in RSC stream.
+
+## 2026-02-08 – WAF/Cloudflare block detection + realistic user-agent
+
+- **WAF detection:** Added `is_waf_block_page()` to `render_detector.py` — detects Cloudflare, Akamai, PerimeterX, and DataDome block/challenge pages. When detected, browser fallback is immediately triggered (no 2-signal threshold needed).
+- **User-Agent fix:** Changed default HTTP user-agent from `SwiperBot/0.1` to a realistic Chrome user-agent. The bot-style UA was causing immediate Cloudflare blocks on protected sites.
+- **Improved logging:** Fetcher now logs whether browser fallback was triggered by "WAF/CDN block page" vs "JS-rendered shell".
+
+## 2026-02-08 – Auto browser fallback for JS-rendered pages + sitemap nested URL fix
+
+- **Auto-detect browser fallback:** Removed the `useBrowserFallback` config gate from JS-shell auto-detection. When the render detector identifies a page as client-side rendered (2+ heuristic signals), the fetcher now automatically falls back to Playwright regardless of the per-source flag. The `useBrowserFallback` flag still controls error-based fallback (4xx/5xx/429/timeout).
+- **Sitemap nested URL detection:** Fixed sitemap parser to detect sitemaps disguised as regular `<urlset>` entries. URLs with "sitemap" in their path are now promoted to nested sitemaps and followed. This fixes discovery for sites like Länna Möbler whose `sitemap.xml` uses `<urlset>` to point to `/api/sitemap/products` (12,973 product URLs) instead of the standard `<sitemapindex>` format.
+- **Tests:** Added `test_auto_detect_triggers_browser_without_flag` and `test_error_fallback_requires_flag` to verify the new auto-detect behavior.
+
+## 2026-02-08 – Fix: Playwright not installed in local venv (browser fallback inoperable)
+
+- **Root cause:** `playwright==1.49.1` was declared in `requirements.txt` and installed in Docker, but was missing from the local `.venv`. All browser fallback attempts silently failed (`ModuleNotFoundError` caught and swallowed by `_try_browser_fetch`).
+- **Fix:** Installed `playwright==1.49.1` + `greenlet` + `pyee` in `.venv`, then ran `playwright install chromium` to download Chromium browser binary.
+- **Verified:** Playwright launches headless Chromium and fetches pages successfully from the local environment.
+- **Note:** Supply engine must be restarted after this fix to pick up the newly installed package.
+
+## 2026-02-08 – Supply Engine data quality pass (DOM enrichment, browser fallback, quality telemetry)
+
+- **Extractor (Layer 1):** Upgraded DOM fallback in `cascade.py` to extract `description`, `dimensions`, `material`, and `brand` (meta tags, spec tables/dl lists, microdata, and product content selectors). Added facet-to-dimensions promotion.
+- **Completeness scoring:** Expanded `_score()` weighting to include `description`, `dimensions`, `material`, `color`, and `brand` so quality score reflects data richness, not only title/price/images.
+- **Browser hybrid (Layer 2):**
+  - Added `app/http/render_detector.py` with conservative JS-render shell detection heuristics.
+  - Added `app/http/browser_fetcher.py` (Playwright Chromium, lazy init, per-request context isolation, graceful close).
+  - Extended `PoliteFetcher` to support `browser_fallback`, re-fetch skeletal HTTP responses via browser, and fall back to browser on HTTP failures; fetch results now include `method` (`http`/`browser`).
+- **Ingestion quality loop (Layer 3):**
+  - Added source config toggles in crawl ingestion: `useBrowserFallback`, `enableQualityRefetch`, `qualityRefetchLimit`.
+  - Added item-level `extractionMeta` payload: `method`, `extractorMethod`, `completeness`, `missingFields`, `fetchMethod`, `extractedAt`.
+  - Added optional low-quality stale-item refetch pass and `app/refetch_queue.py` (`get_refetch_candidates`).
+  - Extended daily metrics with `descriptionRate`, `dimensionsRate`, `materialRate`, `avgCompleteness`, `browserFetchCount`.
+- **Infra/deps:** Added `playwright==1.49.1` and Docker browser install step (`python -m playwright install chromium --with-deps`).
+- **Docs updated:** `docs/IMPLEMENTATION_PLAN.md`, `docs/BACKEND_STRUCTURE.md`, `docs/DATA_MODEL.md`.
+- **Tests:** Added coverage for DOM extraction improvements, render detector, and browser fallback fetcher behavior.
+
 ## 2026-02-07 – Full product description: remove truncation, show in detail sheet
 
 - **Supply Engine**: Removed 500-character truncation on `descriptionShort` in both crawl and feed ingestion. Full product descriptions are now stored.

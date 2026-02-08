@@ -83,6 +83,16 @@ export function scoreItemWithSignals(
     addWeightedSignal("feature:modular", weights, state);
   }
 
+  // Sub-category signal (e.g., "subcat:3_seater", "subcat:corner_sofa")
+  const subCategory = normalizeToken(data.subCategory);
+  addWeightedSignal(subCategory ? `subcat:${subCategory}` : null, weights, state);
+
+  // Room-type signals (e.g., "room:living_room", "room:outdoor")
+  const roomTypes = getStringArray(data.roomTypes);
+  for (const roomType of roomTypes) {
+    addWeightedSignal(`room:${roomType}`, weights, state);
+  }
+
   const priceBucket = toPriceBucket(data.priceAmount);
   addWeightedSignal(priceBucket ? `price_bucket:${priceBucket}` : null, weights, state);
 

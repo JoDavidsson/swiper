@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from dataclasses import dataclass
 from urllib.parse import urlparse, urljoin, urlunparse
@@ -47,6 +48,43 @@ def _extract_links(base_url: str, html: str) -> list[str]:
             continue
         links.append(_strip_fragment(u))
     return links
+
+
+def _extract_itemlist_urls(base_url: str, html: str) -> list[str]:
+    """
+    Extract product URLs from JSON-LD ItemList on category/listing pages.
+    
+    Many retailers (e.g. Jotex) embed an ItemList JSON-LD with all product URLs
+    on category pages. This is much more complete than <a> tags when the page
+    uses lazy-loading, infinite scroll, or JS-based rendering.
+    
+    Returns absolute URLs from any ItemList.itemListElement[].url found.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    urls: list[str] = []
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        
+        # Handle both single objects and arrays
+        blocks = data if isinstance(data, list) else [data]
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("@type") != "ItemList":
+                continue
+            for item in block.get("itemListElement", []):
+                if not isinstance(item, dict):
+                    continue
+                url = item.get("url") or ""
+                if not url:
+                    continue
+                abs_url = absolute_url(base_url, url)
+                if abs_url:
+                    urls.append(abs_url)
+    return urls
 
 
 def _extract_pagination_links(base_url: str, html: str) -> list[str]:
@@ -132,6 +170,9 @@ def discover_from_category_crawl(
                 allowlist_policy=allowlist_policy,
                 robots_respect=robots_respect,
                 rate_limit_rps=rate_limit_rps,
+                # Enable page scrolling so Playwright reveals lazy-loaded /
+                # infinite-scroll product listings on SPA category pages.
+                scroll_for_content=True,
             )
         except FetchError as e:
             print(f"         [crawler] Fetch failed: {e}", flush=True)
@@ -139,9 +180,23 @@ def discover_from_category_crawl(
 
         links = filter_allowlisted(_extract_links(r.final_url, r.text), allowlist_policy=allowlist_policy)
         pag_links = filter_allowlisted(_extract_pagination_links(r.final_url, r.text), allowlist_policy=allowlist_policy)
-        links = links + [u for u in pag_links if u not in links]
+        itemlist_links = filter_allowlisted(_extract_itemlist_urls(r.final_url, r.text), allowlist_policy=allowlist_policy)
         
-        print(f"         [crawler] Found {len(links)} links on page", flush=True)
+        # Merge all link sources, deduplicating
+        link_set = set(links)
+        for u in pag_links:
+            if u not in link_set:
+                links.append(u)
+                link_set.add(u)
+        for u in itemlist_links:
+            if u not in link_set:
+                links.append(u)
+                link_set.add(u)
+        
+        if itemlist_links:
+            print(f"         [crawler] Found {len(links)} links ({len(itemlist_links)} from ItemList JSON-LD)", flush=True)
+        else:
+            print(f"         [crawler] Found {len(links)} links on page", flush=True)
 
         # Emit candidates
         added_this_page = 0

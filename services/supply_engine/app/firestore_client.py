@@ -64,7 +64,7 @@ def create_run(db, source_id: str, status: str) -> str:
 
 def update_run(db, run_id: str, status: str, stats: dict, error_summary: str | None = None):
     data = {"status": status, "stats": stats, "updatedAt": _server_timestamp()}
-    if status in ("succeeded", "failed"):
+    if status in ("succeeded", "failed", "stopped"):
         data["finishedAt"] = _server_timestamp()
     if error_summary is not None:
         data["errorSummary"] = error_summary

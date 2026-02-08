@@ -56,7 +56,9 @@ class AppStrings {
       'clearFilters': 'Clear Filters',
       'refreshDeck': 'Refresh Deck',
       'filtersTitle': 'Filters',
-      'filtersSubtitle': 'Narrow the deck by size, color, and condition.',
+      'filtersSubtitle': 'Narrow the deck by type, size, color, and more.',
+      'sofaType': 'Sofa Type',
+      'roomType': 'Room',
       'size': 'Size',
       'color': 'Color',
       'condition': 'Condition',
@@ -68,6 +70,22 @@ class AppStrings {
       'usedLabel': 'Used',
       'clearAll': 'Clear all',
       'apply': 'Apply',
+      // Sub-category labels
+      'subcat_2_seater': '2-Seater',
+      'subcat_3_seater': '3-Seater',
+      'subcat_4_seater': '4-Seater',
+      'subcat_corner_sofa': 'Corner Sofa',
+      'subcat_u_sofa': 'U-Shaped',
+      'subcat_chaise_sofa': 'Chaise',
+      'subcat_modular_sofa': 'Modular',
+      'subcat_sleeper_sofa': 'Sleeper',
+      // Room type labels
+      'room_living_room': 'Living Room',
+      'room_bedroom': 'Bedroom',
+      'room_outdoor': 'Outdoor',
+      'room_office': 'Office',
+      'room_hallway': 'Hallway',
+      'room_kids_room': 'Kids Room',
       'listView': 'List view',
       'gridView': 'Grid view',
       'decisionRoom': 'Decision Room',
@@ -140,6 +158,60 @@ class AppStrings {
       'sharedShortlist': 'Shared shortlist',
       'shortlistEmpty': 'This shortlist is empty.',
       'startSwiping': 'Start swiping',
+      // Golden Card v2
+      'goldV2IntroTitle': "Let's find your style direction",
+      'goldV2IntroSubtitle':
+          'Pick a few visuals and we will tune your deck in under 20 seconds.',
+      'goldV2IntroTrust': 'No account needed. You can refine this anytime.',
+      'goldV2Start': 'Start',
+      'goldV2Continue': 'Continue',
+      'goldV2SeeDeck': 'See my deck',
+      'goldV2LooksRight': 'Looks right',
+      'goldV2AdjustPicks': 'Adjust picks',
+      'goldV2StartFresh': 'Start fresh',
+      'goldV2RoomTitle': 'Pick 2 rooms you would love to live in',
+      'goldV2RoomSubtitle': 'Trust your gut. There is no wrong answer.',
+      'goldV2SofaTitle': 'Pick 2 sofa vibes',
+      'goldV2SofaSubtitle': 'Choose the shapes and textures that feel right.',
+      'goldV2ConstraintsTitle': 'Set practical boundaries',
+      'goldV2ConstraintsSubtitle':
+          'This helps us avoid options that do not fit your home.',
+      'goldV2SummaryTitle': 'Your style direction is ready',
+      'goldV2SummaryWeGotYou': 'We got you',
+      'goldV2PickTwoRequired': '2 of 2 required',
+      'goldV2RoomCalmTitle': 'Calm Minimal',
+      'goldV2RoomCalmSubtitle': 'Light, airy, quiet',
+      'goldV2RoomWarmTitle': 'Warm Organic',
+      'goldV2RoomWarmSubtitle': 'Natural tones, soft textures',
+      'goldV2RoomBoldTitle': 'Bold Eclectic',
+      'goldV2RoomBoldSubtitle': 'Expressive, curated contrast',
+      'goldV2RoomUrbanTitle': 'Urban Industrial',
+      'goldV2RoomUrbanSubtitle': 'Raw edges, structured forms',
+      'goldV2SofaRoundedTitle': 'Rounded Boucle',
+      'goldV2SofaRoundedSubtitle': 'Soft curves, cozy look',
+      'goldV2SofaLowTitle': 'Low Linen',
+      'goldV2SofaLowSubtitle': 'Relaxed, grounded profile',
+      'goldV2SofaStructuredTitle': 'Structured Leather',
+      'goldV2SofaStructuredSubtitle': 'Tailored, defined lines',
+      'goldV2SofaModularTitle': 'Modular Cloud',
+      'goldV2SofaModularSubtitle': 'Flexible, deep comfort',
+      'goldV2BudgetHeading': 'Budget',
+      'goldV2SeatsHeading': 'Seats',
+      'goldV2BudgetLt5k': '< 5k SEK',
+      'goldV2Budget5k15k': '5k-15k SEK',
+      'goldV2Budget15k30k': '15k-30k SEK',
+      'goldV2Budget30kPlus': '30k+ SEK',
+      'goldV2Seats2': '2 seats',
+      'goldV2Seats3': '3 seats',
+      'goldV2Seats4Plus': '4+ seats',
+      'goldV2ConstraintModularOnly': 'Modular only',
+      'goldV2ConstraintKidsPets': 'Kids or pets at home',
+      'goldV2ConstraintSmallSpace': 'Small space',
+      'goldV2SummaryFallback': 'We will start broad and adapt quickly.',
+      'goldV2SummaryNoConstraints':
+          'No practical limits selected. We will keep options broad.',
+      'goldV2ConfidenceHigh': 'High confidence',
+      'goldV2ConfidenceMedium': 'Medium confidence',
     },
     'sv': {
       'profile': 'Profil',
@@ -189,11 +261,29 @@ class AppStrings {
       'clearFilters': 'Rensa filter',
       'refreshDeck': 'Uppdatera deck',
       'filtersTitle': 'Filter',
-      'filtersSubtitle': 'Begränsa decken efter storlek, färg och skick.',
+      'filtersSubtitle': 'Begränsa decken efter typ, storlek, färg och mer.',
+      'sofaType': 'Sofftyp',
+      'roomType': 'Rum',
       'size': 'Storlek',
       'color': 'Färg',
       'condition': 'Skick',
       'any': 'Alla',
+      // Sub-category labels
+      'subcat_2_seater': '2-sits',
+      'subcat_3_seater': '3-sits',
+      'subcat_4_seater': '4-sits',
+      'subcat_corner_sofa': 'Hörnsoffa',
+      'subcat_u_sofa': 'U-soffa',
+      'subcat_chaise_sofa': 'Divansoffa',
+      'subcat_modular_sofa': 'Modulsoffa',
+      'subcat_sleeper_sofa': 'Bäddsoffa',
+      // Room type labels
+      'room_living_room': 'Vardagsrum',
+      'room_bedroom': 'Sovrum',
+      'room_outdoor': 'Utomhus',
+      'room_office': 'Kontor',
+      'room_hallway': 'Hall',
+      'room_kids_room': 'Barnrum',
       'small': 'Liten',
       'medium': 'Mellan',
       'large': 'Stor',
@@ -273,6 +363,60 @@ class AppStrings {
       'sharedShortlist': 'Delad shortlist',
       'shortlistEmpty': 'Denna shortlist är tom.',
       'startSwiping': 'Börja swipa',
+      // Golden Card v2
+      'goldV2IntroTitle': 'Lat oss hitta din stilriktning',
+      'goldV2IntroSubtitle':
+          'Valj nagra visuella alternativ sa anpassar vi din deck pa under 20 sekunder.',
+      'goldV2IntroTrust': 'Inget konto kravs. Du kan alltid justera senare.',
+      'goldV2Start': 'Starta',
+      'goldV2Continue': 'Fortsatt',
+      'goldV2SeeDeck': 'Visa min deck',
+      'goldV2LooksRight': 'Detta stammer',
+      'goldV2AdjustPicks': 'Justera val',
+      'goldV2StartFresh': 'Borja om',
+      'goldV2RoomTitle': 'Valj 2 rum du skulle vilja bo i',
+      'goldV2RoomSubtitle': 'Ga pa kansla. Det finns inget fel svar.',
+      'goldV2SofaTitle': 'Valj 2 soffvibbar',
+      'goldV2SofaSubtitle': 'Valj former och texturer som kanns ratt.',
+      'goldV2ConstraintsTitle': 'Satt praktiska ramar',
+      'goldV2ConstraintsSubtitle':
+          'Detta hjalper oss undvika alternativ som inte passar ditt hem.',
+      'goldV2SummaryTitle': 'Din stilriktning ar klar',
+      'goldV2SummaryWeGotYou': 'Vi forstar dig',
+      'goldV2PickTwoRequired': '2 av 2 kravs',
+      'goldV2RoomCalmTitle': 'Lugn Minimal',
+      'goldV2RoomCalmSubtitle': 'Ljust, luftigt, stilla',
+      'goldV2RoomWarmTitle': 'Varm Organisk',
+      'goldV2RoomWarmSubtitle': 'Naturliga toner, mjuka texturer',
+      'goldV2RoomBoldTitle': 'Bold Eklektisk',
+      'goldV2RoomBoldSubtitle': 'Uttrycksfull, kuraterad kontrast',
+      'goldV2RoomUrbanTitle': 'Urban Industriell',
+      'goldV2RoomUrbanSubtitle': 'Raa kanter, strukturerade former',
+      'goldV2SofaRoundedTitle': 'Rundad Boucle',
+      'goldV2SofaRoundedSubtitle': 'Mjuka kurvor, mysigt uttryck',
+      'goldV2SofaLowTitle': 'Lag Linne',
+      'goldV2SofaLowSubtitle': 'Avslappnad, jordad profil',
+      'goldV2SofaStructuredTitle': 'Strukturerad Lader',
+      'goldV2SofaStructuredSubtitle': 'Skraddad, tydlig linje',
+      'goldV2SofaModularTitle': 'Modular Cloud',
+      'goldV2SofaModularSubtitle': 'Flexibel, djup komfort',
+      'goldV2BudgetHeading': 'Budget',
+      'goldV2SeatsHeading': 'Sittplatser',
+      'goldV2BudgetLt5k': '< 5k SEK',
+      'goldV2Budget5k15k': '5k-15k SEK',
+      'goldV2Budget15k30k': '15k-30k SEK',
+      'goldV2Budget30kPlus': '30k+ SEK',
+      'goldV2Seats2': '2 sittplatser',
+      'goldV2Seats3': '3 sittplatser',
+      'goldV2Seats4Plus': '4+ sittplatser',
+      'goldV2ConstraintModularOnly': 'Endast modulsoffa',
+      'goldV2ConstraintKidsPets': 'Barn eller husdjur hemma',
+      'goldV2ConstraintSmallSpace': 'Litet utrymme',
+      'goldV2SummaryFallback': 'Vi startar brett och anpassar snabbt.',
+      'goldV2SummaryNoConstraints':
+          'Inga praktiska gränser valda. Vi håller alternativen breda.',
+      'goldV2ConfidenceHigh': 'Hog sakerhet',
+      'goldV2ConfidenceMedium': 'Medel sakerhet',
     },
   };
 
@@ -335,12 +479,16 @@ class AppStrings {
   String get refreshDeck => _t('refreshDeck');
   String get filtersTitle => _t('filtersTitle');
   String get filtersSubtitle => _t('filtersSubtitle');
+  String get sofaType => _t('sofaType');
+  String get roomType => _t('roomType');
   String get size => _t('size');
   String get color => _t('color');
   String get condition => _t('condition');
   String get any => _t('any');
   String get small => _t('small');
   String get medium => _t('medium');
+  String subCatLabel(String id) => _t('subcat_$id');
+  String roomTypeLabel(String id) => _t('room_$id');
   String get large => _t('large');
   String get newLabel => _t('newLabel');
   String get usedLabel => _t('usedLabel');
@@ -413,4 +561,97 @@ class AppStrings {
   String get sharedShortlist => _t('sharedShortlist');
   String get shortlistEmpty => _t('shortlistEmpty');
   String get startSwiping => _t('startSwiping');
+  String get goldV2IntroTitle => _t('goldV2IntroTitle');
+  String get goldV2IntroSubtitle => _t('goldV2IntroSubtitle');
+  String get goldV2IntroTrust => _t('goldV2IntroTrust');
+  String get goldV2Start => _t('goldV2Start');
+  String get goldV2Continue => _t('goldV2Continue');
+  String get goldV2SeeDeck => _t('goldV2SeeDeck');
+  String get goldV2LooksRight => _t('goldV2LooksRight');
+  String get goldV2AdjustPicks => _t('goldV2AdjustPicks');
+  String get goldV2StartFresh => _t('goldV2StartFresh');
+  String get goldV2RoomTitle => _t('goldV2RoomTitle');
+  String get goldV2RoomSubtitle => _t('goldV2RoomSubtitle');
+  String get goldV2SofaTitle => _t('goldV2SofaTitle');
+  String get goldV2SofaSubtitle => _t('goldV2SofaSubtitle');
+  String get goldV2ConstraintsTitle => _t('goldV2ConstraintsTitle');
+  String get goldV2ConstraintsSubtitle => _t('goldV2ConstraintsSubtitle');
+  String get goldV2SummaryTitle => _t('goldV2SummaryTitle');
+  String get goldV2SummaryWeGotYou => _t('goldV2SummaryWeGotYou');
+  String get goldV2PickTwoRequired => _t('goldV2PickTwoRequired');
+  String get goldV2ConstraintModularOnly => _t('goldV2ConstraintModularOnly');
+  String get goldV2ConstraintKidsPets => _t('goldV2ConstraintKidsPets');
+  String get goldV2ConstraintSmallSpace => _t('goldV2ConstraintSmallSpace');
+  String get goldV2SummaryFallback => _t('goldV2SummaryFallback');
+  String get goldV2SummaryNoConstraints => _t('goldV2SummaryNoConstraints');
+  String get goldV2ConfidenceHigh => _t('goldV2ConfidenceHigh');
+  String get goldV2ConfidenceMedium => _t('goldV2ConfidenceMedium');
+  String get goldV2BudgetHeading => _t('goldV2BudgetHeading');
+  String get goldV2SeatsHeading => _t('goldV2SeatsHeading');
+  String localize(String key) => _t(key);
+  String goldV2StepProgress(int step, int total) => locale.languageCode == 'sv'
+      ? 'Steg $step av $total'
+      : 'Step $step of $total';
+  String goldV2BudgetLabel(String id) {
+    switch (id) {
+      case 'lt_5k':
+        return _t('goldV2BudgetLt5k');
+      case '5k_15k':
+        return _t('goldV2Budget5k15k');
+      case '15k_30k':
+        return _t('goldV2Budget15k30k');
+      case '30k_plus':
+        return _t('goldV2Budget30kPlus');
+      default:
+        return id;
+    }
+  }
+
+  String goldV2SeatsLabel(String id) {
+    switch (id) {
+      case '2':
+        return _t('goldV2Seats2');
+      case '3':
+        return _t('goldV2Seats3');
+      case '4_plus':
+        return _t('goldV2Seats4Plus');
+      default:
+        return id;
+    }
+  }
+
+  String goldV2SummaryLine(String room, String sofa) {
+    if (locale.languageCode == 'sv') {
+      return 'Du lutar at $room med soffvibb $sofa.';
+    }
+    return 'You lean $room with a $sofa sofa vibe.';
+  }
+
+  String goldV2SummaryRoomOnly(String room) {
+    if (locale.languageCode == 'sv') {
+      return 'Din rumsstil pekar mot $room.';
+    }
+    return 'Your room style leans $room.';
+  }
+
+  String goldV2SummarySofaOnly(String sofa) {
+    if (locale.languageCode == 'sv') {
+      return 'Din soffvibb pekar mot $sofa.';
+    }
+    return 'Your sofa vibe leans $sofa.';
+  }
+
+  String goldV2SummaryConstraintLine(String line) {
+    if (locale.languageCode == 'sv') {
+      return 'Vi prioriterar: $line.';
+    }
+    return 'We will prioritize: $line.';
+  }
+
+  String goldV2ConfidenceLabel(String confidence) {
+    if (locale.languageCode == 'sv') {
+      return 'Stilmatch: $confidence';
+    }
+    return 'Style confidence: $confidence';
+  }
 }

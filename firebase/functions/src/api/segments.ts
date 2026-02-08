@@ -1,6 +1,17 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
 import { requireUserAuth } from "../middleware/require_user_auth";
+import { normalizeSegmentCriteriaInput } from "../targeting/segment_targeting";
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toBodyObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
 
 /**
  * System-defined segment templates for v1 Sweden launch.
@@ -130,20 +141,22 @@ export async function segmentsPost(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { 
-    name, 
-    description,
-    styleTags, 
-    budgetMin, 
-    budgetMax, 
-    sizeClasses, 
-    geoRegion,
-    retailerId,
-    baseTemplateId,
-  } = req.body;
+  const body = toBodyObject(req.body);
+  const name = asTrimmedString(body.name);
+  const description =
+    Object.prototype.hasOwnProperty.call(body, "description")
+      ? asTrimmedString(body.description)
+      : null;
+  const retailerId = asTrimmedString(body.retailerId);
+  const baseTemplateId = asTrimmedString(body.baseTemplateId);
+  const { normalized, issues } = normalizeSegmentCriteriaInput(body);
 
   if (!name) {
     res.status(400).json({ error: "name is required" });
+    return;
+  }
+  if (issues.length > 0) {
+    res.status(400).json({ error: "Invalid segment criteria", issues });
     return;
   }
 
@@ -168,17 +181,17 @@ export async function segmentsPost(req: Request, res: Response): Promise<void> {
     const segmentData = {
       id: segmentRef.id,
       name,
-      description: description || null,
+      description: description ?? null,
       isTemplate: false,
-      styleTags: styleTags || null,
-      budgetMin: budgetMin ?? null,
-      budgetMax: budgetMax ?? null,
-      sizeClasses: sizeClasses || null,
-      geoRegion: geoRegion || "sweden",
-      geoCity: null,
-      geoPostcodes: null,
-      retailerId: retailerId || null,
-      baseTemplateId: baseTemplateId || null,
+      styleTags: normalized.styleTags ?? null,
+      budgetMin: normalized.budgetMin ?? null,
+      budgetMax: normalized.budgetMax ?? null,
+      sizeClasses: normalized.sizeClasses ?? null,
+      geoRegion: normalized.geoRegion ?? "sweden",
+      geoCity: normalized.geoCity ?? null,
+      geoPostcodes: normalized.geoPostcodes ?? null,
+      retailerId: retailerId ?? null,
+      baseTemplateId: baseTemplateId ?? null,
       createdBy: user.uid,
       createdAt: now,
       updatedAt: now,
@@ -383,19 +396,76 @@ export async function segmentsPatch(req: Request, res: Response, segmentId: stri
       return;
     }
 
-    const { name, description, styleTags, budgetMin, budgetMax, sizeClasses, geoRegion } = req.body;
+    const body = toBodyObject(req.body);
+    const { normalized, issues } = normalizeSegmentCriteriaInput(body);
 
     const updates: Record<string, unknown> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    if (name !== undefined) updates.name = name;
-    if (description !== undefined) updates.description = description;
-    if (styleTags !== undefined) updates.styleTags = styleTags;
-    if (budgetMin !== undefined) updates.budgetMin = budgetMin;
-    if (budgetMax !== undefined) updates.budgetMax = budgetMax;
-    if (sizeClasses !== undefined) updates.sizeClasses = sizeClasses;
-    if (geoRegion !== undefined) updates.geoRegion = geoRegion;
+    if (Object.prototype.hasOwnProperty.call(body, "name")) {
+      const nextName = asTrimmedString(body.name);
+      if (!nextName) {
+        res.status(400).json({ error: "name cannot be empty" });
+        return;
+      }
+      updates.name = nextName;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "description")) {
+      if (body.description == null) {
+        updates.description = null;
+      } else {
+        const nextDescription = asTrimmedString(body.description);
+        if (nextDescription == null) {
+          res.status(400).json({ error: "description must be a non-empty string or null" });
+          return;
+        }
+        updates.description = nextDescription;
+      }
+    }
+
+    const currentBudgetMin =
+      typeof data.budgetMin === "number" && Number.isFinite(data.budgetMin) ? data.budgetMin : null;
+    const currentBudgetMax =
+      typeof data.budgetMax === "number" && Number.isFinite(data.budgetMax) ? data.budgetMax : null;
+    const nextBudgetMin =
+      Object.prototype.hasOwnProperty.call(normalized, "budgetMin") ? normalized.budgetMin ?? null : currentBudgetMin;
+    const nextBudgetMax =
+      Object.prototype.hasOwnProperty.call(normalized, "budgetMax") ? normalized.budgetMax ?? null : currentBudgetMax;
+    if (nextBudgetMin != null && nextBudgetMax != null && nextBudgetMin > nextBudgetMax) {
+      issues.push({
+        field: "budgetMin/budgetMax",
+        message: "budgetMin cannot be greater than budgetMax",
+      });
+    }
+
+    if (issues.length > 0) {
+      res.status(400).json({ error: "Invalid segment criteria", issues });
+      return;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(normalized, "styleTags")) {
+      updates.styleTags = normalized.styleTags ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "budgetMin")) {
+      updates.budgetMin = normalized.budgetMin ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "budgetMax")) {
+      updates.budgetMax = normalized.budgetMax ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "sizeClasses")) {
+      updates.sizeClasses = normalized.sizeClasses ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "geoRegion")) {
+      updates.geoRegion = normalized.geoRegion ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "geoCity")) {
+      updates.geoCity = normalized.geoCity ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized, "geoPostcodes")) {
+      updates.geoPostcodes = normalized.geoPostcodes ?? null;
+    }
 
     await segmentRef.update(updates);
 

@@ -79,7 +79,7 @@ def run_feed_ingestion(source_id: str, source: dict, *, run_id: str | None = Non
 
     try:
         job_id = create_job(db, source_id, db_run_id, "upsert", {"count": len(items)}, "running")
-        upserted, failed = write_items(db, items, source_id)
+        upserted, failed, _item_ids = write_items(db, items, source_id)
         stats["upserted"] = upserted
         stats["failed"] = failed
         log(f"Upserted {upserted} items, {failed} failed")

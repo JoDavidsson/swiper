@@ -160,6 +160,10 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
                   'variant': response.rank!.variant,
                 if (response.rank!.variantBucket != null)
                   'variantBucket': response.rank!.variantBucket,
+                if (response.rank!.sameFamilyTop8Rate != null)
+                  'sameFamilyTop8Rate': response.rank!.sameFamilyTop8Rate,
+                if (response.rank!.styleDistanceTop4Min != null)
+                  'styleDistanceTop4Min': response.rank!.styleDistanceTop4Min,
                 'itemIds': response.rank!.itemIds.isNotEmpty
                     ? response.rank!.itemIds
                     : response.items.map((i) => i.id).toList(),

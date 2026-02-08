@@ -11,7 +11,12 @@ _PRODUCT_ID_RE = re.compile(r"-p\d+(?:-v\d+)?\b", re.IGNORECASE)  # common ecomm
 # Strong product path patterns - these indicate a specific product page
 # NOTE: /p/ must be followed by content (not just /p or /p/)
 _PRODUCT_PATH_RE = re.compile(r"/p/[a-z0-9]", re.IGNORECASE)  # /p/product-slug
+_PRODUCT_BUNDLE_RE = re.compile(r"/p-[a-z]\d{4,}", re.IGNORECASE)  # ILVA bundle pattern: /p-b0003274-5637177585/
 _PRODUCT_SKU_RE = re.compile(r"[-/][a-z]{2,3}\d{4,}", re.IGNORECASE)  # SKU patterns like -AB12345
+
+# Pattern: path ends with /article-number (7+ digit ID, common in Nordic retailers)
+# e.g., /kelso-soffa-2-sits-manchester/1737345-02 (Jotex)
+_ARTICLE_NUMBER_RE = re.compile(r"/\d{6,}(-\d+)?/?$", re.IGNORECASE)
 
 
 # Strong product hints - paths that almost always indicate product pages
@@ -100,12 +105,57 @@ def classify_url(url: str) -> UrlClassification:
     # Start with neutral score
     score = 0.3
 
-    # ===== STRONG CATEGORY SIGNALS (check first, these are definitive) =====
+    # ===== PRODUCT SIGNALS (evaluate first to detect strong signals) =====
+    
+    path_segments = [s for s in path.split('/') if s]
+    product_signal_strength = 0.0
+    
+    # Product path patterns (/p/slug, /produkt/slug, etc.)
+    if any(tok in path for tok in PRODUCT_HINT_TOKENS):
+        product_signal_strength += 0.55
+    
+    # /p/ followed by product slug (very strong signal)
+    if _PRODUCT_PATH_RE.search(path):
+        product_signal_strength += 0.6
+    
+    # /p-b followed by product ID (ILVA bundle pattern: /p-bXXXXXX-XXXXXXXXXX/)
+    if _PRODUCT_BUNDLE_RE.search(path):
+        product_signal_strength += 0.6
+    
+    # Common product-ID patterns (used by many retailers, incl. chilli.se)
+    # e.g., -p12345, -p12345-v1
+    if _PRODUCT_ID_RE.search(path):
+        product_signal_strength += 0.65
+    
+    # Article number at end of path (Nordic retailers like Jotex)
+    # e.g., /kelso-soffa-2-sits-manchester/1737345-02
+    # This is a very strong signal — a 7-digit article number is almost always a product.
+    if _ARTICLE_NUMBER_RE.search(path):
+        product_signal_strength += 0.55
+    
+    # SKU-like patterns in URL
+    if _PRODUCT_SKU_RE.search(path):
+        product_signal_strength += 0.25
+    
+    # Deep paths (4+ segments) are more likely products
+    if len(path_segments) >= 4:
+        product_signal_strength += 0.15
+    
+    has_strong_product_signal = product_signal_strength >= 0.4
+    score += product_signal_strength
+    
+    # ===== CATEGORY SIGNALS =====
+    # When a strong product signal is present (e.g., /p-bXXXX or /1737345-02),
+    # category tokens in the path are likely breadcrumb segments, not indicators
+    # of a category page. Reduce their penalty.
     
     # Category hint tokens - paths that indicate listing pages
     category_matches = sum(1 for tok in CATEGORY_HINT_TOKENS if tok in path)
     if category_matches > 0:
-        score -= 0.35 * min(category_matches, 2)  # Cap at 2 matches
+        # If a strong product signal is present, category tokens in the path are
+        # likely breadcrumbs (e.g., /soffor/product-name/p-bXXXX/) — reduce penalty.
+        penalty_per_match = 0.15 if has_strong_product_signal else 0.35
+        score -= penalty_per_match * min(category_matches, 2)
     
     # Non-product pages (utility pages)
     if any(tok in path for tok in NON_PRODUCT_HINT_TOKENS):
@@ -117,33 +167,9 @@ def classify_url(url: str) -> UrlClassification:
     
     # Path ends at a category level (no product slug after category)
     # e.g., /soffor or /soffor/ without further path segments
-    path_segments = [s for s in path.split('/') if s]
-    if len(path_segments) <= 2 and not _PRODUCT_PATH_RE.search(path):
+    if len(path_segments) <= 2 and not has_strong_product_signal:
         # Shallow paths without product markers are likely categories
         score -= 0.15
-    
-    # ===== STRONG PRODUCT SIGNALS =====
-    
-    # Product path patterns (/p/slug, /produkt/slug, etc.)
-    if any(tok in path for tok in PRODUCT_HINT_TOKENS):
-        score += 0.55
-    
-    # /p/ followed by product slug (very strong signal)
-    if _PRODUCT_PATH_RE.search(path):
-        score += 0.6
-    
-    # Common product-ID patterns (used by many retailers, incl. chilli.se)
-    # e.g., -p12345, -p12345-v1
-    if _PRODUCT_ID_RE.search(path):
-        score += 0.65
-    
-    # SKU-like patterns in URL
-    if _PRODUCT_SKU_RE.search(path):
-        score += 0.25
-    
-    # Deep paths (4+ segments) with no category markers are more likely products
-    if len(path_segments) >= 4 and category_matches == 0:
-        score += 0.15
     
     # ===== DEFINITIVE EXCLUSIONS =====
     

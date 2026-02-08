@@ -142,6 +142,36 @@ def run_ingestion(source_id: str, request: RunRequest | None = None):
     return result
 
 
+@app.post("/stop/{source_id}")
+def stop_crawl(source_id: str):
+    """Stop an active crawl for a source by setting its run status to 'stopped'."""
+    from app.firestore_client import get_firestore_client
+    db = get_firestore_client()
+
+    # Find active run for this source
+    runs = (
+        db.collection("ingestionRuns")
+        .where("sourceId", "==", source_id)
+        .where("status", "==", "running")
+        .limit(1)
+        .get()
+    )
+
+    if not runs:
+        raise HTTPException(status_code=404, detail="No active run found for this source")
+
+    run_doc = runs[0]
+    run_id = run_doc.id
+
+    # Set status to "stopped" — the crawl loop checks this periodically
+    db.collection("ingestionRuns").document(run_id).update({
+        "status": "stopped",
+        "errorSummary": "Stopped by user",
+    })
+    print(f"[stop] Stop signal set for run {run_id} (source {source_id})", flush=True)
+    return {"status": "ok", "runId": run_id, "message": "Stop signal sent"}
+
+
 @app.post("/run-batch")
 async def run_batch(request: BatchRunRequest):
     """
@@ -571,10 +601,17 @@ def classify_items(request: ClassifyRequest):
             )
 
             # Write classification back to item
-            update_data = {
-                "classification": result["classification"],
+            cls = result["classification"]
+            update_data: dict = {
+                "classification": cls,
                 "eligibility": result["decisions"],
             }
+            # Promote subCategory and roomTypes to top-level fields for
+            # fast Firestore queries and deck filtering
+            if cls.get("subCategory"):
+                update_data["subCategory"] = cls["subCategory"]
+            if cls.get("roomTypes"):
+                update_data["roomTypes"] = cls["roomTypes"]
             db.collection("items").document(item_id).update(update_data)
 
             # Write Gold doc if item was accepted

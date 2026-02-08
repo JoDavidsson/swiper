@@ -219,6 +219,7 @@ class _RunCard extends StatelessWidget {
     final isSuccess = status == 'completed' || status == 'success' || status == 'succeeded';
     final isError = status == 'failed' || status == 'error';
     final isRunning = status == 'running' || status == 'in_progress';
+    final isStopped = status == 'stopped';
     
     return Card(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
@@ -269,9 +270,11 @@ class _RunCard extends StatelessWidget {
                                 ? AppTheme.positiveLike
                                 : isError
                                     ? AppTheme.negativeDislike
-                                    : isRunning
-                                        ? AppTheme.primaryAction
-                                        : AppTheme.textCaption,
+                                    : isStopped
+                                        ? Colors.orange
+                                        : isRunning
+                                            ? AppTheme.primaryAction
+                                            : AppTheme.textCaption,
                             borderRadius: BorderRadius.circular(9),
                             border: Border.all(color: AppTheme.surface, width: 2),
                           ),
@@ -280,9 +283,11 @@ class _RunCard extends StatelessWidget {
                                 ? Icons.check
                                 : isError
                                     ? Icons.close
-                                    : isRunning
-                                        ? Icons.sync
-                                        : Icons.schedule,
+                                    : isStopped
+                                        ? Icons.stop
+                                        : isRunning
+                                            ? Icons.sync
+                                            : Icons.schedule,
                             size: 10,
                             color: Colors.white,
                           ),
@@ -636,6 +641,53 @@ class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
     }
   }
 
+  bool _isStopping = false;
+
+  Future<void> _stopCrawl() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Stop Crawl?'),
+        content: const Text(
+          'Are you sure you want to stop this crawl? Partial results will be saved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.negativeDislike),
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isStopping = true);
+
+    try {
+      final sourceId = _run['sourceId'] as String? ?? '';
+      await widget.apiClient.adminStopCrawl(sourceId);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stop signal sent — crawl will stop shortly')),
+      );
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error stopping crawl: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isStopping = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final runId = _run['id'] as String? ?? 'Unknown';
@@ -724,6 +776,20 @@ class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
                   ],
                 ),
               ),
+              // Stop button (only when running)
+              if (isRunning)
+                _isStopping
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.stop_circle_outlined),
+                        color: AppTheme.negativeDislike,
+                        onPressed: _stopCrawl,
+                        tooltip: 'Stop crawl',
+                      ),
               // Refresh button
               IconButton(
                 icon: Icon(Icons.refresh, color: isRunning ? AppTheme.textCaption : AppTheme.textSecondary),
@@ -892,6 +958,7 @@ class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderSta
   Widget build(BuildContext context) {
     final isSuccess = widget.status == 'completed' || widget.status == 'success' || widget.status == 'succeeded';
     final isError = widget.status == 'failed' || widget.status == 'error';
+    final isStopped = widget.status == 'stopped';
     
     final statusColor = widget.isRunning
         ? AppTheme.primaryAction
@@ -899,7 +966,9 @@ class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderSta
             ? AppTheme.positiveLike
             : isError
                 ? AppTheme.negativeDislike
-                : AppTheme.textCaption;
+                : isStopped
+                    ? Colors.orange
+                    : AppTheme.textCaption;
 
     final statusText = widget.isRunning
         ? 'Running'
@@ -907,7 +976,9 @@ class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderSta
             ? 'Completed'
             : isError
                 ? 'Failed'
-                : widget.status.toUpperCase();
+                : isStopped
+                    ? 'Stopped'
+                    : widget.status.toUpperCase();
 
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingUnit),

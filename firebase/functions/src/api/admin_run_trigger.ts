@@ -389,6 +389,71 @@ export async function adminRunTriggerPost(req: Request, res: Response): Promise<
 
 
 /**
+ * Stop an active crawl for a source.
+ *
+ * Strategy: Write directly to the `ingestionRuns` collection in Firestore.
+ * The crawl loop in the Supply Engine polls this collection for a "stopped"
+ * status.  We do NOT call the Supply Engine HTTP endpoint because the
+ * single-threaded server is blocked by the running crawl and can't accept
+ * new requests.
+ */
+export async function adminStopCrawlPost(req: Request, res: Response): Promise<void> {
+  const body = req.body as Record<string, unknown> | undefined;
+  const sourceId = body?.sourceId as string | undefined;
+
+  if (!sourceId) {
+    res.status(400).json({ error: "sourceId required" });
+    return;
+  }
+
+  const db = admin.firestore();
+
+  // 1. Mark the admin-facing `runs` collection
+  const activeRunId = await getActiveRun(sourceId);
+  if (activeRunId) {
+    await updateRunRecord(activeRunId, { status: "stopped", errorSummary: "Stopped by user" });
+    console.log(`[admin_stop] Marked runs/${activeRunId} as stopped`);
+  }
+
+  // 2. Mark the engine-facing `ingestionRuns` collection (this is what the
+  //    crawl loop actually checks).
+  const ingestionSnap = await db.collection("ingestionRuns")
+    .where("sourceId", "==", sourceId)
+    .where("status", "==", "running")
+    .limit(1)
+    .get();
+
+  let ingestionRunId: string | null = null;
+  if (!ingestionSnap.empty) {
+    const doc = ingestionSnap.docs[0];
+    ingestionRunId = doc.id;
+    await doc.ref.update({
+      status: "stopped",
+      errorSummary: "Stopped by user",
+      updatedAt: FieldValue.serverTimestamp(),
+      finishedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`[admin_stop] Marked ingestionRuns/${ingestionRunId} as stopped`);
+  }
+
+  if (!activeRunId && !ingestionRunId) {
+    res.status(404).json({
+      error: "No active run found",
+      details: { sourceId },
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: "stopped",
+    message: "Stop signal written to Firestore — crawl will stop within seconds",
+    runId: activeRunId,
+    ingestionRunId,
+  });
+}
+
+
+/**
  * Generic proxy function to forward requests to the Supply Engine.
  * Used for all EPIC C/D/F endpoints.
  */

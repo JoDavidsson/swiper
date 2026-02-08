@@ -61,6 +61,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    // Onboarding v2 profiles: reads via API; writes only via Admin SDK (Functions).
+    match /onboardingProfiles/{sessionId} {
+      allow read: if true;
+      allow write: if false;
+    }
     // Sessions: public read; writes only via Admin SDK (Functions).
     match /sessions/{sessionId} {
       allow read: if true;

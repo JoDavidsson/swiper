@@ -11,6 +11,25 @@ from app.locator.classifier import classify_url
 from app.normalization import extract_domain_root, domains_equivalent
 
 
+def _dedup_key(url: str) -> str:
+    """
+    Return a deduplication key for a URL by stripping query parameters.
+    
+    Many retailers (e.g. Mio) expose hundreds of thousands of sitemap URLs
+    that are the same product with different configuration query params:
+      /p/bellora-4-sits-soffa/738150?ck_sofaArmrest=ARMA&ck_sofaUpholster=...
+      /p/bellora-4-sits-soffa/738150?ck_sofaArmrest=ARMB&ck_sofaUpholster=...
+    
+    By deduplicating on scheme+host+path we keep one canonical URL per product.
+    """
+    try:
+        parsed = urlparse(url)
+        # Keep scheme + netloc + path (drop query and fragment)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+    except Exception:
+        return url
+
+
 @dataclass(frozen=True)
 class DiscoveredUrl:
     url: str
@@ -177,6 +196,8 @@ def discover_from_sitemaps(
     discovered_urls: list[str] = []
     matching_urls: list[str] = []  # URLs that match category filter (if any)
     seen_sitemaps: set[str] = set()
+    seen_dedup_keys: set[str] = set()  # Deduplicate URLs with same base path
+    dedup_skipped = 0  # Counter for logging
     queue: list[str] = []
     consecutive_zero_yields = 0
     # Early stopping only applies when NOT filtering.
@@ -235,6 +256,24 @@ def discover_from_sitemaps(
             continue
 
         urls, nested = _parse_sitemap_content(r.text, sm_url)
+        
+        # Detect sitemap URLs disguised as regular URLs in a <urlset>.
+        # Some sites (e.g. Länna Möbler) wrap nested sitemaps in <urlset>
+        # instead of the standard <sitemapindex>.  Heuristic: if a URL
+        # contains "sitemap" in its path, treat it as a nested sitemap.
+        promoted: list[str] = []
+        remaining_urls: list[str] = []
+        for u in urls:
+            path = urlparse(u).path.lower()
+            if "sitemap" in path:
+                promoted.append(u)
+            else:
+                remaining_urls.append(u)
+        if promoted:
+            nested = nested + promoted
+            urls = remaining_urls
+            print(f"         [sitemap] Promoted {len(promoted)} urlset entries to nested sitemaps (path contains 'sitemap')", flush=True)
+        
         print(f"         [sitemap] Parsed: {len(urls)} URLs, {len(nested)} nested sitemaps", flush=True)
         
         urls_added = 0
@@ -246,6 +285,14 @@ def discover_from_sitemaps(
             url_domain = _domain(u)
             if base_domain and url_domain and not domains_equivalent(url_domain, base_domain):
                 continue
+            # Deduplicate by base path (strip query params).
+            # This prevents 100s of config variants of the same product
+            # (e.g., Mio beds with different mattress/leg combos) from bloating the queue.
+            dk = _dedup_key(u)
+            if dk in seen_dedup_keys:
+                dedup_skipped += 1
+                continue
+            seen_dedup_keys.add(dk)
             discovered_urls.append(u)
             urls_added += 1
             
@@ -276,10 +323,14 @@ def discover_from_sitemaps(
 
     if has_filter:
         print(f"         [sitemap] Discovery complete: {len(matching_urls)} matching URLs from {len(seen_sitemaps)} sitemaps (scanned {len(discovered_urls)} total)", flush=True)
+        if dedup_skipped:
+            print(f"         [sitemap] Deduplicated: skipped {dedup_skipped} variant URLs (same base path, different query params)", flush=True)
         # When filtering, only return matching URLs
         urls_to_classify = matching_urls
     else:
         print(f"         [sitemap] Discovery complete: {len(discovered_urls)} URLs from {len(seen_sitemaps)} sitemaps", flush=True)
+        if dedup_skipped:
+            print(f"         [sitemap] Deduplicated: skipped {dedup_skipped} variant URLs (same base path, different query params)", flush=True)
         urls_to_classify = discovered_urls
 
     out: list[DiscoveredUrl] = []

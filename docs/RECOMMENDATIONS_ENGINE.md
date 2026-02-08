@@ -13,6 +13,49 @@ The recommendations engine ranks items for the deck using **personal** signals (
 
 ---
 
+## Golden Card v2 Cold-start Contract (Implemented, 2026-02-08)
+
+Golden Card v2 introduces a style-first onboarding profile that feeds ranking before enough swipe history exists.
+
+### New profile inputs (v2)
+
+- `sceneArchetypes`: 2 selected room-vibe archetypes (for emotional/context signal).
+- `sofaVibes`: 2 selected sofa-form/material tokens (for product signal).
+- `constraints`: budget band, seat count, modular, kids/pets, small-space.
+- `derivedProfile`: `primaryStyle`, `secondaryStyle`, `confidence`.
+
+### Serving behavior for early session requests
+
+For early-session slates (cold start), deck serving now:
+
+1. Apply **diversity constraints** in the first rendered set:
+   - max 1 item from same family/collection in top 8
+   - minimum style-distance threshold between first 4 cards
+2. Blend retrieval/scoring lanes:
+   - style-match lane from v2 profile
+   - complementary exploration lane
+   - persona lane (if available)
+   - serendipity lane
+3. Respect explicit hard constraints from v2 profile (for example budget band).
+
+### API metadata extension (implemented)
+
+Deck response `rank` object will include:
+
+- `onboardingProfile.primaryStyle`
+- `onboardingProfile.secondaryStyle`
+- `onboardingProfile.confidence`
+- `onboardingProfile.explanation` (short list of interpretable cues)
+- `sameFamilyTop8Rate` (duplicate-family exposure signal in served top 8)
+- `styleDistanceTop4Min` (minimum style-distance in served top 4 when computable)
+
+### Backward compatibility
+
+- If v2 profile is missing, continue current v1 behavior (`onboardingPicks` + existing preference/persona flows).
+- Keep v1 and v2 in parallel during rollout and A/B evaluation.
+
+---
+
 ## Personal vs persona-based ranking
 
 | Mode | Description | Data source |
@@ -151,6 +194,8 @@ The ranker is then run with a **rank window** (`rankWindow`, larger than respons
 - `variant`, `variantBucket`, `explorationPolicy`
 
 Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` raise fetch and candidate caps for stress testing. When persona signals are available, deck uses `PersonalPlusPersonaRanker`; otherwise it uses `PreferenceWeightsRanker`.
+
+For featured distribution, campaign-backed promoted cards now pass a segment-targeting relevance gate (style + budget + size + geo) before entering the candidate set; legacy promoted cards without campaign linkage remain eligible.
 
 **Persona cold sessions (current):** Persona ranking is only used when `onboardingPicks.pickHash` exists and `personaSignals/{pickHash}` has data; otherwise deck falls back to `PreferenceWeightsRanker` (personal-only).
 

@@ -5,6 +5,34 @@ import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/models/item.dart';
 
+/// Human-readable labels for sofa sub-categories.
+const _subCatLabels = {
+  '2_seater': '2-sitssoffa',
+  '3_seater': '3-sitssoffa',
+  '4_seater': '4-sitssoffa',
+  'corner_sofa': 'Hörnsoffa',
+  'u_sofa': 'U-soffa',
+  'chaise_sofa': 'Divansoffa',
+  'modular_sofa': 'Modulsoffa',
+  'sleeper_sofa': 'Bäddsoffa',
+};
+
+/// Human-readable labels for room types.
+const _roomTypeLabels = {
+  'living_room': 'Vardagsrum',
+  'bedroom': 'Sovrum',
+  'outdoor': 'Utomhus',
+  'office': 'Kontor',
+  'hallway': 'Hall',
+  'kids_room': 'Barnrum',
+};
+
+String _subCatDisplayLabel(String id) =>
+    _subCatLabels[id] ?? id.replaceAll('_', ' ');
+
+String _roomTypeDisplayLabel(String id) =>
+    _roomTypeLabels[id] ?? id.replaceAll('_', ' ');
+
 Future<void> showDetailSheet(
   BuildContext context,
   Item item, {
@@ -217,6 +245,35 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
               ],
               if (widget.item.material != null) Text('Material: ${widget.item.material}', style: Theme.of(context).textTheme.bodyMedium),
               if (widget.item.deliveryComplexity != null) Text('Delivery: ${widget.item.deliveryComplexity}', style: Theme.of(context).textTheme.bodyMedium),
+              // Sub-category and room type tags
+              if (widget.item.subCategory != null || widget.item.roomTypes.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.spacingUnit),
+                Wrap(
+                  spacing: AppTheme.spacingUnit / 2,
+                  runSpacing: AppTheme.spacingUnit / 2,
+                  children: [
+                    if (widget.item.subCategory != null)
+                      Chip(
+                        label: Text(_subCatDisplayLabel(widget.item.subCategory!)),
+                        backgroundColor: AppTheme.primaryAction.withValues(alpha: 0.1),
+                        labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppTheme.primaryAction,
+                        ),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ...widget.item.roomTypes.map((rt) => Chip(
+                          label: Text(_roomTypeDisplayLabel(rt)),
+                          backgroundColor: AppTheme.textSecondary.withValues(alpha: 0.1),
+                          labelStyle: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: AppTheme.textSecondary,
+                          ),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        )),
+                  ],
+                ),
+              ],
               if (widget.item.lastUpdatedAt != null)
                 Text('Last updated: ${widget.item.lastUpdatedAt!.toIso8601String().split('T').first}', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: AppTheme.spacingUnit * 2),

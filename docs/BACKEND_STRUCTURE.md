@@ -1,6 +1,6 @@
 # Swiper – Backend Structure
 
-> **Last updated:** 2026-02-07  
+> **Last updated:** 2026-02-08  
 > Complete database schema, API contracts, and service architecture.
 
 ---
@@ -60,6 +60,8 @@ Primary collection for all furniture products.
 | `colorFamily` | `string` | — | Normalized color |
 | `sizeClass` | `string` | — | `small` / `medium` / `large` |
 | `dimensionsCm` | `object` | — | `{w, h, d}` in cm |
+| `subCategory` | `string` | — | Sofa sub-type: `2_seater`, `3_seater`, `4_seater`, `corner_sofa`, `u_sofa`, `chaise_sofa`, `modular_sofa`, `sleeper_sofa` |
+| `roomTypes` | `string[]` | — | Room placement tags: `living_room`, `bedroom`, `outdoor`, `office`, `hallway`, `kids_room` |
 | `extractionMeta` | `object` | — | Extraction quality metadata `{method, extractorMethod, completeness, missingFields[], fetchMethod, extractedAt}` |
 | `firstSeenAt` | `timestamp` | ✓ | First ingestion time |
 | `lastUpdatedAt` | `timestamp` | ✓ | Last update time |
@@ -248,8 +250,9 @@ Subcollection under `decisionRooms/{roomId}/items`
 | `retailerId` | `string` | ✓ | Owning retailer |
 | `name` | `string` | ✓ | Campaign name |
 | `segmentId` | `string` | ✓ | Target segment |
+| `segmentSnapshot` | `object` | ✓ | Normalized segment criteria snapshot persisted at save time (style, budget, size, geo) |
 | `productIds` | `string[]` | — | Specific products (null = auto-select) |
-| `productMode` | `string` | ✓ | `manual` / `recommended` |
+| `productMode` | `string` | ✓ | `all` / `selected` / `auto` |
 | `budgetTotal` | `number` | ✓ | Total budget SEK |
 | `budgetDaily` | `number` | ✓ | Daily budget SEK |
 | `budgetSpent` | `number` | ✓ | Spent so far |
@@ -352,6 +355,22 @@ Stores user's visual picks and budget from progressive onboarding.
 | `createdAt` | `timestamp` | ✓ | First submission time |
 | `updatedAt` | `timestamp` | ✓ | Last update time |
 
+### 2.19b `onboardingProfiles` – Golden Card v2 Style Profiles
+
+Stores style-first onboarding profile for Golden Card v2.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | ✓ | Document ID = session ID |
+| `version` | `number` | ✓ | Contract version (`2`) |
+| `status` | `string` | ✓ | `in_progress` / `completed` / `skipped` |
+| `sceneArchetypes` | `string[]` | — | Picked room-vibe archetypes |
+| `sofaVibes` | `string[]` | — | Picked sofa vibe tokens |
+| `constraints` | `object` | — | Budget/seat/modular/pets/small-space selections |
+| `derivedProfile` | `object` | — | `{primaryStyle, secondaryStyle, confidence, explanation[]}` |
+| `createdAt` | `timestamp` | ✓ | First write time |
+| `updatedAt` | `timestamp` | ✓ | Last update time |
+
 ### 2.20 `personaSignals` – Collaborative Filtering Signals
 
 Precomputed signals from users with similar onboarding picks.
@@ -374,6 +393,8 @@ Items that have been classified and accepted by the sorting engine. The deck rea
 | `itemId` | `string` | ✓ | Matches items collection doc ID |
 | `eligibleSurfaces` | `string[]` | ✓ | Surface IDs where item is accepted |
 | `predictedCategory` | `string` | ✓ | Category from classifier |
+| `subCategory` | `string` | — | Sofa sub-type (from C6 classifier) |
+| `roomTypes` | `string[]` | — | Room placement tags (from C7 classifier) |
 | `categoryConfidence` | `number` | ✓ | Classification confidence 0.0-1.0 |
 | `classificationVersion` | `number` | ✓ | Version of classification model |
 | `policyVersion` | `number` | ✓ | Version of eligibility policy |
@@ -592,9 +613,22 @@ Get ranked items for swiping.
 |-------|------|---------|-------------|
 | `sessionId` | `string` | — | Required |
 | `limit` | `number` | `30` | Max items |
-| `filters` | `json-string` | — | Optional serialized filters |
+| `filters` | `json-string` | — | Optional serialized filters (see below) |
+| `surface` | `string` | `swiper_deck_sofas` | Deck surface to serve from |
 | `requestId` | `string` | auto | Optional caller-provided request id |
 | `debug` | `boolean` | `false` | Include debug block |
+
+**Supported filter keys (inside `filters` JSON):**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `sizeClass` | `string` | `small` / `medium` / `large` |
+| `colorFamily` | `string` | Color family name |
+| `newUsed` | `string` | `new` / `used` |
+| `subCategory` | `string` | Sofa sub-type (e.g., `3_seater`, `corner_sofa`) |
+| `roomType` | `string` | Room type (e.g., `living_room`, `outdoor`) |
+| `priceMin` | `number` | Minimum price |
+| `priceMax` | `number` | Maximum price |
 
 **Response:**
 ```json
@@ -618,9 +652,22 @@ Get ranked items for swiping.
   "rank": {
     "rankerRunId": "run_...",
     "algorithmVersion": "preference_weights_v1",
+    "requestId": "deck_...",
+    "candidateSetId": "deck_..._candidate_set",
     "candidateCount": 300,
     "rankWindow": 300,
     "retrievalQueues": ["preference_match", "fresh_catalog"],
+    "explorationPolicy": "sample_from_top_2limit",
+    "variant": "personal_plus_persona_blended",
+    "variantBucket": 42,
+    "onboardingProfile": {
+      "primaryStyle": "warm_organic",
+      "secondaryStyle": "calm_minimal",
+      "confidence": 0.78,
+      "explanation": ["Warm neutrals", "Rounded forms"]
+    },
+    "sameFamilyTop8Rate": 0.25,
+    "styleDistanceTop4Min": 0.48,
     "itemIds": ["item123", "item456"]
   },
   "itemScores": {
@@ -989,6 +1036,87 @@ Get user's gold card selections.
 }
 ```
 
+#### `POST /onboarding/v2`
+
+Store Golden Card v2 style profile.
+
+**Request:**
+```json
+{
+  "sessionId": "abc123",
+  "version": 2,
+  "sceneArchetypes": ["warm_organic", "calm_minimal"],
+  "sofaVibes": ["rounded_boucle", "low_profile_linen"],
+  "constraints": {
+    "budgetBand": "5k_15k",
+    "seatCount": "3",
+    "modularOnly": false,
+    "kidsPets": true,
+    "smallSpace": false
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "pickHash": "calm_minimal-rounded_boucle-warm_organic",
+  "profile": {
+    "primaryStyle": "warm_organic",
+    "secondaryStyle": "calm_minimal",
+    "confidence": 0.78,
+    "explanation": [
+      "Warm neutrals",
+      "Rounded soft forms",
+      "Family-friendly durability"
+    ]
+  }
+}
+```
+
+#### `GET /onboarding/v2`
+
+Get Golden Card v2 profile and derived style summary.
+
+**Query Params:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `sessionId` | `string` | Required |
+
+**Response (found):**
+```json
+{
+  "profile": {
+    "version": 2,
+    "status": "completed",
+    "sceneArchetypes": ["warm_organic", "calm_minimal"],
+    "sofaVibes": ["rounded_boucle", "low_profile_linen"],
+    "constraints": {
+      "budgetBand": "5k_15k",
+      "seatCount": "3",
+      "modularOnly": false,
+      "kidsPets": true,
+      "smallSpace": false
+    },
+    "derivedProfile": {
+      "primaryStyle": "warm_organic",
+      "secondaryStyle": "calm_minimal",
+      "confidence": 0.78,
+      "explanation": ["Warm neutrals", "Rounded soft forms"]
+    },
+    "pickHash": "calm_minimal-rounded_boucle-warm_organic"
+  }
+}
+```
+
+**Response (not found):**
+```json
+{
+  "profile": null
+}
+```
+
 ### 4.6 Admin Endpoints
 
 All admin endpoints require authentication header:
@@ -1003,7 +1131,84 @@ Or legacy password:
 X-Admin-Password: {password}
 ```
 
-*See existing admin endpoints in original docs.*
+#### `POST /api/admin/verify`
+
+Validate admin credentials/token from the login screen.
+
+#### `GET /api/admin/stats`
+
+Get admin dashboard metrics, including Golden Card v2 observability summary.
+
+**Response:**
+```json
+{
+  "dailySessions": 124,
+  "totalSwipes": 4932,
+  "totalLikes": 1771,
+  "outboundClicks": 312,
+  "likeRate": 35.9,
+  "goldenV2": {
+    "funnel24h": {
+      "introShown": 88,
+      "stepViewed": 81,
+      "stepCompleted": 73,
+      "summaryConfirmed": 69,
+      "skipped": 12,
+      "completionRatePct": 78.41,
+      "skipRatePct": 13.64
+    },
+    "submitReliability24h": {
+      "attemptedSessions": 69,
+      "completedProfiles": 68,
+      "estimatedFailedSubmissions": 1,
+      "failureRatePct": 1.45,
+      "alert": {
+        "triggered": false,
+        "thresholdPct": 2,
+        "minSamples": 20
+      }
+    },
+    "deckLatency24h": {
+      "sampleCount": 214,
+      "baselineSampleCount": 997,
+      "currentP95Ms": 482,
+      "baselineP95Ms": 455,
+      "regressionPct": 5.93,
+      "alert": {
+        "triggered": false,
+        "thresholdPct": 15,
+        "minSamples": 30
+      }
+    },
+    "deckQuality24h": {
+      "sampleCount": 214,
+      "sameFamilyTop8RateAvg": 0.27,
+      "styleDistanceTop4MinAvg": 0.46
+    },
+    "experimentWeeklyByCohort": {
+      "windowDays": 7,
+      "generatedAtMs": 1765229400000,
+      "cohortCount": 3,
+      "cohorts": [
+        {
+          "cohortId": "personal_plus_persona_blended",
+          "sessionCount": 142,
+          "completionRatePct": 76.06,
+          "skipRatePct": 14.08,
+          "swipeRightRatePct": 39.55,
+          "deckResponses": 689,
+          "sameFamilyTop8RateAvg": 0.26,
+          "styleDistanceTop4MinAvg": 0.47
+        }
+      ]
+    }
+  }
+}
+```
+
+#### `POST /api/admin/stop-crawl`
+
+Request stop of an in-progress ingestion run.
 
 ### 4.7 Retailer Console Endpoints
 
@@ -1056,7 +1261,7 @@ Create a new campaign.
   "name": "Spring Collection",
   "segmentId": "seg456",
   "productIds": ["prod1", "prod2"],
-  "productMode": "manual",
+  "productMode": "selected",
   "budgetTotal": 50000,
   "budgetDaily": 2500,
   "startDate": "2026-02-01",
@@ -1334,6 +1539,8 @@ At each card opportunity:
 5. Serve winner
 ```
 
+Implementation note (2026-02-08): campaign-backed promoted cards are now gated at deck serve-time using a session targeting profile (style + budget + size + geo). Non-campaign legacy promoted cards remain eligible.
+
 ### 6.3 Logging
 
 Every featured impression logs:
@@ -1435,6 +1642,13 @@ const ATTRIBUTE_WEIGHTS = {
   sizeClass: 0.15,
   priceRange: 0.05,
 };
+
+// Additional signals used in preference weights:
+// - subcat:{id} – sofa sub-type (e.g., "subcat:3_seater")
+// - room:{id} – room type (e.g., "room:living_room")
+// - brand:{name}, delivery:{complexity}, condition:{new|used}
+// - eco:{tag}, feature:small_space, feature:modular
+// - price_bucket:{budget|affordable|mid|premium|luxury}
 
 function buildPreferenceProfile(likes: Item[]): PreferenceProfile {
   // Count attribute frequencies in liked items

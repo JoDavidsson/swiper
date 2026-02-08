@@ -44,6 +44,14 @@
         "onboarding_step_change",
         "onboarding_complete",
         "onboarding_skip",
+        "gold_v2_intro_shown",
+        "gold_v2_step_viewed",
+        "gold_v2_option_selected",
+        "gold_v2_option_deselected",
+        "gold_v2_step_completed",
+        "gold_v2_skipped",
+        "gold_v2_summary_confirmed",
+        "gold_v2_summary_adjusted",
 
         "deck_request",
         "deck_response",
@@ -336,7 +344,7 @@
         "newOnly": { "type": "boolean" },
         "smallSpaceOnly": { "type": "boolean" },
 
-        "stepName": { "type": "string", "enum": ["style", "budget", "toggles"] },
+        "stepName": { "type": "string", "enum": ["style", "budget", "toggles", "intro", "room_vibes", "sofa_vibes", "constraints", "summary"] },
         "field": { "type": "string" },
 
         "timeSpentMs": { "type": "integer", "minimum": 0 }

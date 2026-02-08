@@ -30,6 +30,7 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 *.log
+emulator-data/
 
 # Python
 __pycache__/

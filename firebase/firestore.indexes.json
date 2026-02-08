@@ -122,6 +122,22 @@
       ]
     },
     {
+      "collectionGroup": "onboardingProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "onboardingProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pickHash", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "votes",
       "queryScope": "COLLECTION",
       "fields": [

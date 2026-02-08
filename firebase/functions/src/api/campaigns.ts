@@ -1,9 +1,86 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
 import { requireUserAuth } from "../middleware/require_user_auth";
+import { buildSegmentSnapshot } from "../targeting/segment_targeting";
 
 type CampaignStatus = "draft" | "active" | "paused" | "ended";
 type ProductMode = "all" | "selected" | "auto";
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toBodyObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function toProductMode(value: unknown): ProductMode {
+  if (value === "all" || value === "selected" || value === "auto") return value;
+  return "all";
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out = new Set<string>();
+  for (const entry of value) {
+    const normalized = asTrimmedString(entry);
+    if (normalized) out.add(normalized);
+  }
+  return Array.from(out);
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function parseDateToTimestamp(value: unknown): admin.firestore.Timestamp | null {
+  if (value == null) return null;
+  if (typeof value !== "string" && !(value instanceof Date)) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return admin.firestore.Timestamp.fromDate(date);
+}
+
+async function loadCampaignSegmentSnapshot(
+  db: admin.firestore.Firestore,
+  segmentId: string,
+  retailerId: string,
+  userUid: string
+): Promise<
+  | { ok: true; segmentSnapshot: ReturnType<typeof buildSegmentSnapshot> }
+  | { ok: false; status: number; error: string }
+> {
+  const segmentDoc = await db.collection("segments").doc(segmentId).get();
+  if (!segmentDoc.exists) {
+    return { ok: false, status: 404, error: "Segment not found" };
+  }
+
+  const segmentData = (segmentDoc.data() || {}) as Record<string, unknown>;
+  const isTemplate = segmentData.isTemplate === true;
+  if (!isTemplate) {
+    const segmentRetailerId = asTrimmedString(segmentData.retailerId);
+    const segmentCreatedBy = asTrimmedString(segmentData.createdBy);
+    const retailerMismatch = segmentRetailerId != null && segmentRetailerId !== retailerId;
+    const ownerMismatch =
+      segmentRetailerId == null && segmentCreatedBy != null && segmentCreatedBy !== userUid;
+    if (retailerMismatch || ownerMismatch) {
+      return {
+        ok: false,
+        status: 403,
+        error: "Selected segment is not available for this retailer",
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    segmentSnapshot: buildSegmentSnapshot(segmentDoc.id, segmentData),
+  };
+}
 
 /**
  * POST /api/retailer/campaigns
@@ -17,18 +94,17 @@ export async function retailerCampaignsPost(req: Request, res: Response): Promis
     return;
   }
 
-  const {
-    retailerId,
-    name,
-    segmentId,
-    productIds,
-    productMode,
-    budgetTotal,
-    budgetDaily,
-    startDate,
-    endDate,
-    frequencyCap,
-  } = req.body;
+  const body = toBodyObject(req.body);
+  const retailerId = asTrimmedString(body.retailerId);
+  const name = asTrimmedString(body.name);
+  const segmentId = asTrimmedString(body.segmentId);
+  const productIds = toStringArray(body.productIds);
+  const mode = toProductMode(body.productMode);
+  const budgetTotal = toNullableNumber(body.budgetTotal);
+  const budgetDaily = toNullableNumber(body.budgetDaily);
+  const startDate = parseDateToTimestamp(body.startDate);
+  const endDate = parseDateToTimestamp(body.endDate);
+  const frequencyCap = toNullableNumber(body.frequencyCap);
 
   if (!retailerId || !name || !segmentId) {
     res.status(400).json({ error: "retailerId, name, and segmentId are required" });
@@ -49,22 +125,17 @@ export async function retailerCampaignsPost(req: Request, res: Response): Promis
       return;
     }
 
-    // Verify segment exists
-    const segmentDoc = await db.collection("segments").doc(segmentId).get();
-    if (!segmentDoc.exists) {
-      res.status(404).json({ error: "Segment not found" });
+    const segmentSnapshotResult = await loadCampaignSegmentSnapshot(db, segmentId, retailerId, user.uid);
+    if (!segmentSnapshotResult.ok) {
+      res.status(segmentSnapshotResult.status).json({ error: segmentSnapshotResult.error });
       return;
     }
 
     const campaignRef = db.collection("campaigns").doc();
     const now = admin.firestore.FieldValue.serverTimestamp();
 
-    // Validate productMode
-    const validProductModes: ProductMode[] = ["all", "selected", "auto"];
-    const mode: ProductMode = validProductModes.includes(productMode) ? productMode : "all";
-
     // If productMode is "selected", productIds must be provided
-    if (mode === "selected" && (!productIds || !Array.isArray(productIds) || productIds.length === 0)) {
+    if (mode === "selected" && productIds.length === 0) {
       res.status(400).json({ error: "productIds required when productMode is 'selected'" });
       return;
     }
@@ -74,13 +145,14 @@ export async function retailerCampaignsPost(req: Request, res: Response): Promis
       retailerId,
       name,
       segmentId,
+      segmentSnapshot: segmentSnapshotResult.segmentSnapshot,
       productIds: mode === "selected" ? productIds : [],
       productMode: mode,
       budgetTotal: budgetTotal ?? null,
       budgetDaily: budgetDaily ?? null,
       budgetSpent: 0,
-      startDate: startDate ? admin.firestore.Timestamp.fromDate(new Date(startDate)) : null,
-      endDate: endDate ? admin.firestore.Timestamp.fromDate(new Date(endDate)) : null,
+      startDate,
+      endDate,
       status: "draft" as CampaignStatus,
       frequencyCap: frequencyCap ?? null, // Max impressions per user
       impressions: 0,
@@ -94,8 +166,8 @@ export async function retailerCampaignsPost(req: Request, res: Response): Promis
 
     res.status(201).json({
       ...campaignData,
-      startDate: startDate || null,
-      endDate: endDate || null,
+      startDate: startDate?.toDate().toISOString() || null,
+      endDate: endDate?.toDate().toISOString() || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -253,50 +325,106 @@ export async function retailerCampaignsPatch(req: Request, res: Response, campai
       return;
     }
 
-    const {
-      name,
-      segmentId,
-      productIds,
-      productMode,
-      budgetTotal,
-      budgetDaily,
-      startDate,
-      endDate,
-      frequencyCap,
-    } = req.body;
+    const body = toBodyObject(req.body);
 
     const updates: Record<string, unknown> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    if (name !== undefined) updates.name = name;
-    if (segmentId !== undefined) {
-      // Verify new segment exists
-      const segmentDoc = await db.collection("segments").doc(segmentId).get();
-      if (!segmentDoc.exists) {
-        res.status(404).json({ error: "Segment not found" });
+    if (Object.prototype.hasOwnProperty.call(body, "name")) {
+      const nextName = asTrimmedString(body.name);
+      if (!nextName) {
+        res.status(400).json({ error: "name cannot be empty" });
         return;
       }
-      updates.segmentId = segmentId;
+      updates.name = nextName;
     }
-    if (productIds !== undefined) updates.productIds = productIds;
-    if (productMode !== undefined) {
-      const validModes: ProductMode[] = ["all", "selected", "auto"];
-      if (!validModes.includes(productMode)) {
+
+    if (Object.prototype.hasOwnProperty.call(body, "segmentId")) {
+      const nextSegmentId = asTrimmedString(body.segmentId);
+      if (!nextSegmentId) {
+        res.status(400).json({ error: "segmentId must be a non-empty string" });
+        return;
+      }
+      const segmentSnapshotResult = await loadCampaignSegmentSnapshot(
+        db,
+        nextSegmentId,
+        data.retailerId,
+        user.uid
+      );
+      if (!segmentSnapshotResult.ok) {
+        res.status(segmentSnapshotResult.status).json({ error: segmentSnapshotResult.error });
+        return;
+      }
+      updates.segmentId = nextSegmentId;
+      updates.segmentSnapshot = segmentSnapshotResult.segmentSnapshot;
+    }
+
+    let nextProductMode: ProductMode = toProductMode(data.productMode);
+    if (Object.prototype.hasOwnProperty.call(body, "productMode")) {
+      const requestedMode = body.productMode;
+      if (requestedMode !== "all" && requestedMode !== "selected" && requestedMode !== "auto") {
         res.status(400).json({ error: "Invalid productMode" });
         return;
       }
-      updates.productMode = productMode;
+      nextProductMode = requestedMode;
+      updates.productMode = requestedMode;
     }
-    if (budgetTotal !== undefined) updates.budgetTotal = budgetTotal;
-    if (budgetDaily !== undefined) updates.budgetDaily = budgetDaily;
-    if (startDate !== undefined) {
-      updates.startDate = startDate ? admin.firestore.Timestamp.fromDate(new Date(startDate)) : null;
+
+    let nextProductIds = Array.isArray(data.productIds) ? toStringArray(data.productIds) : [];
+    if (Object.prototype.hasOwnProperty.call(body, "productIds")) {
+      if (body.productIds != null && !Array.isArray(body.productIds)) {
+        res.status(400).json({ error: "productIds must be an array" });
+        return;
+      }
+      nextProductIds = toStringArray(body.productIds);
+      updates.productIds = nextProductIds;
     }
-    if (endDate !== undefined) {
-      updates.endDate = endDate ? admin.firestore.Timestamp.fromDate(new Date(endDate)) : null;
+
+    if (nextProductMode === "selected" && nextProductIds.length === 0) {
+      res.status(400).json({ error: "productIds required when productMode is 'selected'" });
+      return;
     }
-    if (frequencyCap !== undefined) updates.frequencyCap = frequencyCap;
+
+    if (Object.prototype.hasOwnProperty.call(body, "budgetTotal")) {
+      if (body.budgetTotal != null && toNullableNumber(body.budgetTotal) == null) {
+        res.status(400).json({ error: "budgetTotal must be a number or null" });
+        return;
+      }
+      updates.budgetTotal = toNullableNumber(body.budgetTotal);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "budgetDaily")) {
+      if (body.budgetDaily != null && toNullableNumber(body.budgetDaily) == null) {
+        res.status(400).json({ error: "budgetDaily must be a number or null" });
+        return;
+      }
+      updates.budgetDaily = toNullableNumber(body.budgetDaily);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "startDate")) {
+      if (body.startDate != null && parseDateToTimestamp(body.startDate) == null) {
+        res.status(400).json({ error: "startDate must be a valid date string or null" });
+        return;
+      }
+      updates.startDate = parseDateToTimestamp(body.startDate);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "endDate")) {
+      if (body.endDate != null && parseDateToTimestamp(body.endDate) == null) {
+        res.status(400).json({ error: "endDate must be a valid date string or null" });
+        return;
+      }
+      updates.endDate = parseDateToTimestamp(body.endDate);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "frequencyCap")) {
+      if (body.frequencyCap != null && toNullableNumber(body.frequencyCap) == null) {
+        res.status(400).json({ error: "frequencyCap must be a number or null" });
+        return;
+      }
+      updates.frequencyCap = toNullableNumber(body.frequencyCap);
+    }
 
     await campaignRef.update(updates);
 

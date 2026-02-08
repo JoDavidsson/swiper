@@ -707,7 +707,12 @@ def _extract_from_jsonld(product: dict) -> dict:
     elif isinstance(b, str):
         brand = b.strip() or None
 
-    desc = (product.get("description") or "").strip() or None
+    desc_raw = product.get("description")
+    if isinstance(desc_raw, list):
+        # Some sites (e.g. Jotex) provide description as an array of paragraphs
+        desc = " ".join(str(p).strip() for p in desc_raw if p).strip() or None
+    else:
+        desc = (desc_raw or "").strip() or None
 
     price_raw = None
     currency = None
@@ -1067,6 +1072,15 @@ def _score(
     return got / total if total else 0.0
 
 
+def _infer_material_from_text(title: str | None, description: str | None) -> str | None:
+    """Delegate to normalization module for material inference from text."""
+    try:
+        from app.normalization import infer_material_from_text
+        return infer_material_from_text(title, description)
+    except Exception:
+        return None
+
+
 def _apply_enrichment(
     product: NormalizedProduct,
     *,
@@ -1091,9 +1105,23 @@ def _apply_enrichment(
         current_price=product.price_amount,
     )
 
-    # Return a new NormalizedProduct with enriched fields
-    # (dataclass is frozen, so we need to reconstruct)
+    # --- Post-extraction inference for missing fields ---
+    # This runs AFTER extraction so it can use all available data
+    # (title, description, facets, etc.) regardless of extraction method.
+    from app.normalization import infer_color_from_text, normalize_material
+
     promoted_dimensions = product.dimensions_raw or _extract_dimensions_from_facets(meta.facets)
+
+    # Color: use extracted value, or infer from title + description
+    color_raw = product.color_raw
+    if not color_raw:
+        color_raw = infer_color_from_text(product.title, product.description)
+
+    # Material: use extracted value, or try to infer from title + description
+    material_raw = product.material_raw
+    if not material_raw:
+        material_raw = _infer_material_from_text(product.title, product.description)
+
     completeness_score = _score(
         title=bool(product.title),
         canonical=bool(product.canonical_url),
@@ -1102,8 +1130,8 @@ def _apply_enrichment(
         price_currency=bool(product.price_currency),
         description=bool(product.description),
         dimensions=bool(promoted_dimensions),
-        material=bool(product.material_raw),
-        color=bool(product.color_raw),
+        material=bool(material_raw),
+        color=bool(color_raw),
         brand=bool(product.brand),
     )
     return NormalizedProduct(
@@ -1126,8 +1154,8 @@ def _apply_enrichment(
         warnings=product.warnings,
         debug=product.debug,
         dimensions_raw=promoted_dimensions,
-        material_raw=product.material_raw,
-        color_raw=product.color_raw,
+        material_raw=material_raw,
+        color_raw=color_raw,
         # Enriched fields
         breadcrumbs=meta.breadcrumbs or None,
         product_type=meta.product_type,
