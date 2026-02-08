@@ -203,4 +203,109 @@ describe("deck v2 helper utilities", () => {
     expect(decision.eligible).toBe(false);
     expect(decision.reason).toBe("product_set_mismatch");
   });
+
+  it("enforces auto product sets using recommendedProductIds", () => {
+    const contexts = new Map([
+      [
+        "camp-auto",
+        {
+          campaignId: "camp-auto",
+          retailerId: "ret-1",
+          segmentId: "seg-auto",
+          threshold: 0.2,
+          frequencyCap: 12,
+          productMode: "auto",
+          productIds: new Set<string>(),
+          recommendedProductIds: new Set<string>(["item-auto-1"]),
+          segmentCriteria: {
+            styleTags: ["modern"],
+            budgetMin: null,
+            budgetMax: null,
+            sizeClasses: [],
+            geoRegion: "sweden",
+            geoCity: null,
+            geoPostcodes: [],
+          },
+        },
+      ],
+    ]);
+
+    const allowed = __deckTestUtils.evaluatePromotedItemTargeting(
+      "item-auto-1",
+      { campaignId: "camp-auto" },
+      contexts as any,
+      {
+        styleTags: ["modern"],
+        budgetMin: null,
+        budgetMax: null,
+        sizeClasses: [],
+        geoRegion: "sweden",
+        geoCity: null,
+        geoPostcode: null,
+      }
+    );
+    expect(allowed.eligible).toBe(true);
+
+    const blocked = __deckTestUtils.evaluatePromotedItemTargeting(
+      "item-other",
+      { campaignId: "camp-auto" },
+      contexts as any,
+      {
+        styleTags: ["modern"],
+        budgetMin: null,
+        budgetMax: null,
+        sizeClasses: [],
+        geoRegion: "sweden",
+        geoCity: null,
+        geoPostcode: null,
+      }
+    );
+    expect(blocked.eligible).toBe(false);
+    expect(blocked.reason).toBe("product_set_mismatch");
+  });
+
+  it("keeps featured cards on strict frequency slots only", () => {
+    const ranked = [
+      { id: "o1", isFeatured: false },
+      { id: "f1", isFeatured: true, featuredRetailerId: "ret-1" },
+      { id: "o2", isFeatured: false },
+      { id: "o3", isFeatured: false },
+      { id: "o4", isFeatured: false },
+      { id: "f2", isFeatured: true, featuredRetailerId: "ret-2" },
+      { id: "o5", isFeatured: false },
+      { id: "o6", isFeatured: false },
+    ];
+
+    const result = __deckTestUtils.applyFeaturedServingPolicy(ranked, 8, 4, 1);
+    const featuredPositions = result.items
+      .map((item, index) => ({ featured: item.isFeatured === true, index: index + 1 }))
+      .filter((entry) => entry.featured)
+      .map((entry) => entry.index);
+
+    expect(featuredPositions).toEqual([4, 8]);
+    expect(result.stats.featuredServed).toBe(2);
+    expect(result.stats.maxFeaturedSlots).toBe(2);
+    expect(result.stats.overflowFeaturedUsed).toBe(0);
+  });
+
+  it("falls back to organic when diversity cooldown blocks featured", () => {
+    const ranked = [
+      { id: "o1", isFeatured: false },
+      { id: "o2", isFeatured: false },
+      { id: "f1", isFeatured: true, featuredRetailerId: "ret-repeat" },
+      { id: "o3", isFeatured: false },
+      { id: "o4", isFeatured: false },
+      { id: "o5", isFeatured: false },
+      { id: "f2", isFeatured: true, featuredRetailerId: "ret-repeat" },
+    ];
+
+    const result = __deckTestUtils.applyFeaturedServingPolicy(ranked, 6, 3, 1);
+
+    expect(result.items).toHaveLength(6);
+    expect(result.items[2].isFeatured).toBe(true);
+    expect(result.items[5].isFeatured).toBe(false);
+    expect(result.stats.featuredServed).toBe(1);
+    expect(result.stats.fallbackToOrganicCount).toBe(1);
+    expect(result.stats.droppedForDiversity).toBeGreaterThan(0);
+  });
 });

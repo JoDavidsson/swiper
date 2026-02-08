@@ -7,9 +7,9 @@
 
 ## Current Status
 
-**Phase:** Phase 12 (Featured Distribution) In Progress + Phase 12a (Golden Card v2) Implemented (controlled rollout validation in progress)  
-**Next Phase:** Complete controlled rollout sequencing gates for Golden Card v2 on top of shipped implementation while continuing Phase 12 serving/ranking delivery  
-**Last Milestone:** Golden Card v2 end-to-end implementation completed (Flutter + API + deck + schema + instrumentation + QA sweep), with production telemetry gates pending
+**Phase:** Phase 13 (Retailer Console v1) In Progress + Phase 12/12a Implemented  
+**Next Phase:** Complete Retailer Console core workflows (campaign, catalog, insights, reporting) and iterate from pilot feedback  
+**Last Milestone:** Phase 13 core skeleton shipped (auth-gated retailer console UI + catalog/insights/reports API + campaign builder integration)
 
 ---
 
@@ -266,15 +266,15 @@
 |------|------|----------|--------------|--------|
 | 12.1 | Campaign creation API | High | 11.3 | ✅ Done |
 | 12.2 | Segment targeting (style + budget + size + geo) | High | 11.2 | ✅ Done |
-| 12.3 | Product set selection (manual + recommended) | High | 12.1 | ⏳ Pending |
-| 12.4 | Budget + schedule management | High | 12.1 | ⏳ Pending |
-| 12.5 | Featured serving algorithm | High | 12.1–12.4 | ⏳ Pending |
-| 12.6 | Relevance gate (match score threshold) | High | 12.5 | ⏳ Pending |
-| 12.7 | Frequency cap enforcement (1 in 12) | High | 12.5 | ⏳ Pending |
-| 12.8 | Diversity constraint (retailer repetition) | Medium | 12.5 | ⏳ Pending |
-| 12.9 | "Featured" label in deck UI | High | 12.5 | ⏳ Pending |
-| 12.10 | Campaign pacing (even daily spend) | Medium | 12.4 | ⏳ Pending |
-| 12.11 | Featured impression logging | High | 12.5 | ⏳ Pending |
+| 12.3 | Product set selection (manual + recommended) | High | 12.1 | ✅ Done |
+| 12.4 | Budget + schedule management | High | 12.1 | ✅ Done |
+| 12.5 | Featured serving algorithm | High | 12.1–12.4 | ✅ Done |
+| 12.6 | Relevance gate (match score threshold) | High | 12.5 | ✅ Done |
+| 12.7 | Frequency cap enforcement (1 in 12) | High | 12.5 | ✅ Done |
+| 12.8 | Diversity constraint (retailer repetition) | Medium | 12.5 | ✅ Done |
+| 12.9 | "Featured" label in deck UI | High | 12.5 | ✅ Done |
+| 12.10 | Campaign pacing (even daily spend) | Medium | 12.4 | ✅ Done |
+| 12.11 | Featured impression logging | High | 12.5 | ✅ Done |
 
 ### Phase 12a: Golden Card v2 - Style Direction Rehaul
 
@@ -310,6 +310,24 @@
 | 13.11 | CPScore calculation + display | High | 13.10 |
 | 13.12 | CSV export | Medium | 13.10 |
 | 13.13 | Sharable report links (agency-friendly) | Medium | 13.10 |
+
+### Phase 13 Status (2026-02-08 snapshot)
+
+| Step | Status |
+|------|--------|
+| 13.1 | ✅ Done (auth-gated `/retailer` console + retailer claim onboarding UI) |
+| 13.2 | ✅ Done (retailer console shell + 5-tab navigation in Flutter) |
+| 13.3 | ✅ Done (insights feed UI cards) |
+| 13.4 | ✅ Done (winners / needs help / trends / anomaly card types) |
+| 13.5 | ✅ Done (campaign builder UI with create + activate/pause/recommend actions) |
+| 13.6 | ✅ Done (segment template picker integrated in campaign composer) |
+| 13.7 | ✅ Done (catalog control include/exclude UI + API) |
+| 13.8 | ✅ Done (creative health warnings visible in catalog rows) |
+| 13.9 | ⏳ In Progress (currently trend card in Insights; dedicated trends module pending) |
+| 13.10 | ✅ Done (retailer reports API + console report view) |
+| 13.11 | ✅ Done (CPScore computed and displayed in reports + dashboard cards) |
+| 13.12 | ✅ Done (CSV export endpoint + in-app export action) |
+| 13.13 | ✅ Done (shareable report link generation + retrieval endpoint + in-app share action) |
 
 ### Phase 14: Admin Governance + v1 Launch
 

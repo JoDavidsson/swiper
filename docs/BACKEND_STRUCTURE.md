@@ -251,19 +251,47 @@ Subcollection under `decisionRooms/{roomId}/items`
 | `name` | `string` | ✓ | Campaign name |
 | `segmentId` | `string` | ✓ | Target segment |
 | `segmentSnapshot` | `object` | ✓ | Normalized segment criteria snapshot persisted at save time (style, budget, size, geo) |
-| `productIds` | `string[]` | — | Specific products (null = auto-select) |
+| `productIds` | `string[]` | — | Manual product set for `productMode=selected` |
+| `recommendedProductIds` | `string[]` | — | Auto-generated product set for `productMode=auto` |
 | `productMode` | `string` | ✓ | `all` / `selected` / `auto` |
-| `budgetTotal` | `number` | ✓ | Total budget SEK |
-| `budgetDaily` | `number` | ✓ | Daily budget SEK |
+| `budgetTotal` | `number` | — | Total budget SEK (nullable) |
+| `budgetDaily` | `number` | — | Daily budget SEK (nullable) |
 | `budgetSpent` | `number` | ✓ | Spent so far |
-| `startDate` | `timestamp` | ✓ | Campaign start |
-| `endDate` | `timestamp` | ✓ | Campaign end |
-| `status` | `string` | ✓ | `draft` / `active` / `paused` / `completed` |
+| `dailySpendByDate` | `map<string, number>` | ✓ | Daily spend aggregation keyed by `YYYY-MM-DD` (UTC) |
+| `dailyImpressionsByDate` | `map<string, number>` | ✓ | Daily featured impression aggregation keyed by `YYYY-MM-DD` (UTC) |
+| `startDate` | `timestamp` | — | Campaign start (nullable) |
+| `endDate` | `timestamp` | — | Campaign end (nullable) |
+| `status` | `string` | ✓ | `draft` / `active` / `paused` / `ended` |
 | `frequencyCap` | `number` | ✓ | Max featured per N cards (default 12) |
+| `relevanceThreshold` | `number` | — | Optional segment match threshold override |
 | `maxImpressionShare` | `number` | — | Max % of segment impressions |
 | `excludedProductIds` | `string[]` | — | Excluded products |
+| `impressions` | `number` | ✓ | Total impressions |
+| `featuredImpressions` | `number` | ✓ | Total featured impressions |
+| `clicks` | `number` | ✓ | Campaign-attributed clicks |
+| `recommendedAt` | `timestamp` | — | Last time auto recommendations were refreshed |
+| `lastImpressionAt` | `timestamp` | — | Last featured impression timestamp |
+| `createdBy` | `string` | ✓ | User id that created campaign |
 | `createdAt` | `timestamp` | ✓ | Creation time |
 | `updatedAt` | `timestamp` | ✓ | Last update |
+
+### 2.13a `featuredImpressions` – Featured Deck Impression Events
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | ✓ | Document ID |
+| `sessionId` | `string` | ✓ | Session that received the deck |
+| `requestId` | `string` | ✓ | Deck request id |
+| `itemId` | `string` | ✓ | Rendered item |
+| `campaignId` | `string` | — | Source campaign id when campaign-backed |
+| `segmentId` | `string` | — | Campaign segment id |
+| `retailerId` | `string` | — | Retailer of featured item |
+| `positionInDeck` | `number` | ✓ | 1-based card position |
+| `relevanceScore` | `number` | — | Segment match score used at serve time |
+| `matchThreshold` | `number` | — | Threshold used for this campaign |
+| `isFeatured` | `boolean` | ✓ | Always `true` for this collection |
+| `source` | `string` | ✓ | `campaign` or `legacy` |
+| `createdAt` | `timestamp` | ✓ | Log timestamp |
 
 ### 2.14 `scores` – Confidence Scores
 
@@ -272,7 +300,7 @@ Subcollection under `decisionRooms/{roomId}/items`
 | `id` | `string` | ✓ | Document ID = `{productId}_{segmentId}` |
 | `productId` | `string` | ✓ | Product reference |
 | `segmentId` | `string` | ✓ | Segment reference (or `_global`) |
-| `window` | `string` | ✓ | `7d` / `1d` / `28d` |
+| `timeWindow` | `string` | ✓ | `7d` / `30d` / `90d` |
 | `impressions` | `number` | ✓ | Total impressions in window |
 | `saves` | `number` | ✓ | Save count |
 | `shares` | `number` | ✓ | Share count |
@@ -454,6 +482,31 @@ Additional crawl-source fields used by Supply Engine quality controls.
 | `enableQualityRefetch` | `boolean` | — | Optional second-pass refetch for stale low-completeness items |
 | `qualityRefetchLimit` | `number` | — | Max low-quality items to refetch per run (default `100`) |
 
+### 2.26 `retailerCatalogControls` – Retailer Product Include/Exclude
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | ✓ | Document ID (`{retailerId}_{productId}`) |
+| `retailerId` | `string` | ✓ | Retailer owner |
+| `productId` | `string` | ✓ | Product id |
+| `included` | `boolean` | ✓ | Whether product can be used in featured campaigns |
+| `reason` | `string` | — | Optional operator note |
+| `updatedBy` | `string` | ✓ | User id that changed inclusion |
+| `createdAt` | `timestamp` | ✓ | First write time |
+| `updatedAt` | `timestamp` | ✓ | Last update time |
+
+### 2.27 `retailerReportShares` – Shareable Report Snapshots
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | ✓ | Share token id |
+| `token` | `string` | ✓ | Public share token |
+| `retailerId` | `string` | ✓ | Retailer owner |
+| `report` | `object` | ✓ | Snapshot of generated report payload |
+| `createdBy` | `string` | ✓ | User id who created the share |
+| `createdAt` | `timestamp` | ✓ | Creation time |
+| `expiresAt` | `timestamp` | ✓ | Expiration timestamp |
+
 ---
 
 ## 3. Firestore Security Rules
@@ -547,6 +600,15 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /scores/{scoreId} {
+      allow read, write: if false;
+    }
+    match /featuredImpressions/{impressionId} {
+      allow read, write: if false;
+    }
+    match /retailerCatalogControls/{controlId} {
+      allow read, write: if false;
+    }
+    match /retailerReportShares/{shareId} {
       allow read, write: if false;
     }
     match /ingestionRuns/{runId} {
@@ -646,7 +708,13 @@ Get ranked items for swiping.
       "styleTags": ["scandinavian", "modern"],
       "material": "leather",
       "colorFamily": "brown",
-      "sizeClass": "large"
+      "sizeClass": "large",
+      "isFeatured": true,
+      "featuredLabel": "Featured",
+      "campaignId": "camp123",
+      "segmentId": "seg456",
+      "featuredRelevanceScore": 0.78,
+      "featuredMatchThreshold": 0.5
     }
   ],
   "rank": {
@@ -668,6 +736,16 @@ Get ranked items for swiping.
     },
     "sameFamilyTop8Rate": 0.25,
     "styleDistanceTop4Min": 0.48,
+    "featuredServing": {
+      "configuredFrequencyCap": 12,
+      "maxFeaturedSlots": 2,
+      "featuredInSourceRank": 9,
+      "featuredServed": 2,
+      "droppedForFrequencyCap": 7,
+      "droppedForDiversity": 1,
+      "fallbackToOrganicCount": 0,
+      "overflowFeaturedUsed": 0
+    },
     "itemIds": ["item123", "item456"]
   },
   "itemScores": {
@@ -1274,9 +1352,42 @@ Create a new campaign.
 
 Update a campaign.
 
+**Notes:**
+- Supports schedule/budget updates with validation (`budgetTotal`, `budgetDaily`, `startDate`, `endDate`).
+- Supports `frequencyCap` update (integer 2..60 or `null`).
+- Supports `refreshRecommendations: true` for auto campaigns.
+
 #### `POST /retailer/campaigns/{id}/pause`
 
 Pause a campaign.
+
+#### `POST /retailer/campaigns/{id}/activate`
+
+Activate a campaign (with preflight validation for budget/schedule and product set constraints).
+
+#### `POST /retailer/campaigns/{id}/recommend`
+
+Recompute campaign recommendations for `productMode=auto`.
+
+**Request (optional):**
+```json
+{
+  "limit": 24,
+  "apply": true
+}
+```
+
+**Response:**
+```json
+{
+  "campaignId": "camp123",
+  "retailerId": "ikea",
+  "segmentId": "seg456",
+  "recommendationLimit": 24,
+  "recommendedProductIds": ["prod1", "prod2"],
+  "applied": true
+}
+```
 
 #### `GET /retailer/catalog`
 
@@ -1311,7 +1422,9 @@ Update product inclusion.
 **Request:**
 ```json
 {
-  "included": false
+  "retailerId": "ikea",
+  "included": false,
+  "reason": "Seasonal pause"
 }
 ```
 
@@ -1324,25 +1437,22 @@ Get Insights Feed cards.
 {
   "insights": [
     {
+      "id": "winner_camp123",
       "type": "winner",
-      "title": "These SKUs are performing well",
-      "description": "5 products have Confidence Score > 80 in Stockholm segment",
-      "productIds": ["prod1", "prod2", "prod3"],
-      "action": {
-        "label": "Boost budget",
-        "type": "boost_campaign",
-        "campaignId": "camp123"
-      }
+      "severity": "positive",
+      "title": "Top performing campaign",
+      "body": "Spring Collection is currently leading with CPScore 15.20.",
+      "ctaLabel": "Open campaign",
+      "campaignId": "camp123"
     },
     {
+      "id": "needs_help_camp456",
       "type": "needs_help",
-      "title": "High impressions, low saves",
-      "description": "3 products have high visibility but aren't converting",
-      "productIds": ["prod4", "prod5", "prod6"],
-      "action": {
-        "label": "Pause or replace",
-        "type": "edit_campaign"
-      }
+      "severity": "warning",
+      "title": "Campaign needs attention",
+      "body": "Campaign is active but has low featured reach.",
+      "ctaLabel": "Refresh products",
+      "campaignId": "camp456"
     }
   ]
 }
@@ -1350,7 +1460,7 @@ Get Insights Feed cards.
 
 #### `GET /retailer/trends`
 
-Get trend data.
+Get trend data (planned separate endpoint; trend card is currently delivered inside `/retailer/insights`).
 
 **Response:**
 ```json
@@ -1379,7 +1489,7 @@ Get reporting data.
 **Response:**
 ```json
 {
-  "period": "2026-02-01/2026-02-05",
+  "period": { "from": "2026-02-01", "to": "2026-02-05" },
   "spend": 12500,
   "impressions": 45000,
   "featuredImpressions": 3750,
@@ -1388,9 +1498,23 @@ Get reporting data.
   "bySegment": [
     {
       "segmentId": "seg456",
+      "spend": 4600,
       "impressions": 25000,
       "outcomes": 534,
       "cpScore": 11.61
+    }
+  ],
+  "byCampaign": [
+    {
+      "campaignId": "camp123",
+      "name": "Spring Collection",
+      "status": "active",
+      "segmentId": "seg456",
+      "spend": 8200,
+      "impressions": 31000,
+      "featuredImpressions": 2400,
+      "outcomes": 415,
+      "cpScore": 5.06
     }
   ],
   "byProduct": [...]
@@ -1408,9 +1532,16 @@ Generate shareable report link.
 **Response:**
 ```json
 {
-  "shareUrl": "https://swiper.app/reports/abc123"
+  "token": "abc123",
+  "sharePath": "/api/retailer/reports/share/abc123",
+  "shareUrl": "https://example.com/api/retailer/reports/share/abc123",
+  "expiresAt": "2026-02-22T12:00:00.000Z"
 }
 ```
+
+#### `GET /retailer/reports/share/{token}`
+
+Read a previously generated shareable report snapshot (public endpoint).
 
 ---
 
@@ -1539,21 +1670,30 @@ At each card opportunity:
 5. Serve winner
 ```
 
-Implementation note (2026-02-08): campaign-backed promoted cards are now gated at deck serve-time using a session targeting profile (style + budget + size + geo). Non-campaign legacy promoted cards remain eligible.
+Implementation note (2026-02-08): campaign-backed promoted cards are now gated at deck serve-time using a session targeting profile (style + budget + size + geo), campaign product set mode (`all`/`selected`/`auto`), budget/schedule checks, and pacing checks. Non-campaign legacy promoted cards remain eligible.
+
+Serve-time controls now include:
+- **Frequency cap**: featured cards are only inserted on slot boundaries (default 1 in 12, configurable per campaign; effective cap is the strictest active campaign cap).
+- **Diversity cooldown**: avoids repeating the same retailer in consecutive featured slots (configurable cooldown window).
+- **Pacing gate**: campaign entry is blocked when spend runs ahead of expected elapsed-window spend beyond a soft buffer.
+- **Daily budget gate**: campaign entry is blocked once `dailySpendByDate[today]` reaches `budgetDaily`.
 
 ### 6.3 Logging
 
-Every featured impression logs:
+Every served featured card logs an event in `featuredImpressions` and updates campaign counters atomically:
 
 | Field | Description |
 |-------|-------------|
 | `campaignId` | Which campaign |
-| `productId` | Which product |
+| `itemId` | Which product |
 | `segmentId` | Target segment |
-| `rankPosition` | Position in candidate ranking |
+| `positionInDeck` | 1-based position in served deck |
 | `relevanceScore` | Match score for user |
+| `matchThreshold` | Threshold used for segment gate |
+| `retailerId` | Retailer id |
 | `isFeatured` | true |
-| `slotNumber` | N-th card in session |
+| `source` | `campaign` or `legacy` |
+| `createdAt` | Server timestamp |
 
 ---
 

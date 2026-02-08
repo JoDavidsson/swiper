@@ -33,6 +33,13 @@ class ProfileScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/profile/data-privacy'),
           ),
+          if (AppConstants.enableRetailerConsole)
+            ListTile(
+              title: const Text('Retailer Console'),
+              subtitle: const Text('Campaigns, catalog controls, insights'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/retailer'),
+            ),
           if (AppConstants.enableStandaloneOnboarding)
             ListTile(
               title: Text(strings.editPreferences),

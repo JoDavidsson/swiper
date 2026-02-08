@@ -195,7 +195,26 @@ The ranker is then run with a **rank window** (`rankWindow`, larger than respons
 
 Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` raise fetch and candidate caps for stress testing. When persona signals are available, deck uses `PersonalPlusPersonaRanker`; otherwise it uses `PreferenceWeightsRanker`.
 
-For featured distribution, campaign-backed promoted cards now pass a segment-targeting relevance gate (style + budget + size + geo) before entering the candidate set; legacy promoted cards without campaign linkage remain eligible.
+For featured distribution, campaign-backed promoted cards now pass a serve-time eligibility stack before entering the candidate set:
+
+- segment relevance gate (style + budget + size + geo),
+- product mode gate (`all`, `selected`, `auto` where `recommendedProductIds` are used),
+- retailer catalog gate (`retailerCatalogIncluded !== false` only),
+- schedule/budget gate (total + daily budget remaining),
+- pacing gate (blocks campaigns spending too fast vs elapsed campaign window).
+
+Legacy promoted cards without campaign linkage remain eligible and are treated as non-campaign featured inventory.
+
+After ranking/exploration, featured cards are re-slotted with policy controls:
+
+- frequency cap enforcement (default 1 in 12),
+- retailer diversity cooldown between featured slots,
+- fallback to organic cards when a featured slot cannot be safely filled.
+
+Deck response metadata now includes `rank.featuredServing` diagnostics and featured cards carry:
+`isFeatured`, `featuredLabel`, `campaignId`, `segmentId`, `featuredRelevanceScore`, `featuredMatchThreshold`.
+
+On serve, featured impressions are logged in `featuredImpressions`, and campaign aggregates are updated (`impressions`, `featuredImpressions`, `budgetSpent`, daily spend/impression maps).
 
 **Persona cold sessions (current):** Persona ranking is only used when `onboardingPicks.pickHash` exists and `personaSignals/{pickHash}` has data; otherwise deck falls back to `PreferenceWeightsRanker` (personal-only).
 

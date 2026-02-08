@@ -1,5 +1,72 @@
 # Changelog
 
+## 2026-02-08 - Phase 13 retailer console core implementation
+
+- Added new retailer console backend endpoints in `firebase/functions/src/api/retailer_console.ts`:
+  - `GET /api/retailer/catalog`
+  - `PATCH /api/retailer/catalog/:productId`
+  - `GET /api/retailer/insights`
+  - `GET /api/retailer/reports`
+  - `GET /api/retailer/reports/export`
+  - `POST /api/retailer/reports/share`
+  - `GET /api/retailer/reports/share/:token`
+- Routed all new retailer console endpoints in `firebase/functions/src/api/index.ts`.
+- Added retailer catalog inclusion propagation:
+  - Catalog include/exclude now writes `retailerCatalogIncluded` flags to `items` and `goldItems`.
+  - Deck candidate acceptance now excludes `retailerCatalogIncluded === false` in `firebase/functions/src/api/deck.ts`.
+  - Campaign auto-recommendation now respects catalog inclusion in `firebase/functions/src/api/campaigns.ts`.
+- Added Flutter retailer console UI in `apps/Swiper_flutter/lib/features/retailer/retailer_console_screen.dart`:
+  - Auth-gated retailer shell with tabs: Home, Campaigns, Catalog, Insights, Reports.
+  - Retailer claim onboarding when user has no linked retailer.
+  - Campaign builder sheet with segment template selection and lifecycle actions (activate/pause/recommend).
+  - Catalog include/exclude controls with score and creative-health visibility.
+  - Reports with CPScore, CSV export action, and share-link action.
+- Added Flutter API client support for retailer console workflows in `apps/Swiper_flutter/lib/data/api_client.dart`.
+- Added router/profile integration:
+  - `/retailer` route in `apps/Swiper_flutter/lib/core/router.dart`
+  - Profile entry point to retailer console in `apps/Swiper_flutter/lib/features/profile/profile_screen.dart`
+  - `ENABLE_RETAILER_CONSOLE` feature flag in `apps/Swiper_flutter/lib/core/constants.dart`
+- Updated docs:
+  - Phase 13 progress snapshot in `docs/IMPLEMENTATION_PLAN.md`
+  - Retailer console schema/contracts in `docs/BACKEND_STRUCTURE.md`
+  - Recommendation serving note for catalog inclusion gate in `docs/RECOMMENDATIONS_ENGINE.md`
+  - Added consistency audit artifact `docs/DOCUMENTATION_CONSISTENCY_CHECK_2026-02-08_PHASE13.md`
+- Validation:
+  - `npm run build` (firebase/functions): **pass**
+  - `npm test -- --runInBand` (firebase/functions): **pass**
+  - `flutter analyze` reports pre-existing repository-wide infos/warnings; no blocking compile errors introduced by new retailer console code.
+
+## 2026-02-08 - Featured distribution Phase 12.3-12.11 completion
+
+- Completed campaign product-set handling in `firebase/functions/src/api/campaigns.ts`:
+  - Added auto recommendation generation (`recommendedProductIds`) on create/patch/activate for `productMode=auto`
+  - Added recommendation refresh endpoint: `POST /api/retailer/campaigns/:id/recommend`
+  - Added stronger budget/schedule/frequency validation and retailer ownership checks
+  - Added campaign counters/fields initialization (`dailySpendByDate`, `dailyImpressionsByDate`, `featuredImpressions`, `recommendedAt`)
+- Extended deck serve-time campaign gating in `firebase/functions/src/api/deck.ts`:
+  - Product-set mode enforcement (`all`/`selected`/`auto`)
+  - Daily budget and pacing windows integrated into active-campaign eligibility
+  - Featured policy controls applied after ranking (frequency slotting + retailer cooldown)
+- Added featured impression logging and campaign aggregate updates:
+  - New per-impression writes to `featuredImpressions`
+  - Campaign increments for `impressions`, `featuredImpressions`, `budgetSpent`, and daily maps
+- Added served-rank metadata/debug details:
+  - `rank.featuredServing` in deck response
+  - `featuredLoggingStats` in deck debug logs
+- Test coverage updates:
+  - Expanded `firebase/functions/src/api/deck_v2_helpers.test.ts` with:
+    - auto mode product-set gating
+    - strict featured slot-frequency behavior
+    - diversity fallback-to-organic behavior
+- Documentation consistency updates:
+  - Marked Phase 12.3-12.11 done in `docs/IMPLEMENTATION_PLAN.md`
+  - Updated campaign/featured schema and endpoint docs in `docs/BACKEND_STRUCTURE.md`
+  - Updated serve-time featured policy details in `docs/RECOMMENDATIONS_ENGINE.md`
+  - Added consistency audit artifact `docs/DOCUMENTATION_CONSISTENCY_CHECK_2026-02-08_PHASE12.md`
+- Validation:
+  - `npm run build` (firebase/functions): **pass**
+  - `npm test -- --runInBand` (firebase/functions): **pass**
+
 ## 2026-02-08 - Featured distribution phase 12.2 (segment targeting gate)
 
 - Added reusable segment targeting module in `firebase/functions/src/targeting/segment_targeting.ts`:

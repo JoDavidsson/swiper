@@ -234,6 +234,10 @@ class ApiClient {
     return path.contains('/api/admin') || path.startsWith('admin/');
   }
 
+  Options _authOptions(String token) {
+    return Options(headers: {'Authorization': 'Bearer $token'});
+  }
+
   static String get _defaultBaseUrl {
     // Emulator: http://localhost:5001/<project>/<region>; prod: set via --dart-define=API_BASE_URL=...
     const env = String.fromEnvironment(
@@ -595,6 +599,234 @@ class ApiClient {
         queryParameters: {
           if (retailer != null) 'retailer': retailer,
         });
+    return r.data ?? {};
+  }
+
+  // ============ Retailer Console APIs ============
+
+  Future<Map<String, dynamic>> retailerGetMe({required String token}) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/retailer/me',
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerClaim({
+    required String token,
+    required String retailerId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailers/$retailerId/claim',
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> retailerGetCampaigns({
+    required String token,
+    required String retailerId,
+    String? status,
+    int limit = 50,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/retailer/campaigns',
+      queryParameters: {
+        'retailerId': retailerId,
+        'limit': limit,
+        if (status != null) 'status': status,
+      },
+      options: _authOptions(token),
+    );
+    final list = r.data?['campaigns'] as List? ?? [];
+    return list
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> retailerCreateCampaign({
+    required String token,
+    required Map<String, dynamic> body,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailer/campaigns',
+      data: body,
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerUpdateCampaign({
+    required String token,
+    required String campaignId,
+    required Map<String, dynamic> body,
+  }) async {
+    final r = await _dio.patch<Map<String, dynamic>>(
+      '/api/retailer/campaigns/$campaignId',
+      data: body,
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerPauseCampaign({
+    required String token,
+    required String campaignId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailer/campaigns/$campaignId/pause',
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerActivateCampaign({
+    required String token,
+    required String campaignId,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailer/campaigns/$campaignId/activate',
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerRecommendCampaign({
+    required String token,
+    required String campaignId,
+    int? limit,
+    bool apply = true,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailer/campaigns/$campaignId/recommend',
+      data: {
+        if (limit != null) 'limit': limit,
+        'apply': apply,
+      },
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<List<Map<String, dynamic>>> retailerGetSegments({
+    required String token,
+    required String retailerId,
+    bool includeTemplates = true,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/segments',
+      queryParameters: {
+        'retailerId': retailerId,
+        'includeTemplates': includeTemplates.toString(),
+      },
+      options: _authOptions(token),
+    );
+    final list = r.data?['segments'] as List? ?? [];
+    return list
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> retailerGetCatalog({
+    required String token,
+    required String retailerId,
+    int limit = 100,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/retailer/catalog',
+      queryParameters: {
+        'retailerId': retailerId,
+        'limit': limit,
+      },
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerUpdateCatalogProduct({
+    required String token,
+    required String retailerId,
+    required String productId,
+    required bool included,
+    String? reason,
+  }) async {
+    final r = await _dio.patch<Map<String, dynamic>>(
+      '/api/retailer/catalog/$productId',
+      data: {
+        'retailerId': retailerId,
+        'included': included,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerGetInsights({
+    required String token,
+    required String retailerId,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/retailer/insights',
+      queryParameters: {'retailerId': retailerId},
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> retailerGetReport({
+    required String token,
+    required String retailerId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/retailer/reports',
+      queryParameters: {
+        'retailerId': retailerId,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+      },
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
+  Future<String> retailerExportReportCsv({
+    required String token,
+    required String retailerId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final r = await _dio.get<String>(
+      '/api/retailer/reports/export',
+      queryParameters: {
+        'retailerId': retailerId,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+      },
+      options: _authOptions(token).copyWith(responseType: ResponseType.plain),
+    );
+    return r.data ?? '';
+  }
+
+  Future<Map<String, dynamic>> retailerShareReport({
+    required String token,
+    required String retailerId,
+    String? dateFrom,
+    String? dateTo,
+    int ttlDays = 14,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/retailer/reports/share',
+      data: {
+        'retailerId': retailerId,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+        'ttlDays': ttlDays,
+      },
+      options: _authOptions(token),
+    );
     return r.data ?? {};
   }
 

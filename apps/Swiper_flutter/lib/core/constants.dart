@@ -18,6 +18,10 @@ class AppConstants {
     'GOLDEN_CARD_V2_ROLLOUT_PERCENT',
     defaultValue: 100,
   );
+  static const bool enableRetailerConsole = bool.fromEnvironment(
+    'ENABLE_RETAILER_CONSOLE',
+    defaultValue: true,
+  );
 
   /// API base URL: from env or default for local emulator.
   static String get apiBaseUrl {

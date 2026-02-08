@@ -18,6 +18,22 @@ const MIN_CANDIDATE_CAP = 120;
 const MIN_RANK_WINDOW = 120;
 const MIN_SOURCE_FETCH = 60;
 const MAX_PERSONA_RETRIEVAL_IDS = 120;
+const DEFAULT_FEATURED_FREQUENCY_CAP = Math.max(
+  2,
+  parseInt(String(process.env.FEATURED_FREQUENCY_CAP || "12"), 10) || 12
+);
+const FEATURED_RETAILER_COOLDOWN = Math.max(
+  1,
+  parseInt(String(process.env.FEATURED_RETAILER_COOLDOWN || "1"), 10) || 1
+);
+const FEATURED_COST_PER_IMPRESSION_SEK = Math.max(
+  0,
+  parseFloat(String(process.env.FEATURED_COST_PER_IMPRESSION_SEK || "1")) || 1
+);
+const FEATURED_PACING_BUFFER_RATIO = Math.max(
+  0,
+  parseFloat(String(process.env.FEATURED_PACING_BUFFER_RATIO || "0.2")) || 0.2
+);
 
 /** Default boost value for onboarding pick attributes (cold-start) */
 const ONBOARDING_PICK_BOOST = 3;
@@ -56,9 +72,12 @@ type OnboardingV2Profile = {
 
 type CampaignTargetingContext = {
   campaignId: string;
+  retailerId: string;
   segmentId: string;
   segmentCriteria: ReturnType<typeof toSegmentCriteria>;
   threshold: number;
+  frequencyCap: number;
+  recommendedProductIds: Set<string>;
   productMode: "all" | "selected" | "auto";
   productIds: Set<string>;
 };
@@ -75,6 +94,23 @@ type PromotedTargetingDecision = {
   segmentId: string | null;
   relevanceScore: number | null;
   threshold: number | null;
+};
+
+type FeaturedServingStats = {
+  configuredFrequencyCap: number;
+  maxFeaturedSlots: number;
+  featuredInSourceRank: number;
+  featuredServed: number;
+  droppedForFrequencyCap: number;
+  droppedForDiversity: number;
+  fallbackToOrganicCount: number;
+  overflowFeaturedUsed: number;
+};
+
+type FeaturedLoggingStats = {
+  loggedCount: number;
+  updatedCampaignCount: number;
+  estimatedSpendSEK: number;
 };
 
 const ONBOARDING_V2_SCENE_SIGNAL_MAP: Record<string, string[]> = {
@@ -169,9 +205,21 @@ function timestampToMillis(value: unknown): number | null {
   return null;
 }
 
+function toDateKeyUTC(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 function toCampaignProductMode(value: unknown): "all" | "selected" | "auto" {
   if (value === "selected" || value === "auto" || value === "all") return value;
   return "all";
+}
+
+function toFrequencyCap(value: unknown): number {
+  const parsed = asFiniteNumber(value);
+  if (parsed == null || !Number.isInteger(parsed) || parsed < 2) {
+    return DEFAULT_FEATURED_FREQUENCY_CAP;
+  }
+  return Math.min(60, parsed);
 }
 
 function toMatchThreshold(value: unknown): number {
@@ -187,12 +235,44 @@ function campaignHasBudgetRemaining(campaignData: Record<string, unknown>): bool
   return budgetSpent < budgetTotal;
 }
 
+function campaignHasDailyBudgetRemaining(
+  campaignData: Record<string, unknown>,
+  todayKey: string
+): boolean {
+  const budgetDaily = asFiniteNumber(campaignData.budgetDaily);
+  if (budgetDaily == null) return true;
+  const dailySpendByDate = toRecord(campaignData.dailySpendByDate);
+  const spentToday = asFiniteNumber(dailySpendByDate?.[todayKey]) ?? 0;
+  return spentToday < budgetDaily;
+}
+
 function campaignIsInScheduleWindow(campaignData: Record<string, unknown>, nowMs: number): boolean {
   const startMs = timestampToMillis(campaignData.startDate);
   const endMs = timestampToMillis(campaignData.endDate);
   if (startMs != null && nowMs < startMs) return false;
   if (endMs != null && nowMs > endMs) return false;
   return true;
+}
+
+function campaignPassesPacingWindow(campaignData: Record<string, unknown>, nowMs: number): boolean {
+  const budgetTotal = asFiniteNumber(campaignData.budgetTotal);
+  if (budgetTotal == null || budgetTotal <= 0) return true;
+  const budgetSpent = asFiniteNumber(campaignData.budgetSpent) ?? 0;
+
+  const startMs = timestampToMillis(campaignData.startDate);
+  const endMs = timestampToMillis(campaignData.endDate);
+  if (startMs == null || endMs == null || endMs <= startMs) return true;
+
+  const elapsed = Math.max(0, Math.min(1, (nowMs - startMs) / (endMs - startMs)));
+  const expectedSpendByNow = budgetTotal * elapsed;
+  const budgetDaily = asFiniteNumber(campaignData.budgetDaily);
+  const softBuffer = Math.max(
+    budgetTotal * FEATURED_PACING_BUFFER_RATIO,
+    budgetDaily != null ? budgetDaily * 0.5 : 0,
+    50
+  );
+
+  return budgetSpent <= expectedSpendByNow + softBuffer;
 }
 
 function extractCampaignIdFromPromotedItem(data: Record<string, unknown>): string | null {
@@ -221,6 +301,7 @@ async function loadActiveCampaignTargetingContexts(
   db: admin.firestore.Firestore,
   nowMs: number
 ): Promise<Map<string, CampaignTargetingContext>> {
+  const todayKey = toDateKeyUTC(nowMs);
   const activeCampaignsSnap = await db
     .collection("campaigns")
     .where("status", "==", "active")
@@ -233,21 +314,31 @@ async function loadActiveCampaignTargetingContexts(
     Array<{
       campaignId: string;
       threshold: number;
+      frequencyCap: number;
+      retailerId: string;
       productMode: "all" | "selected" | "auto";
       productIds: Set<string>;
+      recommendedProductIds: Set<string>;
     }>
   >();
 
   for (const doc of activeCampaignsSnap.docs) {
     const campaignData = (doc.data() || {}) as Record<string, unknown>;
     if (!campaignHasBudgetRemaining(campaignData)) continue;
+    if (!campaignHasDailyBudgetRemaining(campaignData, todayKey)) continue;
+    if (!campaignPassesPacingWindow(campaignData, nowMs)) continue;
     if (!campaignIsInScheduleWindow(campaignData, nowMs)) continue;
+
+    const retailerId = asTrimmedString(campaignData.retailerId);
+    if (!retailerId) continue;
 
     const threshold = toMatchThreshold(
       campaignData.relevanceThreshold ?? campaignData.segmentMatchThreshold
     );
+    const frequencyCap = toFrequencyCap(campaignData.frequencyCap);
     const productMode = toCampaignProductMode(campaignData.productMode);
     const productIds = toStringSet(campaignData.productIds);
+    const recommendedProductIds = toStringSet(campaignData.recommendedProductIds);
     const segmentId = asTrimmedString(campaignData.segmentId);
     if (!segmentId) continue;
 
@@ -255,9 +346,12 @@ async function loadActiveCampaignTargetingContexts(
     if (segmentSnapshot) {
       contexts.set(doc.id, {
         campaignId: doc.id,
+        retailerId,
         segmentId,
         segmentCriteria: toSegmentCriteria(segmentSnapshot),
         threshold,
+        frequencyCap,
+        recommendedProductIds,
         productMode,
         productIds,
       });
@@ -268,8 +362,11 @@ async function loadActiveCampaignTargetingContexts(
     pending.push({
       campaignId: doc.id,
       threshold,
+      frequencyCap,
+      retailerId,
       productMode,
       productIds,
+      recommendedProductIds,
     });
     pendingBySegmentId.set(segmentId, pending);
   }
@@ -291,9 +388,12 @@ async function loadActiveCampaignTargetingContexts(
       for (const campaign of campaigns) {
         contexts.set(campaign.campaignId, {
           campaignId: campaign.campaignId,
+          retailerId: campaign.retailerId,
           segmentId,
           segmentCriteria: toSegmentCriteria(segmentData),
           threshold: campaign.threshold,
+          frequencyCap: campaign.frequencyCap,
+          recommendedProductIds: campaign.recommendedProductIds,
           productMode: campaign.productMode,
           productIds: campaign.productIds,
         });
@@ -347,6 +447,23 @@ function evaluatePromotedItemTargeting(
       relevanceScore: null,
       threshold: campaignContext.threshold,
     };
+  }
+
+  if (campaignContext.productMode === "auto") {
+    const autoSet =
+      campaignContext.productIds.size > 0
+        ? campaignContext.productIds
+        : campaignContext.recommendedProductIds;
+    if (autoSet.size > 0 && !autoSet.has(itemId)) {
+      return {
+        eligible: false,
+        reason: "product_set_mismatch",
+        campaignId,
+        segmentId: campaignContext.segmentId,
+        relevanceScore: null,
+        threshold: campaignContext.threshold,
+      };
+    }
   }
 
   const matchResult = evaluateSegmentMatch(
@@ -701,6 +818,195 @@ function computeMinStyleDistanceTop4(items: Array<Record<string, unknown>>): num
   return Number(minDistance.toFixed(4));
 }
 
+function getFeaturedRetailerId(item: Record<string, unknown>): string | null {
+  return asTrimmedString(item.featuredRetailerId) || asTrimmedString(item.retailer);
+}
+
+function deriveFeaturedFrequencyCap(campaignContexts: Map<string, CampaignTargetingContext>): number {
+  let cap = DEFAULT_FEATURED_FREQUENCY_CAP;
+  for (const context of campaignContexts.values()) {
+    cap = Math.min(cap, context.frequencyCap);
+  }
+  return Math.max(2, cap);
+}
+
+function applyFeaturedServingPolicy(
+  rankedItems: Array<Record<string, unknown>>,
+  limit: number,
+  frequencyCap: number,
+  retailerCooldown: number
+): { items: Array<Record<string, unknown>>; stats: FeaturedServingStats } {
+  const cappedLimit = Math.max(0, Math.min(limit, rankedItems.length));
+  if (cappedLimit === 0) {
+    return {
+      items: [],
+      stats: {
+        configuredFrequencyCap: frequencyCap,
+        maxFeaturedSlots: 0,
+        featuredInSourceRank: 0,
+        featuredServed: 0,
+        droppedForFrequencyCap: 0,
+        droppedForDiversity: 0,
+        fallbackToOrganicCount: 0,
+        overflowFeaturedUsed: 0,
+      },
+    };
+  }
+
+  const organicQueue = rankedItems.filter((item) => item.isFeatured !== true);
+  const featuredQueue = rankedItems.filter((item) => item.isFeatured === true);
+  const featuredInSourceRank = featuredQueue.length;
+  const recentFeaturedRetailers: string[] = [];
+  const maxFeaturedSlots = Math.floor(cappedLimit / Math.max(2, frequencyCap));
+
+  let featuredServed = 0;
+  let droppedForDiversity = 0;
+  let fallbackToOrganicCount = 0;
+  const overflowFeaturedUsed = 0;
+
+  const popFeatured = (): Record<string, unknown> | null => {
+    if (featuredQueue.length === 0) return null;
+    for (let idx = 0; idx < featuredQueue.length; idx += 1) {
+      const candidate = featuredQueue[idx];
+      const retailerId = getFeaturedRetailerId(candidate);
+      if (retailerId && recentFeaturedRetailers.includes(retailerId)) {
+        droppedForDiversity += 1;
+        continue;
+      }
+      featuredQueue.splice(idx, 1);
+      return candidate;
+    }
+    // Strict diversity behavior: if no featured candidate passes cooldown, use organic.
+    return null;
+  };
+
+  const result: Array<Record<string, unknown>> = [];
+  for (let position = 1; position <= cappedLimit; position += 1) {
+    const isFeaturedSlot =
+      position % Math.max(2, frequencyCap) === 0 && featuredServed < maxFeaturedSlots;
+
+    let picked: Record<string, unknown> | null = null;
+    if (isFeaturedSlot) {
+      picked = popFeatured();
+    }
+
+    if (!picked && organicQueue.length > 0) {
+      picked = organicQueue.shift() || null;
+      if (isFeaturedSlot) fallbackToOrganicCount += 1;
+    }
+
+    if (!picked) break;
+
+    if (picked.isFeatured === true) {
+      featuredServed += 1;
+      const retailerId = getFeaturedRetailerId(picked);
+      if (retailerId) {
+        recentFeaturedRetailers.push(retailerId);
+        if (recentFeaturedRetailers.length > retailerCooldown) {
+          recentFeaturedRetailers.shift();
+        }
+      }
+    }
+
+    result.push(picked);
+  }
+
+  return {
+    items: result,
+    stats: {
+      configuredFrequencyCap: frequencyCap,
+      maxFeaturedSlots,
+      featuredInSourceRank,
+      featuredServed,
+      droppedForFrequencyCap: Math.max(0, featuredInSourceRank - featuredServed),
+      droppedForDiversity,
+      fallbackToOrganicCount,
+      overflowFeaturedUsed,
+    },
+  };
+}
+
+async function logFeaturedImpressionsAndUpdateCampaigns(
+  db: admin.firestore.Firestore,
+  sessionId: string,
+  requestId: string,
+  items: Array<Record<string, unknown>>,
+  nowMs: number
+): Promise<FeaturedLoggingStats> {
+  const featuredItems = items
+    .map((item, index) => ({ item, positionInDeck: index + 1 }))
+    .filter(({ item }) => item.isFeatured === true);
+  if (featuredItems.length === 0) {
+    return { loggedCount: 0, updatedCampaignCount: 0, estimatedSpendSEK: 0 };
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const dayKey = toDateKeyUTC(nowMs);
+  const batch = db.batch();
+  const campaignAggregates = new Map<string, { impressions: number; spend: number }>();
+
+  for (const { item, positionInDeck } of featuredItems) {
+    const itemId = asTrimmedString(item.id);
+    if (!itemId) continue;
+
+    const campaignId = asTrimmedString(item.campaignId);
+    const segmentId = asTrimmedString(item.segmentId);
+    const retailerId = getFeaturedRetailerId(item);
+    const relevanceScore = asFiniteNumber(item.featuredRelevanceScore);
+    const matchThreshold = asFiniteNumber(item.featuredMatchThreshold);
+
+    const impressionRef = db.collection("featuredImpressions").doc();
+    batch.set(impressionRef, {
+      id: impressionRef.id,
+      sessionId,
+      requestId,
+      itemId,
+      campaignId: campaignId ?? null,
+      segmentId: segmentId ?? null,
+      retailerId: retailerId ?? null,
+      positionInDeck,
+      relevanceScore: relevanceScore ?? null,
+      matchThreshold: matchThreshold ?? null,
+      isFeatured: true,
+      source: campaignId ? "campaign" : "legacy",
+      createdAt: now,
+    });
+
+    if (campaignId) {
+      const prev = campaignAggregates.get(campaignId) || { impressions: 0, spend: 0 };
+      prev.impressions += 1;
+      prev.spend += FEATURED_COST_PER_IMPRESSION_SEK;
+      campaignAggregates.set(campaignId, prev);
+    }
+  }
+
+  for (const [campaignId, aggregate] of campaignAggregates.entries()) {
+    const updates: Record<string, unknown> = {
+      impressions: admin.firestore.FieldValue.increment(aggregate.impressions),
+      featuredImpressions: admin.firestore.FieldValue.increment(aggregate.impressions),
+      budgetSpent: admin.firestore.FieldValue.increment(aggregate.spend),
+      lastImpressionAt: now,
+      updatedAt: now,
+    };
+    updates[`dailyImpressionsByDate.${dayKey}`] = admin.firestore.FieldValue.increment(
+      aggregate.impressions
+    );
+    updates[`dailySpendByDate.${dayKey}`] = admin.firestore.FieldValue.increment(aggregate.spend);
+    batch.set(db.collection("campaigns").doc(campaignId), updates, { merge: true });
+  }
+
+  await batch.commit();
+  const estimatedSpendSEK = Array.from(campaignAggregates.values()).reduce(
+    (sum, entry) => sum + entry.spend,
+    0
+  );
+  return {
+    loggedCount: featuredItems.length,
+    updatedCampaignCount: campaignAggregates.size,
+    estimatedSpendSEK: Number(estimatedSpendSEK.toFixed(2)),
+  };
+}
+
 export async function deckGet(req: Request, res: Response): Promise<void> {
   const startedAtMs = Date.now();
   const sessionId = req.query.sessionId as string;
@@ -1025,6 +1331,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     string,
     {
       campaignId: string;
+      retailerId: string;
       segmentId: string;
       relevanceScore: number;
       threshold: number;
@@ -1069,6 +1376,9 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     if (acceptedIds.has(doc.id)) return false;
 
     const data = (doc.data() || {}) as Record<string, unknown>;
+
+    // Retailer catalog include/exclude override from console.
+    if (data.retailerCatalogIncluded === false) return false;
 
     // Surface eligibility gate: for catalog items (non-gold queues), check that the
     // item's classification matches the deck surface. Gold items are pre-filtered at
@@ -1125,9 +1435,14 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         targetingDecision.relevanceScore != null &&
         targetingDecision.threshold != null
       ) {
+        const campaignContext = activeCampaignTargeting.get(targetingDecision.campaignId);
+        if (!campaignContext) {
+          return false;
+        }
         featuredTargetingStats.campaignMatched += 1;
         featuredContextByItemId.set(doc.id, {
           campaignId: targetingDecision.campaignId,
+          retailerId: campaignContext.retailerId,
           segmentId: targetingDecision.segmentId,
           relevanceScore: targetingDecision.relevanceScore,
           threshold: targetingDecision.threshold,
@@ -1246,7 +1561,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const idToCandidate = new Map<string | number, ItemCandidate>();
   candidates.forEach((c) => idToCandidate.set(c.id, c));
 
-  const items = exploredIds
+  const rankedItems = exploredIds
     .map((id) => idToCandidate.get(id))
     .filter((c): c is ItemCandidate => c != null)
     .map((c) => {
@@ -1263,6 +1578,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         ...(featuredContext
           ? {
               campaignId: featuredContext.campaignId,
+              featuredRetailerId: featuredContext.retailerId,
               segmentId: featuredContext.segmentId,
               featuredRelevanceScore: featuredContext.relevanceScore,
               featuredMatchThreshold: featuredContext.threshold,
@@ -1270,12 +1586,23 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
           : {}),
       };
     });
+
+  const featuredFrequencyCap = deriveFeaturedFrequencyCap(activeCampaignTargeting);
+  const featuredServing = applyFeaturedServingPolicy(
+    rankedItems as Array<Record<string, unknown>>,
+    limit,
+    featuredFrequencyCap,
+    FEATURED_RETAILER_COOLDOWN
+  );
+  const items = featuredServing.items as ItemCandidate[];
+  const servedItemIds = items.map((item) => String(item.id));
+
   const itemsForMetrics = items.map((item) => item as Record<string, unknown>);
   const sameFamilyTop8Rate = computeSameFamilyTop8Rate(itemsForMetrics);
   const styleDistanceTop4Min = computeMinStyleDistanceTop4(itemsForMetrics);
 
   const itemScores: Record<string, number> = {};
-  exploredIds.forEach((id) => {
+  servedItemIds.forEach((id) => {
     if (rankResult.itemScores[id] != null) itemScores[id] = rankResult.itemScores[id];
   });
 
@@ -1327,17 +1654,39 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       candidateCount: candidates.length,
       rankWindow,
       retrievalQueues: retrievalQueuesUsed,
-      itemIds: exploredIds,
+      itemIds: servedItemIds,
       variant,
       variantBucket,
       explorationPolicy: explorationRate > 0 ? "sample_from_top_2limit" : "none",
       scoreStats,
       sameFamilyTop8Rate,
       styleDistanceTop4Min,
+      featuredServing,
       ...(onboardingProfileSummary != null ? { onboardingProfile: onboardingProfileSummary } : {}),
     },
     itemScores,
   };
+
+  let featuredLoggingStats: FeaturedLoggingStats = {
+    loggedCount: 0,
+    updatedCampaignCount: 0,
+    estimatedSpendSEK: 0,
+  };
+  try {
+    featuredLoggingStats = await logFeaturedImpressionsAndUpdateCampaigns(
+      db,
+      sessionId,
+      requestId,
+      itemsForMetrics,
+      Date.now()
+    );
+  } catch (loggingError) {
+    console.warn("featured_impression_logging_failed", {
+      requestId,
+      sessionId,
+      error: loggingError instanceof Error ? loggingError.message : String(loggingError),
+    });
+  }
 
   if (debugMode) {
     const hasWeights = Object.keys(preferenceWeights).length > 0;
@@ -1361,6 +1710,8 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         activeCampaignCount: activeCampaignTargeting.size,
         ...featuredTargetingStats,
       },
+      featuredServing,
+      featuredLoggingStats,
       sessionTargetingProfile,
       queueTargets,
       queueContributions,
@@ -1394,6 +1745,8 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     styleDistanceTop4Min,
     activeCampaignCount: activeCampaignTargeting.size,
     featuredTargetingStats,
+    featuredServing,
+    featuredLoggingStats,
   });
   res.status(200).json(response);
   } catch (error) {
@@ -1417,4 +1770,6 @@ export const __deckTestUtils = {
   computeMinStyleDistanceTop4,
   extractCampaignIdFromPromotedItem,
   evaluatePromotedItemTargeting,
+  applyFeaturedServingPolicy,
+  deriveFeaturedFrequencyCap,
 };

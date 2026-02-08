@@ -64,6 +64,7 @@ import {
   retailerCampaignsPatch,
   retailerCampaignsPause,
   retailerCampaignsActivate,
+  retailerCampaignsRecommendPost,
   retailerCampaignsDelete,
 } from "./campaigns";
 import {
@@ -72,6 +73,15 @@ import {
   adminScoresSummaryGet,
   adminScoresRecalculatePost,
 } from "./scores";
+import {
+  retailerCatalogGet,
+  retailerCatalogPatch,
+  retailerInsightsGet,
+  retailerReportsGet,
+  retailerReportsExportGet,
+  retailerReportsSharePost,
+  retailerReportsShareGet,
+} from "./retailer_console";
 
 export async function apiHandler(req: Request, res: Response): Promise<void> {
   // Emulator: path can be /project/region/api/... ; prod/hosted: /api/... or /items/deck. Normalize to e.g. "session" or "items/deck".
@@ -411,6 +421,36 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
       await retailerMeGet(req, res);
       return;
     }
+    if (method === "GET" && path === "retailer/catalog") {
+      await retailerCatalogGet(req, res);
+      return;
+    }
+    if (method === "PATCH" && path.match(/^retailer\/catalog\/[^/]+$/)) {
+      const productId = path.replace("retailer/catalog/", "");
+      await retailerCatalogPatch(req, res, productId);
+      return;
+    }
+    if (method === "GET" && path === "retailer/insights") {
+      await retailerInsightsGet(req, res);
+      return;
+    }
+    if (method === "GET" && path === "retailer/reports") {
+      await retailerReportsGet(req, res);
+      return;
+    }
+    if (method === "GET" && path === "retailer/reports/export") {
+      await retailerReportsExportGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "retailer/reports/share") {
+      await retailerReportsSharePost(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^retailer\/reports\/share\/[^/]+$/)) {
+      const token = path.replace("retailer/reports/share/", "");
+      await retailerReportsShareGet(req, res, token);
+      return;
+    }
     if (method === "GET" && path.match(/^retailers\/[^/]+$/)) {
       const retailerId = path.replace("retailers/", "");
       await retailersGetById(req, res, retailerId);
@@ -478,6 +518,11 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     if (method === "POST" && path.match(/^retailer\/campaigns\/[^/]+\/activate$/)) {
       const campaignId = path.replace("retailer/campaigns/", "").replace("/activate", "");
       await retailerCampaignsActivate(req, res, campaignId);
+      return;
+    }
+    if (method === "POST" && path.match(/^retailer\/campaigns\/[^/]+\/recommend$/)) {
+      const campaignId = path.replace("retailer/campaigns/", "").replace("/recommend", "");
+      await retailerCampaignsRecommendPost(req, res, campaignId);
       return;
     }
     if (method === "DELETE" && path.match(/^retailer\/campaigns\/[^/]+$/)) {
