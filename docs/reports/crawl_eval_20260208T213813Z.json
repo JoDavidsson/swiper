@@ -1,0 +1,790 @@
+{
+  "generatedAt": "2026-02-08T21:38:13.512263Z",
+  "config": {
+    "batchSize": 20,
+    "pagesPerSite": 20,
+    "rateLimitRps": 1.0,
+    "extractWorkers": 5,
+    "imageTimeoutSeconds": 8.0,
+    "maxImagesPerProduct": 5,
+    "urlFile": "scripts/url_lists/fatal_retry_2026-02-08.txt"
+  },
+  "input": {
+    "rawUrlTokenCount": 12,
+    "validEntryCount": 12,
+    "invalidTokenCount": 0,
+    "invalidTokenSamples": [],
+    "duplicateCount": 0,
+    "uniqueUrlCount": 12
+  },
+  "summary": {
+    "entryTotal": 12,
+    "entryPassed": 0,
+    "entryPassRate": 0.0,
+    "uniqueSiteTotal": 12,
+    "uniqueSitePassed": 0,
+    "uniqueSitePassRate": 0.0,
+    "uniqueSiteFullCompletion": 0,
+    "uniqueSiteFullCompletionRate": 0.0,
+    "testedPages": 12,
+    "acceptedPages": 0,
+    "pageCompletionRate": 0.0,
+    "checkedImageUrls": 0,
+    "validImageUrls": 0,
+    "imageUrlValidRate": 0.0,
+    "acceptedProducts": 0,
+    "productsWithWorkingPrimaryImage": 0,
+    "primaryImageCoverageRate": 0.0,
+    "topFailureReasons": [
+      [
+        "fetch-error",
+        12
+      ]
+    ]
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "siteCount": 12,
+      "passed": 0,
+      "fullCompletion": 0,
+      "durationSec": 182.9758059978485,
+      "sites": [
+        "https://www.mhdesign.se/",
+        "https://www.room.se/",
+        "https://mhdesign.se/",
+        "https://room.se/",
+        "https://xn--trbolaget-w2a.se/",
+        "https://norrgavelsnickeri.se/",
+        "https://www.xxxlutz.se/",
+        "https://www.clickonhome.se/",
+        "https://www.room21.se/",
+        "https://www.roomhome.se/",
+        "https://www.interioronline.se/",
+        "https://www.nordicdesignhome.se/"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "siteUrl": "https://www.mhdesign.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.mhdesign.se/",
+        "normalizedUrl": "https://www.mhdesign.se",
+        "baseUrl": "https://www.mhdesign.se",
+        "seedUrl": "https://www.mhdesign.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.3,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.room.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.room.se/",
+        "normalizedUrl": "https://www.room.se",
+        "baseUrl": "https://www.room.se",
+        "seedUrl": "https://www.room.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "tls-certificate": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.79,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://mhdesign.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://mhdesign.se/",
+        "normalizedUrl": "https://mhdesign.se",
+        "baseUrl": "https://mhdesign.se",
+        "seedUrl": "https://mhdesign.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.3,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://room.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://room.se/",
+        "normalizedUrl": "https://room.se",
+        "baseUrl": "https://room.se",
+        "seedUrl": "https://room.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "tls-certificate": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.71,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://xn--trbolaget-w2a.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://xn--trbolaget-w2a.se/",
+        "normalizedUrl": "https://xn--trbolaget-w2a.se",
+        "baseUrl": "https://xn--trbolaget-w2a.se",
+        "seedUrl": "https://xn--trbolaget-w2a.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.09,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://norrgavelsnickeri.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://norrgavelsnickeri.se/",
+        "normalizedUrl": "https://norrgavelsnickeri.se",
+        "baseUrl": "https://norrgavelsnickeri.se",
+        "seedUrl": "https://norrgavelsnickeri.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.1,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.xxxlutz.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.xxxlutz.se/",
+        "normalizedUrl": "https://www.xxxlutz.se",
+        "baseUrl": "https://www.xxxlutz.se",
+        "seedUrl": "https://www.xxxlutz.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "http-403": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 4.16,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.clickonhome.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.clickonhome.se/",
+        "normalizedUrl": "https://www.clickonhome.se",
+        "baseUrl": "https://www.clickonhome.se",
+        "seedUrl": "https://www.clickonhome.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.11,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.room21.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.room21.se/",
+        "normalizedUrl": "https://www.room21.se",
+        "baseUrl": "https://www.room21.se",
+        "seedUrl": "https://www.room21.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.11,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.roomhome.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.roomhome.se/",
+        "normalizedUrl": "https://www.roomhome.se",
+        "baseUrl": "https://www.roomhome.se",
+        "seedUrl": "https://www.roomhome.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.11,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.interioronline.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.interioronline.se/",
+        "normalizedUrl": "https://www.interioronline.se",
+        "baseUrl": "https://www.interioronline.se",
+        "seedUrl": "https://www.interioronline.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.1,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://www.nordicdesignhome.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.nordicdesignhome.se/",
+        "normalizedUrl": "https://www.nordicdesignhome.se",
+        "baseUrl": "https://www.nordicdesignhome.se",
+        "seedUrl": "https://www.nordicdesignhome.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.09,
+      "fullCompletion": false
+    }
+  ]
+}

@@ -9,7 +9,7 @@
 
 **Phase:** Phase 13 (Retailer Console v1) In Progress + Phase 12/12a Implemented  
 **Next Phase:** Complete Retailer Console core workflows (campaign, catalog, insights, reporting) and iterate from pilot feedback  
-**Last Milestone:** Phase 13 core skeleton shipped (auth-gated retailer console UI + catalog/insights/reports API + campaign builder integration)
+**Last Milestone:** Data quality sweep: 10 fixes shipped (image proxy domains, currency validation, zero-price gate, HTML stripping, description matching, image extraction heuristics, card layout, deck exhaustion fallback, rich spec extraction & display, recommendation engine signals)
 
 ---
 

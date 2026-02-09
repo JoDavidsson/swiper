@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-02-08 – Data quality and UX fixes (10 issues)
+
+### Image fixes
+- Expanded image proxy allowlist with CDN domains (*.cloudinary.com, *.imgix.net, *.scene7.com, *.akamaized.net, *.cloudfront.net), brand domains (*.gubi.com, *.haydesign.com, *.muuto.com, *.fritzhansen.com), and missing retailer domains (*.ellos.se). Broadened *.shopify.com.
+- Added structured 403-rejection logging to image proxy with blocked hostname for easier domain auditing.
+- Fixed card image layout: changed foreground alignment from `bottomCenter` to `center` so white-background product photos are vertically centered instead of squished to the bottom with a large blurred void above.
+
+### Data quality
+- Added currency validation: new `validate_currency()` in normalization.py rejects non-SEK currencies (EUR, USD, etc.). Items from wrong locale crawls are now skipped with `currencyMismatchSkipped` stat.
+- Added zero-price quality gate: items with `priceAmount <= 0` are now skipped at all three ingestion paths (batch, regular, refetch).
+- Hardened HTML stripping: `clean_description_text()` (Python) and `_cleanDescription()` (Flutter) now run multi-pass `html.unescape()` (up to 3 iterations) and double tag-stripping to handle double/triple-encoded HTML entities.
+- Added description-title cross-validation in batch extraction: discards descriptions where no significant word from the title appears in the first 300 characters of the description, preventing mismatched descriptions.
+- Improved image extraction heuristics: removed `hero` from product image class pattern, added container-level filtering to deprioritize images inside `<header>`, `<nav>`, `<footer>`, `<aside>`, `.banner`, `.hero-banner` etc., and added banner aspect-ratio penalty (width/height > 3.0).
+
+### Deck exhaustion fix
+- Changed swipe history exclusion from last 500 swipes to last 7 days, so items can be recycled over time.
+- Added exhaustion fallback: if no candidates remain after exclusion, seenItemIds is cleared and all queue items are re-accepted, so the user never sees an empty deck.
+- Response includes `recycled: true` flag when exhaustion fallback was triggered.
+
+### Rich specification extraction & recommendations
+- Added 9 new spec fields to `NormalizedProduct` dataclass: `seat_height_cm`, `seat_depth_cm`, `seat_width_cm`, `seat_count`, `weight_kg`, `frame_material`, `cover_material`, `leg_material`, `cushion_filling`.
+- Added `_extract_rich_specs_from_dom()` function that maps Swedish/English spec labels (sitthojd, stomme, klädsel, kuddfyllning, etc.) from DOM spec tables to structured fields.
+- All three Firestore write paths (batch, regular, refetch) now include the new spec fields.
+- Added spec fields to Flutter `Item` model with `fromJson`/`toJson` support and facets fallback.
+- Added "Specifikationer" section in detail sheet with a clean key-value table showing available specs (seat count, seat height/depth/width, weight, frame material, cover material, leg material, cushion filling).
+- Added 5 new recommendation signals to `scoreItem.ts`: `seats:{n}`, `cover:{material}`, `frame:{material}`, `legs:{material}`, `filling:{type}`.
+- Updated `swipe.ts` to extract these signals on swipe_right/swipe_left for preference weight learning.
+
 ## 2026-02-08 - Phase 13 retailer console core implementation
 
 - Added new retailer console backend endpoints in `firebase/functions/src/api/retailer_console.ts`:

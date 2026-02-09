@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-02-09T15:49:21.864169Z",
+  "config": {
+    "batchSize": 1,
+    "pagesPerSite": 20,
+    "rateLimitRps": 0.2,
+    "extractWorkers": 2,
+    "imageTimeoutSeconds": 8.0,
+    "maxImagesPerProduct": 5,
+    "urlFile": "scripts/url_lists/sweef_only_2026-02-09.txt"
+  },
+  "input": {
+    "rawUrlTokenCount": 1,
+    "validEntryCount": 1,
+    "invalidTokenCount": 0,
+    "invalidTokenSamples": [],
+    "duplicateCount": 0,
+    "uniqueUrlCount": 1
+  },
+  "summary": {
+    "entryTotal": 1,
+    "entryPassed": 1,
+    "entryPassRate": 1.0,
+    "uniqueSiteTotal": 1,
+    "uniqueSitePassed": 1,
+    "uniqueSitePassRate": 1.0,
+    "uniqueSiteFullCompletion": 1,
+    "uniqueSiteFullCompletionRate": 1.0,
+    "testedPages": 20,
+    "acceptedPages": 20,
+    "pageCompletionRate": 1.0,
+    "discoveredUrls": 72,
+    "productHintUrls": 46,
+    "highConfidenceUrls": 46,
+    "productHintShareOfDiscovered": 0.6388888888888888,
+    "highConfidenceShareOfDiscovered": 0.6388888888888888,
+    "acceptedShareOfDiscovered": 0.2777777777777778,
+    "acceptedShareOfProductHints": 0.43478260869565216,
+    "sitesDiscoveredZero": 0,
+    "sitesDiscoveredNonzeroProductHintZero": 0,
+    "sitesProductHintNonzeroAcceptedZero": 0,
+    "sitesProductHintNonzeroAcceptedNonzero": 1,
+    "checkedImageUrls": 20,
+    "validImageUrls": 20,
+    "imageUrlValidRate": 1.0,
+    "acceptedProducts": 20,
+    "productsWithWorkingPrimaryImage": 20,
+    "primaryImageCoverageRate": 1.0,
+    "sitesWithInvalidImageUrls": 0,
+    "sitesWithPrimaryImageGap": 0,
+    "fetchErrorBreakdown": [],
+    "parseErrorBreakdown": [],
+    "imageIssueBreakdown": [],
+    "topFailureReasons": []
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "siteCount": 1,
+      "passed": 1,
+      "fullCompletion": 1,
+      "durationSec": 150.15580797195435,
+      "sites": [
+        "https://www.sweef.se/"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "siteUrl": "https://www.sweef.se/",
+      "status": "passed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.sweef.se/",
+        "normalizedUrl": "https://www.sweef.se",
+        "baseUrl": "https://www.sweef.se",
+        "seedUrl": "https://www.sweef.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl",
+        "fallbackUsed": false,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 72,
+        "productHintCount": 46,
+        "highConfidenceCount": 46
+      },
+      "pages": {
+        "tested": 20,
+        "accepted": 20,
+        "completionRate": 1.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 0,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {},
+        "parseErrorBreakdown": {},
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 20,
+        "productsWithImages": 20,
+        "productsWithWorkingPrimaryImage": 20,
+        "primaryImageCoverageRate": 1.0,
+        "urlsChecked": 20,
+        "urlsValid": 20,
+        "urlsInvalid": 0,
+        "urlValidRate": 1.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {
+          "dom": 20
+        },
+        "fetch": {
+          "http": 20
+        }
+      },
+      "non100Reasons": [],
+      "durationSec": 150.16,
+      "fullCompletion": true
+    }
+  ]
+}

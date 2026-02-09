@@ -1,0 +1,191 @@
+{
+  "generatedAt": "2026-02-08T20:58:45.167491Z",
+  "config": {
+    "batchSize": 20,
+    "pagesPerSite": 20,
+    "rateLimitRps": 1.0,
+    "extractWorkers": 5,
+    "imageTimeoutSeconds": 8.0,
+    "maxImagesPerProduct": 5,
+    "urlFile": "scripts/url_lists/user_batch_urls_2026-02-08.txt"
+  },
+  "input": {
+    "rawUrlTokenCount": 80,
+    "validEntryCount": 80,
+    "invalidTokenCount": 0,
+    "invalidTokenSamples": [],
+    "duplicateCount": 15,
+    "uniqueUrlCount": 2
+  },
+  "summary": {
+    "entryTotal": 80,
+    "entryPassed": 2,
+    "entryPassRate": 0.025,
+    "uniqueSiteTotal": 2,
+    "uniqueSitePassed": 1,
+    "uniqueSitePassRate": 0.5,
+    "uniqueSiteFullCompletion": 0,
+    "uniqueSiteFullCompletionRate": 0.0,
+    "testedPages": 40,
+    "acceptedPages": 19,
+    "pageCompletionRate": 0.475,
+    "checkedImageUrls": 63,
+    "validImageUrls": 63,
+    "imageUrlValidRate": 1.0,
+    "acceptedProducts": 19,
+    "productsWithWorkingPrimaryImage": 19,
+    "primaryImageCoverageRate": 1.0,
+    "topFailureReasons": [
+      [
+        "parse-fail",
+        2
+      ]
+    ]
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "siteCount": 2,
+      "passed": 1,
+      "fullCompletion": 0,
+      "durationSec": 72.64223217964172,
+      "sites": [
+        "https://www.ikea.com/",
+        "https://brodernaanderssons.se/"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "siteUrl": "https://www.ikea.com/",
+      "status": "passed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.ikea.com/",
+        "normalizedUrl": "https://www.ikea.com",
+        "baseUrl": "https://www.ikea.com",
+        "seedUrl": "https://www.ikea.com",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 252,
+        "productHintCount": 116,
+        "highConfidenceCount": 116
+      },
+      "pages": {
+        "tested": 20,
+        "accepted": 19,
+        "completionRate": 0.95,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 0,
+          "parse": 1,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {},
+        "parseErrorSamples": [
+          "No product extracted (JSON-LD blocks: 0, og:type: website)"
+        ]
+      },
+      "images": {
+        "productsAccepted": 19,
+        "productsWithImages": 19,
+        "productsWithWorkingPrimaryImage": 19,
+        "primaryImageCoverageRate": 1.0,
+        "urlsChecked": 63,
+        "urlsValid": 63,
+        "urlsInvalid": 0,
+        "urlValidRate": 1.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {
+          "jsonld": 19
+        },
+        "fetch": {
+          "http": 19
+        }
+      },
+      "non100Reasons": [
+        "parse-fail:1"
+      ],
+      "durationSec": 45.2,
+      "fullCompletion": false
+    },
+    {
+      "siteUrl": "https://brodernaanderssons.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://brodernaanderssons.se/",
+        "normalizedUrl": "https://brodernaanderssons.se",
+        "baseUrl": "https://brodernaanderssons.se",
+        "seedUrl": "https://brodernaanderssons.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl",
+        "fallbackUsed": false,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 84,
+        "productHintCount": 64,
+        "highConfidenceCount": 64
+      },
+      "pages": {
+        "tested": 20,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 0,
+          "parse": 20,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {},
+        "parseErrorSamples": [
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)",
+          "No product extracted (JSON-LD blocks: 1, og:type: article)"
+        ]
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "parse-fail:20"
+      ],
+      "durationSec": 27.44,
+      "fullCompletion": false
+    }
+  ]
+}

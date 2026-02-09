@@ -192,12 +192,7 @@ class _CompareTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = [
-      _row(
-          'Price',
-          items
-              .map((i) =>
-                  '${i.priceAmount.toStringAsFixed(0)} ${i.priceCurrency}')
-              .toList()),
+      _row('Price', items.map((i) => i.priceLabel()).toList()),
       _row(
           'Dimensions',
           items

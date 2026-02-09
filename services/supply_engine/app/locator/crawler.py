@@ -143,6 +143,8 @@ def discover_from_category_crawl(
         return []
 
     print(f"         [crawler] {len(seeds)} seeds after allowlist filter", flush=True)
+
+    include_keywords_l = [k.lower() for k in (include_keywords or [])]
     
     base_domain = _domain(base_url)
     q: deque[tuple[str, int]] = deque((u, 0) for u in seeds)
@@ -181,17 +183,18 @@ def discover_from_category_crawl(
         links = filter_allowlisted(_extract_links(r.final_url, r.text), allowlist_policy=allowlist_policy)
         pag_links = filter_allowlisted(_extract_pagination_links(r.final_url, r.text), allowlist_policy=allowlist_policy)
         itemlist_links = filter_allowlisted(_extract_itemlist_urls(r.final_url, r.text), allowlist_policy=allowlist_policy)
-        
-        # Merge all link sources, deduplicating
-        link_set = set(links)
-        for u in pag_links:
-            if u not in link_set:
-                links.append(u)
+
+        # Merge all link sources, deduplicating.
+        # Prioritise ItemList links first (often direct PDPs), then pagination, then regular anchors.
+        merged: list[str] = []
+        link_set: set[str] = set()
+        for src in (itemlist_links, pag_links, links):
+            for u in src:
+                if u in link_set:
+                    continue
                 link_set.add(u)
-        for u in itemlist_links:
-            if u not in link_set:
-                links.append(u)
-                link_set.add(u)
+                merged.append(u)
+        links = merged
         
         if itemlist_links:
             print(f"         [crawler] Found {len(links)} links ({len(itemlist_links)} from ItemList JSON-LD)", flush=True)
@@ -210,6 +213,19 @@ def discover_from_category_crawl(
             if u in out_seen:
                 continue
             c = classify_url(u)
+            lowered = u.lower()
+
+            # Keep discovery focused when keyword filtering is configured.
+            # Accept links that either look product-like or match topical keywords.
+            if include_keywords_l:
+                keyword_hit = any(k in lowered for k in include_keywords_l)
+                if not (keyword_hit or c.url_type_hint == "product" or c.confidence >= 0.65):
+                    continue
+
+            # Query-heavy list/filter URLs create many 404/low-value fetches.
+            if "?" in u and c.confidence < 0.75:
+                continue
+
             out.append(DiscoveredUrl(url=u, source="crawl", confidence=c.confidence, url_type_hint=c.url_type_hint))
             out_seen.add(u)
             added_this_page += 1
@@ -227,11 +243,13 @@ def discover_from_category_crawl(
                 # Only follow category-ish links to keep crawl narrow.
                 if c.url_type_hint == "product":
                     continue
-                if include_keywords:
+                if include_keywords_l:
                     lowered = u.lower()
-                    if not any(k.lower() in lowered for k in include_keywords):
+                    if not any(k in lowered for k in include_keywords_l):
                         # If keyword filter is set, only follow keyword-relevant links.
                         continue
+                if "?" in u and c.confidence < 0.8:
+                    continue
                 q.append((u, depth + 1))
                 queued += 1
             if queued > 0:
@@ -241,4 +259,3 @@ def discover_from_category_crawl(
     print(f"         [crawler] Discovery complete: {len(out)} URLs ({product_count} products) from {len(seen_pages)} pages", flush=True)
     
     return out
-

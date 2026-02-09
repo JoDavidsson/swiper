@@ -12,6 +12,8 @@ class AppShell extends StatelessWidget {
     this.leading,
     this.automaticallyImplyLeading = true,
     this.actions = const [],
+    this.transparentAppBar = false,
+    this.extendBodyBehindAppBar = false,
   });
 
   final String title;
@@ -20,17 +22,25 @@ class AppShell extends StatelessWidget {
   final Widget? leading;
   final bool automaticallyImplyLeading;
   final List<Widget> actions;
+  final bool transparentAppBar;
+  final bool extendBodyBehindAppBar;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
+      extendBodyBehindAppBar: extendBodyBehindAppBar,
       appBar: AppBar(
         title: Text(title),
         centerTitle: true,
         leading: leading,
         automaticallyImplyLeading: automaticallyImplyLeading,
         actions: actions,
+        backgroundColor:
+            transparentAppBar ? Colors.transparent : AppTheme.background,
+        elevation: transparentAppBar ? 0 : null,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
       body: body,
       bottomNavigationBar: showBottomNav
@@ -39,8 +49,10 @@ class AppShell extends StatelessWidget {
               onTap: (i) => _onNavTap(context, i),
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Deck'),
-                BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'Likes'),
-                BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+                BottomNavigationBarItem(
+                    icon: Icon(Icons.favorite), label: 'Likes'),
+                BottomNavigationBarItem(
+                    icon: Icon(Icons.person), label: 'Profile'),
               ],
             )
           : null,

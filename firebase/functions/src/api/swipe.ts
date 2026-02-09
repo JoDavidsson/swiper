@@ -122,6 +122,24 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
       const priceBucket = toPriceBucket(priceAmount);
       if (priceBucket) addCount(`price_bucket:${priceBucket}`);
 
+      // Rich furniture spec signals
+      const seatCount = data.seatCount;
+      if (typeof seatCount === "number" && seatCount > 0 && seatCount <= 20) {
+        addCount(`seats:${seatCount}`);
+      }
+
+      const coverMaterial = normalizeToken(data.coverMaterial);
+      if (coverMaterial) addCount(`cover:${coverMaterial}`);
+
+      const frameMaterial = normalizeToken(data.frameMaterial);
+      if (frameMaterial) addCount(`frame:${frameMaterial}`);
+
+      const legMaterial = normalizeToken(data.legMaterial);
+      if (legMaterial) addCount(`legs:${legMaterial}`);
+
+      const cushionFilling = normalizeToken(data.cushionFilling);
+      if (cushionFilling) addCount(`filling:${cushionFilling}`);
+
       const updates: Record<string, ReturnType<typeof FieldValue.increment>> = {};
       for (const [key, amount] of Object.entries(counts)) {
         updates[key] = FieldValue.increment(amount * delta);

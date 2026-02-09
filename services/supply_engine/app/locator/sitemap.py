@@ -8,7 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 from app.http.fetcher import PoliteFetcher, FetchError
 from app.locator.classifier import classify_url
-from app.normalization import extract_domain_root, domains_equivalent
+from app.normalization import canonical_domain, extract_domain_root, domains_equivalent
 
 
 def _dedup_key(url: str) -> str:
@@ -73,6 +73,52 @@ def _extract_sitemaps_from_robots(robots_txt: str) -> list[str]:
         if m:
             out.append(m.group(1))
     return out
+
+
+def _normalize_sitemap_loc(loc: str, *, parent_url: str, domain_root: str) -> str | None:
+    """
+    Normalize sitemap <loc> values into absolute URLs.
+
+    Handles:
+    - relative loc values via urljoin(parent_url, ...)
+    - scheme-less loc values (//example.com/sitemap.xml)
+    - malformed values like "https://example.comsitemap.xml" where a slash is missing
+      after the domain root.
+    """
+    raw = (loc or "").strip()
+    if not raw:
+        return None
+
+    if raw.startswith("//"):
+        raw = f"https:{raw}"
+
+    if raw.startswith(("http://", "https://")):
+        normalized = raw
+    else:
+        normalized = urljoin(parent_url, raw)
+
+    base = domain_root.rstrip("/")
+    if normalized.startswith(base) and len(normalized) > len(base):
+        next_char = normalized[len(base)]
+        if next_char not in ("/", "?", "#"):
+            normalized = f"{base}/{normalized[len(base):]}"
+
+    # Repair malformed host concatenation:
+    # https://stalands.seumbraco/surface/Sitemap/Products
+    # -> https://stalands.se/umbraco/surface/Sitemap/Products
+    try:
+        parsed = urlparse(normalized)
+        parsed_host = (parsed.netloc or "").lower()
+        root_host = canonical_domain(urlparse(domain_root).netloc or "")
+        if parsed_host and root_host and parsed_host.startswith(root_host) and parsed_host != root_host:
+            suffix = parsed_host[len(root_host):]
+            if suffix and not suffix.startswith((".", ":")):
+                repaired_path = f"/{suffix}{parsed.path or ''}"
+                normalized = parsed._replace(netloc=root_host, path=repaired_path).geturl()
+    except Exception:
+        pass
+
+    return normalized
 
 
 def _parse_sitemap_content(content: str, url: str = "") -> tuple[list[str], list[str]]:
@@ -213,8 +259,9 @@ def discover_from_sitemaps(
         print(f"         [sitemap] Will continue until {min_matching_urls} matching URLs found", flush=True)
     
     for sm in sitemaps:
-        if sm and sm not in seen_sitemaps:
-            queue.append(sm)
+        normalized_sm = _normalize_sitemap_loc(sm, parent_url=domain_root, domain_root=domain_root)
+        if normalized_sm and normalized_sm not in seen_sitemaps:
+            queue.append(normalized_sm)
 
     # When filtering: continue until we have enough MATCHING urls (not just any urls)
     # When not filtering: use the traditional max_urls limit
@@ -255,7 +302,23 @@ def discover_from_sitemaps(
             consecutive_zero_yields += 1
             continue
 
-        urls, nested = _parse_sitemap_content(r.text, sm_url)
+        urls_raw, nested_raw = _parse_sitemap_content(r.text, sm_url)
+        urls = [
+            n
+            for n in (
+                _normalize_sitemap_loc(u, parent_url=sm_url, domain_root=domain_root)
+                for u in urls_raw
+            )
+            if n
+        ]
+        nested = [
+            n
+            for n in (
+                _normalize_sitemap_loc(u, parent_url=sm_url, domain_root=domain_root)
+                for u in nested_raw
+            )
+            if n
+        ]
         
         # Detect sitemap URLs disguised as regular URLs in a <urlset>.
         # Some sites (e.g. Länna Möbler) wrap nested sitemaps in <urlset>
@@ -345,4 +408,3 @@ def discover_from_sitemaps(
     
     print(f"         [sitemap] Classified: {product_count} product URLs, {len(out) - product_count} other", flush=True)
     return out
-

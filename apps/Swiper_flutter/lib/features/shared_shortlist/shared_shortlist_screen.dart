@@ -215,8 +215,7 @@ class _SharedShortlistScreenState extends ConsumerState<SharedShortlistScreen> {
                                             .titleSmall,
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis),
-                                    Text(
-                                        '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
+                                    Text(item.priceLabel(),
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium

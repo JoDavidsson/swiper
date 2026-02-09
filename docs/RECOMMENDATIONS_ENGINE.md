@@ -73,7 +73,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Public types**:
 
-- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`, `brand`, `deliveryComplexity`, `newUsed`, `ecoTags`, `smallSpaceFriendly`, `modular`, `priceAmount` (bucketed).
+- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`, `brand`, `deliveryComplexity`, `newUsed`, `ecoTags`, `smallSpaceFriendly`, `modular`, `priceAmount` (bucketed), `subCategory`, `roomTypes`, `seatCount`, `coverMaterial`, `frameMaterial`, `legMaterial`, `cushionFilling`.
 - **SessionContext** – `{ preferenceWeights: Record<string, number> }`.
 - **PersonaSignals** – optional `itemScoresFromSimilarSessions` (itemId → score), `popularAmongSimilar` (ordered itemIds).
 - **RankOptions** – `{ limit: number; algorithmVersion?: string }`.
@@ -82,7 +82,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Implementations**:
 
-- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` across style/material/color/size plus richer furniture signals (brand, condition, delivery, eco tags, modular/small-space features, price bucket), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. algorithmVersion: `preference_weights_v1`.
+- **PreferenceWeightsRanker** – Personal-only: scores by `SessionContext.preferenceWeights` across style/material/color/size plus richer furniture signals (brand, condition, delivery, eco tags, modular/small-space features, price bucket, seat count, cover/frame/leg material, cushion filling), then normalizes by the number of matched signals (square-root normalization) to reduce tag-count bias. algorithmVersion: `preference_weights_v1`.
 - **PersonalPlusPersonaRanker** – Blends personal score and persona score (configurable alpha). Personal scores use the same normalization; persona scores are normalized to the max persona score in the candidate set for scale alignment. When the session has no personal weights, alpha falls back to 0 (persona-only); when an item has no personal signals, alpha is capped to favor persona. algorithmVersion: `personal_plus_persona_v1`. Falls back to personal-only when `personaSignals` is missing or empty.
 - **applyExploration(rankedIds, candidates, options)** – Applies exploration to avoid over-optimization. When `explorationRate === 0`, returns ranker order unchanged. When rate &gt; 0, replaces roughly `rate × limit` positions by sampling from the top `2×limit` region of the ranked window (stochastic rounding), with optional `seed` for reproducibility.
 

@@ -8,11 +8,21 @@ const DEFAULT_META_MAX_BYTES = 1024 * 1024; // 1MB prefix for metadata
 const DEFAULT_ALLOWED_DOMAINS = [
   // --- CDN / media domains ---
   "images.unsplash.com",
-  "cdn.shopify.com",
+  "*.shopify.com",               // cdn.shopify.com and other Shopify subdomains
   "cdn.bolia.com",
   "images.prismic.io",           // Prismic CMS (used by Rum21/RoyalDesign)
   "noga.cdn-norce.tech",         // Norce commerce CDN (Nordic retailers)
   "picsum.photos",               // Placeholder images (sample data)
+  "*.cloudinary.com",            // Cloudinary CDN (used by many retailers)
+  "*.imgix.net",                 // imgix CDN
+  "*.scene7.com",                // Adobe Scene7 CDN
+  "*.akamaized.net",             // Akamai CDN
+  "*.cloudfront.net",            // AWS CloudFront CDN
+  // --- Brand domains (products sold via multiple retailers) ---
+  "*.gubi.com",                  // Gubi (sold via Rum21, Nordiskagalleriet, etc.)
+  "*.haydesign.com",             // HAY Design
+  "*.muuto.com",                 // Muuto
+  "*.fritzhansen.com",           // Fritz Hansen
   // --- Retailer domains (wildcard *.domain covers subdomains) ---
   "*.ikea.com",                  // www.ikea.com, assets.ikea.com
   "*.mio.se",                    // www.mio.se, images.mio.se
@@ -20,6 +30,7 @@ const DEFAULT_ALLOWED_DOMAINS = [
   "*.rum21.se",                  // media.rum21.se
   "*.royaldesign.se",            // api-prod.royaldesign.se
   "*.ellosgroup.com",            // assets.ellosgroup.com (Ellos, Jotex)
+  "*.ellos.se",                  // ellos.se (may serve images directly)
   "*.jotex.se",
   "*.lannamobler.se",            // cdn.lannamobler.se
   "*.emhome.se",
@@ -124,7 +135,8 @@ function assertAllowedTarget(parsedUrl: URL): void {
   if (allowedDomains.length > 0) {
     const ok = allowedDomains.some((pattern) => hostMatchesPattern(hostname, pattern));
     if (!ok) {
-      throw new ProxyError(403, "Target domain is not allowed");
+      console.warn(`[image-proxy] BLOCKED domain: ${hostname} (url: ${parsedUrl.href.slice(0, 200)})`);
+      throw new ProxyError(403, `Target domain is not allowed: ${hostname}`);
     }
   }
 }

@@ -11,10 +11,12 @@ from typing import Any
 from app.firestore_client import get_firestore_client, write_items, create_run, update_run, create_job, update_job
 from app.normalization import (
     canonical_url,
+    clean_description_text,
     normalize_material,
     normalize_color_family,
     normalize_size_class,
     normalize_new_used,
+    normalize_price_amount,
 )
 
 
@@ -172,13 +174,9 @@ def _parse_feed_rows(rows: list[dict], feed_format: str) -> list[dict]:
 def _normalize_item(raw: dict, source_id: str) -> dict | None:
     """Convert raw item to Firestore item schema."""
     try:
-        price = raw.get("price")
-        if price is None:
+        price_amount = normalize_price_amount(raw.get("price"))
+        if price_amount is None:
             return None
-        try:
-            price_amount = float(price)
-        except (TypeError, ValueError):
-            price_amount = 0.0
         url = (raw.get("url") or "").strip()
         if not url:
             return None
@@ -198,7 +196,7 @@ def _normalize_item(raw: dict, source_id: str) -> dict | None:
         if img_url:
             images.append({"url": img_url, "alt": (raw.get("title") or "")[:200]})
         title = (raw.get("title") or "Untitled").strip()[:500]
-        desc_short = (raw.get("description") or "").strip() or None
+        desc_short = clean_description_text(raw.get("description"))
         import hashlib
         item_id = hashlib.sha256(canonical.encode()).hexdigest()[:24]
         return {
@@ -241,5 +239,4 @@ def _num(v: Any) -> float | None:
         return float(v)
     except (TypeError, ValueError):
         return None
-
 

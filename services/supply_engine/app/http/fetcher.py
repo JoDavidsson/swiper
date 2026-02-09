@@ -439,9 +439,11 @@ def absolute_url(base_url: str, href: str) -> str | None:
         return "https:" + href
     if href.startswith("http://") or href.startswith("https://"):
         return href
-    if href.startswith("/"):
-        return urljoin(base_url.rstrip("/") + "/", href.lstrip("/"))
-    return urljoin(base_url.rstrip("/") + "/", href)
+    # Let urljoin handle both root-relative and relative links correctly.
+    # The previous implementation stripped the leading "/" and produced
+    # duplicated path segments on collection pages (e.g. Shopify),
+    # causing many synthetic 404 URLs.
+    return urljoin(base_url, href)
 
 
 def filter_allowlisted(urls: Iterable[str], *, allowlist_policy: dict | None) -> list[str]:

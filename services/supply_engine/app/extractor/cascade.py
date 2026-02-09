@@ -23,7 +23,7 @@ _IMAGE_EXTENSIONS = frozenset({
 
 # Path segments that suggest the URL serves images (even without an extension)
 _IMAGE_PATH_HINTS = (
-    "/images/", "/image/", "/img/", "/media/", "/assets/",
+    "/images/", "/image/", "/img/", "/media/",
     "/bilder/", "/foto/", "/photos/", "/pics/",
     "/product-images/", "/product_images/",
     "/thumbnails/", "/thumb/",
@@ -97,6 +97,7 @@ def _is_likely_image_url(url: str) -> bool:
             return True
 
     # 3. Check for image-related path segments
+    # Treat /assets/ conservatively: extensionless asset URLs are often logos/files.
     for hint in _IMAGE_PATH_HINTS:
         if hint in path_lower:
             return True
@@ -204,6 +205,16 @@ class NormalizedProduct:
     delivery_eta: str | None = None
     shipping_cost: float | None = None
     enrichment_evidence: list[str] | None = None
+    # Rich furniture specs (extracted from spec tables / facets)
+    seat_height_cm: float | None = None
+    seat_depth_cm: float | None = None
+    seat_width_cm: float | None = None
+    seat_count: int | None = None
+    weight_kg: float | None = None
+    frame_material: str | None = None
+    cover_material: str | None = None
+    leg_material: str | None = None
+    cushion_filling: str | None = None
 
 
 def _domain(url: str) -> str:
@@ -436,6 +447,45 @@ def _extract_description_from_dom(soup: Any) -> str | None:
     return None
 
 
+def _extract_price_raw_from_dom(soup: Any) -> str | None:
+    """Extract first plausible price string from common DOM price selectors."""
+    selectors = [
+        "[itemprop='price']",
+        "[data-price]",
+        "[data-price-amount]",
+        "[data-testid*='price']",
+        "[id*='price']",
+        "[class*='price']",
+        "[class*='pricing']",
+        ".price",
+        ".product-price",
+        ".current-price",
+        ".sales-price",
+        ".price__value",
+    ]
+    # Prefer explicit currency-bearing prices first to avoid grabbing
+    # unrelated numeric fragments (dimensions, review counts, etc.).
+    currency_price_re = re.compile(r"\d[\d\s.,:-]{0,24}\s*(?:kr|sek|eur|usd)\b", re.IGNORECASE)
+    fallback_price_re = re.compile(r"\d[\d\s.,:-]{0,24}", re.IGNORECASE)
+    for sel in selectors:
+        for el in soup.select(sel):
+            candidates: list[str] = []
+            for attr in ("content", "data-price", "data-price-amount", "value"):
+                val = el.get(attr)
+                if isinstance(val, str) and val.strip():
+                    candidates.append(val.strip())
+            txt = _clean_text(el.get_text(" ", strip=True))
+            if txt:
+                candidates.append(txt)
+            for c in candidates:
+                m = currency_price_re.search(c) or fallback_price_re.search(c)
+                if m:
+                    raw = m.group(0).strip()
+                    if re.search(r"\d", raw):
+                        return raw
+    return None
+
+
 def _extract_dimensions_from_facets(facets: dict | None) -> dict | None:
     if not isinstance(facets, dict) or not facets:
         return None
@@ -521,6 +571,83 @@ def _extract_material_from_dom(soup: Any) -> str | None:
         if raw:
             return normalize_material(raw) or raw
     return None
+
+
+def _extract_rich_specs_from_dom(soup: Any) -> dict:
+    """Extract rich furniture specifications from DOM spec tables.
+
+    Returns a dict with keys: seat_height_cm, seat_depth_cm, seat_width_cm,
+    seat_count, weight_kg, frame_material, cover_material, leg_material,
+    cushion_filling.  Values are None if not found.
+    """
+    specs: dict = {
+        "seat_height_cm": None,
+        "seat_depth_cm": None,
+        "seat_width_cm": None,
+        "seat_count": None,
+        "weight_kg": None,
+        "frame_material": None,
+        "cover_material": None,
+        "leg_material": None,
+        "cushion_filling": None,
+    }
+
+    _dim_labels = {
+        "sitthojd": "seat_height_cm",
+        "seat_height": "seat_height_cm",
+        "sittdjup": "seat_depth_cm",
+        "seat_depth": "seat_depth_cm",
+        "sittbredd": "seat_width_cm",
+        "seat_width": "seat_width_cm",
+    }
+    _count_labels = {"antal_sitsar", "antal_sittplatser", "seats", "number_of_seats", "sitsar"}
+    _weight_labels = {"vikt", "weight", "totalvikt"}
+    _frame_labels = {"stomme", "frame", "stommaterial", "frame_material"}
+    _cover_labels = {"kladsel", "kladselmaterial", "cover", "upholstery", "tygkladsel", "tyg"}
+    _leg_labels = {"ben", "legs", "fotter", "feet", "benmaterial", "leg_material"}
+    _filling_labels = {"kuddfyllning", "fyllning", "filling", "cushion", "sittfyllning"}
+
+    for raw_key, raw_val in _iter_spec_pairs_from_dom(soup):
+        key = _normalize_label(raw_key)
+        val = _clean_text(raw_val)
+        if not key or not val:
+            continue
+
+        # Dimensional specs (cm)
+        if key in _dim_labels:
+            parsed = _parse_dimension_value_to_cm(val)
+            if parsed is not None and specs[_dim_labels[key]] is None:
+                specs[_dim_labels[key]] = parsed
+
+        # Seat count
+        elif key in _count_labels:
+            try:
+                count = int(re.search(r"\d+", val).group())  # type: ignore[union-attr]
+                if 1 <= count <= 20 and specs["seat_count"] is None:
+                    specs["seat_count"] = count
+            except (AttributeError, ValueError):
+                pass
+
+        # Weight
+        elif key in _weight_labels:
+            try:
+                w = float(re.search(r"[\d.]+", val).group())  # type: ignore[union-attr]
+                if 0 < w < 500 and specs["weight_kg"] is None:
+                    specs["weight_kg"] = round(w, 1)
+            except (AttributeError, ValueError):
+                pass
+
+        # Material specs (strings)
+        elif key in _frame_labels and specs["frame_material"] is None:
+            specs["frame_material"] = val[:100]
+        elif key in _cover_labels and specs["cover_material"] is None:
+            specs["cover_material"] = val[:100]
+        elif key in _leg_labels and specs["leg_material"] is None:
+            specs["leg_material"] = val[:100]
+        elif key in _filling_labels and specs["cushion_filling"] is None:
+            specs["cushion_filling"] = val[:100]
+
+    return specs
 
 
 def _extract_brand_from_dom(soup: Any) -> str | None:
@@ -646,12 +773,31 @@ def _extract_images_from_dom(html: str, *, base_url: str) -> list[str]:
         if fallback_img:
             _add(fallback_img.get("src"))
 
-    # 3. Any <img> with product-related CSS classes
+    # 3. Any <img> with product-related CSS classes (not in banner/nav/footer)
     product_img_classes = re.compile(
-        r"product|pdp|gallery|hero|main-image|primary-image|featured",
+        r"product|pdp|gallery|main-image|primary-image",
         re.IGNORECASE,
     )
+    # Containers that likely hold NON-product images (banners, navigation, etc.)
+    _non_product_tags = {"header", "nav", "footer", "aside"}
+    _non_product_classes = re.compile(
+        r"banner|hero-banner|site-header|nav-bar|footer|newsletter|promo-strip|campaign-banner|cookie",
+        re.IGNORECASE,
+    )
+
+    def _is_inside_non_product_container(tag: Any) -> bool:
+        """Check if an image tag is inside a banner/nav/footer/aside container."""
+        for parent in tag.parents:
+            if parent.name in _non_product_tags:
+                return True
+            parent_classes = " ".join(parent.get("class", []))
+            if _non_product_classes.search(parent_classes):
+                return True
+        return False
+
     for img_tag in soup.find_all("img"):
+        if _is_inside_non_product_container(img_tag):
+            continue
         classes = " ".join(img_tag.get("class", []))
         img_id = img_tag.get("id", "")
         if product_img_classes.search(classes) or product_img_classes.search(img_id):
@@ -662,8 +808,11 @@ def _extract_images_from_dom(html: str, *, base_url: str) -> list[str]:
                     break
 
     # 4. Large images by dimension hints (width/height attributes > 300)
+    #    Skip images inside non-product containers.
     if not candidates:
         for img_tag in soup.find_all("img"):
+            if _is_inside_non_product_container(img_tag):
+                continue
             w = img_tag.get("width", "")
             h = img_tag.get("height", "")
             try:
@@ -671,6 +820,9 @@ def _extract_images_from_dom(html: str, *, base_url: str) -> list[str]:
                 h_val = int(str(h).replace("px", "")) if h else 0
             except (ValueError, TypeError):
                 w_val, h_val = 0, 0
+            # Penalise banner-like aspect ratios (very wide images)
+            if w_val > 0 and h_val > 0 and w_val / h_val > 3.0:
+                continue
             if w_val >= 300 or h_val >= 300:
                 for attr in ("data-src", "src"):
                     val = img_tag.get(attr)
@@ -725,11 +877,42 @@ def _extract_from_jsonld(product: dict) -> dict:
             if isinstance(ps, dict):
                 price_raw = ps.get("price")
                 currency = currency or (ps.get("priceCurrency") or "").strip() or None
+            elif isinstance(ps, list):
+                for spec in ps:
+                    if not isinstance(spec, dict):
+                        continue
+                    if price_raw is None:
+                        price_raw = spec.get("price")
+                    if not currency:
+                        currency = (spec.get("priceCurrency") or "").strip() or None
+                    if price_raw is not None and currency:
+                        break
     elif isinstance(offers, list) and offers:
-        o = offers[0]
-        if isinstance(o, dict):
-            currency = (o.get("priceCurrency") or "").strip() or None
-            price_raw = o.get("price") or None
+        for o in offers:
+            if not isinstance(o, dict):
+                continue
+            if not currency:
+                currency = (o.get("priceCurrency") or "").strip() or None
+            if price_raw is None:
+                price_raw = o.get("price") or None
+            if price_raw is None:
+                ps = o.get("priceSpecification")
+                if isinstance(ps, dict):
+                    price_raw = ps.get("price")
+                    if not currency:
+                        currency = (ps.get("priceCurrency") or "").strip() or None
+                elif isinstance(ps, list):
+                    for spec in ps:
+                        if not isinstance(spec, dict):
+                            continue
+                        if price_raw is None:
+                            price_raw = spec.get("price")
+                        if not currency:
+                            currency = (spec.get("priceCurrency") or "").strip() or None
+                        if price_raw is not None and currency:
+                            break
+            if price_raw is not None and currency:
+                break
 
     # P1: dimensions, material, color
     dimensions_raw = _parse_dimensions_from_product(product)
@@ -813,12 +996,8 @@ def _absolute(u: str | None, base: str) -> str | None:
     u = u.strip()
     if u.startswith("//"):
         result = "https:" + u
-    elif u.startswith(("http://", "https://")):
-        result = u
-    elif u.startswith("/"):
-        result = urljoin(base.rstrip("/") + "/", u.lstrip("/"))
     else:
-        result = urljoin(base.rstrip("/") + "/", u)
+        result = urljoin(base, u)
     return _encode_non_ascii(result)
 
 
@@ -1211,6 +1390,10 @@ def extract_product_from_html(
             warnings.append("images:none_found")
 
         money = parse_money_sv(raw.get("priceRaw"))
+        jsonld_currency = str(raw.get("priceCurrency") or "").strip().upper() or None
+        if jsonld_currency and money.currency and jsonld_currency != money.currency:
+            warnings.append("price:currency_mismatch")
+        resolved_jsonld_currency = jsonld_currency or money.currency
         if money.warnings:
             warnings.extend([f"price:{w}" for w in money.warnings if w != "missing"])
 
@@ -1221,7 +1404,7 @@ def extract_product_from_html(
                 canonical=bool(canonical2),
                 images=bool(images),
                 price_amount=money.amount is not None,
-                price_currency=bool(money.currency),
+                price_currency=bool(resolved_jsonld_currency),
                 description=bool(raw.get("description")),
                 dimensions=bool(raw.get("dimensionsRaw")),
                 material=bool(raw.get("materialRaw")),
@@ -1235,7 +1418,7 @@ def extract_product_from_html(
                 canonical_url=canonical2,
                 title=title,
                 price_amount=money.amount,
-                price_currency=money.currency,
+                price_currency=resolved_jsonld_currency,
                 price_raw=money.raw or None,
                 images=images,
                 description=raw.get("description"),
@@ -1414,6 +1597,7 @@ def extract_product_from_html(
 
     # DOM semantic fallback: rely on og tags + title from H1, and semantic meta tags for price.
     try:
+        from app.locator.classifier import classify_url
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html, "lxml")
@@ -1433,17 +1617,34 @@ def extract_product_from_html(
             warnings.append("images:none_found")
 
         price_raw = None
+        dom_price_currency = None
         mp = soup.find("meta", property="product:price:amount")
         if mp and mp.get("content"):
             price_raw = mp.get("content")
+        mpc = soup.find("meta", property="product:price:currency")
+        if mpc and mpc.get("content"):
+            dom_price_currency = str(mpc.get("content")).strip().upper() or None
+        if not dom_price_currency:
+            ip_currency = soup.find(attrs={"itemprop": "priceCurrency"})
+            if ip_currency:
+                dom_price_currency = str(ip_currency.get("content") or ip_currency.get_text(" ", strip=True)).strip().upper() or None
+        if not price_raw:
+            price_raw = _extract_price_raw_from_dom(soup)
         money = parse_money_sv(price_raw)
+        if dom_price_currency and money.currency and dom_price_currency != money.currency:
+            warnings.append("price:currency_mismatch")
+        resolved_dom_currency = dom_price_currency or money.currency
         if money.warnings:
             warnings.extend([f"price:{w}" for w in money.warnings if w != "missing"])
 
         # Guardrail: avoid treating category/listing pages as products.
-        # For DOM-only extraction, require either og:type=product OR a parseable price.
+        # For DOM-only extraction, require either:
+        # - og:type=product, or
+        # - a parseable price AND a product-like URL classification.
         og_type = (signals.og_type or "").lower()
-        if ("product" not in og_type) and (money.amount is None):
+        cls = classify_url(final_url)
+        productish_url = cls.url_type_hint == "product" or cls.confidence >= 0.65
+        if ("product" not in og_type) and not (money.amount is not None and productish_url):
             return None
 
         errs = _validate_required(title=title, canonical_url=canonical)
@@ -1455,12 +1656,13 @@ def extract_product_from_html(
             material_raw = _extract_material_from_dom(soup)
             brand_raw = _extract_brand_from_dom(soup)
             color_raw = infer_color_from_title(title)
+            rich_specs = _extract_rich_specs_from_dom(soup)
             score = _score(
                 title=bool(title),
                 canonical=bool(canonical),
                 images=bool(imgs),
                 price_amount=money.amount is not None,
-                price_currency=bool(money.currency),
+                price_currency=bool(resolved_dom_currency),
                 description=bool(description_raw),
                 dimensions=bool(dimensions_raw),
                 material=bool(material_raw),
@@ -1474,7 +1676,7 @@ def extract_product_from_html(
                 canonical_url=canonical,
                 title=title,
                 price_amount=money.amount,
-                price_currency=money.currency,
+                price_currency=resolved_dom_currency,
                 price_raw=money.raw or None,
                 images=imgs,
                 description=description_raw,
@@ -1489,6 +1691,15 @@ def extract_product_from_html(
                 dimensions_raw=dimensions_raw,
                 material_raw=material_raw,
                 color_raw=color_raw,
+                seat_height_cm=rich_specs.get("seat_height_cm"),
+                seat_depth_cm=rich_specs.get("seat_depth_cm"),
+                seat_width_cm=rich_specs.get("seat_width_cm"),
+                seat_count=rich_specs.get("seat_count"),
+                weight_kg=rich_specs.get("weight_kg"),
+                frame_material=rich_specs.get("frame_material"),
+                cover_material=rich_specs.get("cover_material"),
+                leg_material=rich_specs.get("leg_material"),
+                cushion_filling=rich_specs.get("cushion_filling"),
             )
             return _apply_enrichment(
                 product,
@@ -1506,6 +1717,26 @@ def extract_product_from_html(
 # ============================================================================
 # BATCH EXTRACTION FROM EMBEDDED STATE
 # ============================================================================
+
+def _description_matches_title(title: str | None, description: str | None) -> bool:
+    """Check if a description plausibly belongs to the given product title.
+
+    Returns True if at least one significant word (>3 chars) from the title
+    appears in the first 300 characters of the description.  This catches
+    obvious mismatches where the description is for an entirely different product.
+    """
+    if not title or not description:
+        return True  # can't validate, allow through
+    title_words = {
+        w.lower()
+        for w in re.split(r"[\s,\-/]+", title)
+        if len(w) > 3 and w.isalpha()
+    }
+    if not title_words:
+        return True
+    desc_prefix = description[:300].lower()
+    return any(w in desc_prefix for w in title_words)
+
 
 def extract_products_batch_from_html(
     *,
@@ -1597,7 +1828,11 @@ def extract_products_batch_from_html(
                 price_currency=price_currency,
                 price_raw=str(price_amount) if price_amount is not None else None,
                 images=images,
-                description=raw.get("description"),
+                description=(
+                    raw.get("description")
+                    if _description_matches_title(title, raw.get("description"))
+                    else None
+                ),
                 brand=raw.get("brand"),
                 extracted_at=extracted_at_iso,
                 method="embedded_state",

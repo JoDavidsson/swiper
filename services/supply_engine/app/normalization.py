@@ -2,6 +2,9 @@
 
 Also includes URL normalization for source configuration.
 """
+import html
+import math
+import re
 from typing import Any
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
@@ -386,3 +389,117 @@ def canonical_url(url: str) -> str:
         return urlunparse((parsed.scheme, netloc, path, parsed.params, new_query, ""))
     except Exception:
         return url
+
+
+def normalize_price_amount(raw: Any) -> float | None:
+    """Parse price into a positive finite float.
+
+    Returns None for missing/invalid/zero/negative values to avoid showing 0 SEK.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        text = raw.replace("\u00a0", " ").strip()
+        if not text:
+            return None
+        # Take first numeric span to handle ranges like "12 999 - 15 999 kr".
+        m = re.search(r"-?\d[\d\s.,]*", text)
+        if not m:
+            return None
+        token = m.group(0).strip().replace(" ", "")
+        if not token:
+            return None
+
+        sign = -1 if token.startswith("-") else 1
+        token = token.lstrip("-").strip(".,")
+        if not token:
+            return None
+
+        if "," in token and "." in token:
+            # Last separator is decimal separator; the other is thousands separator.
+            if token.rfind(",") > token.rfind("."):
+                token = token.replace(".", "").replace(",", ".")
+            else:
+                token = token.replace(",", "")
+        elif token.count(",") == 1 and token.count(".") == 0:
+            left, right = token.split(",", 1)
+            if len(right) == 3 and left.isdigit() and right.isdigit():
+                token = left + right  # thousands group
+            else:
+                token = left + "." + right  # decimal comma
+        elif token.count(".") == 1 and token.count(",") == 0:
+            left, right = token.split(".", 1)
+            if len(right) == 3 and left.isdigit() and right.isdigit():
+                token = left + right  # thousands group
+        elif token.count(",") > 1 and token.count(".") == 0:
+            token = token.replace(",", "")
+        elif token.count(".") > 1 and token.count(",") == 0:
+            token = token.replace(".", "")
+
+        raw = f"-{token}" if sign < 0 else token
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(value) or value <= 0:
+        return None
+    return value
+
+
+def clean_description_text(raw: Any) -> str | None:
+    """Decode HTML entities/tags and normalize whitespace for product descriptions.
+
+    Handles double/triple-encoded HTML entities by running unescape in a loop
+    until the output stabilises (up to 3 passes).
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+
+    # Multi-pass unescape to handle double/triple-encoded entities
+    # e.g. "&amp;lt;p&amp;gt;" -> "&lt;p&gt;" -> "<p>"
+    for _ in range(3):
+        unescaped = html.unescape(text)
+        if unescaped == text:
+            break
+        text = unescaped
+
+    # Convert line-break tags to actual line breaks.
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
+    # Remove remaining tags (run twice to catch nested/malformed tags).
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+
+    # Final unescape pass to catch entities that were inside tags.
+    text = html.unescape(text)
+
+    # Normalize per-line whitespace while keeping paragraphs.
+    lines = [re.sub(r"\s+", " ", ln).strip() for ln in text.splitlines()]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return None
+    return "\n\n".join(lines)
+
+
+# ============================================================================
+# CURRENCY VALIDATION
+# ============================================================================
+
+# Accepted currencies for the Swedish market.
+_ACCEPTED_CURRENCIES = {"SEK", "KR"}
+
+
+def validate_currency(raw: str | None) -> str | None:
+    """Return 'SEK' if the currency is acceptable for our market, else None.
+
+    Accepts 'SEK', 'kr' (case-insensitive).  Returns None for EUR, USD, etc.
+    so the caller can decide whether to skip or flag the item.
+    """
+    if not raw:
+        return None
+    normalised = raw.strip().upper()
+    if normalised in _ACCEPTED_CURRENCIES:
+        return "SEK"
+    return None

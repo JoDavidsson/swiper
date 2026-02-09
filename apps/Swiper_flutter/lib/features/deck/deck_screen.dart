@@ -146,8 +146,9 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (context.mounted)
+      if (context.mounted) {
         ref.read(currentSurfaceProvider.notifier).state = {'name': 'deck_card'};
+      }
     });
     final deckState = ref.watch(deckItemsProvider);
     final sessionId = ref.watch(sessionIdProvider);
@@ -159,11 +160,25 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 
     return AppShell(
       title: AppConstants.appName,
-      leading: IconButton(
-        icon: const Icon(Icons.menu),
-        onPressed: () => _showMenuSheet(context, ref),
-        tooltip: strings.menu,
+      transparentAppBar: true,
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: _DeckHeaderButton(
+          icon: Icons.menu,
+          onPressed: () => _showMenuSheet(context, ref),
+          tooltip: strings.menu,
+        ),
       ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: _DeckHeaderButton(
+            icon: Icons.tune,
+            onPressed: () => _showFiltersSheet(context, ref),
+            tooltip: strings.filters,
+          ),
+        ),
+      ],
       automaticallyImplyLeading: false,
       body: deckState.when(
         loading: () {
@@ -1105,6 +1120,34 @@ class _SheetHandle extends StatelessWidget {
   }
 }
 
+class _DeckHeaderButton extends StatelessWidget {
+  const _DeckHeaderButton({
+    required this.icon,
+    required this.onPressed,
+    required this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surface.withValues(alpha: 0.88),
+      shape: const CircleBorder(),
+      elevation: 2,
+      shadowColor: Colors.black12,
+      child: IconButton(
+        icon: Icon(icon, size: 20),
+        onPressed: onPressed,
+        tooltip: tooltip,
+        splashRadius: 22,
+      ),
+    );
+  }
+}
+
 class _MenuTile extends StatelessWidget {
   const _MenuTile({
     required this.icon,
@@ -1215,15 +1258,21 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
 
   Map<String, dynamic> get _selectedFilters {
     final map = <String, dynamic>{};
-    if (_sizeClass != null && _sizeClass!.isNotEmpty)
+    if (_sizeClass != null && _sizeClass!.isNotEmpty) {
       map['sizeClass'] = _sizeClass!;
-    if (_colorFamily != null && _colorFamily!.isNotEmpty)
+    }
+    if (_colorFamily != null && _colorFamily!.isNotEmpty) {
       map['colorFamily'] = _colorFamily!;
-    if (_newUsed != null && _newUsed!.isNotEmpty) map['newUsed'] = _newUsed!;
-    if (_subCategory != null && _subCategory!.isNotEmpty)
+    }
+    if (_newUsed != null && _newUsed!.isNotEmpty) {
+      map['newUsed'] = _newUsed!;
+    }
+    if (_subCategory != null && _subCategory!.isNotEmpty) {
       map['subCategory'] = _subCategory!;
-    if (_roomType != null && _roomType!.isNotEmpty)
+    }
+    if (_roomType != null && _roomType!.isNotEmpty) {
       map['roomType'] = _roomType!;
+    }
     return map;
   }
 
@@ -1566,28 +1615,29 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
                       ? _exitAnimation?.value ?? Offset(_dragDx, _dragDy)
                       : Offset(_dragDx, _dragDy);
 
-                  return Transform(
-                    transform: Matrix4.identity()
-                      ..translate(offset.dx, offset.dy)
-                      ..rotateZ(_isAnimatingOut ? _dragDx / 1000 : _rotation),
-                    alignment: Alignment.center,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        widget.child,
-                        if (_overlayColor != null && !_isAnimatingOut)
-                          IgnorePointer(
-                            child: Container(
-                              margin:
-                                  const EdgeInsets.all(AppTheme.spacingUnit),
-                              decoration: BoxDecoration(
-                                color: _overlayColor,
-                                borderRadius:
-                                    BorderRadius.circular(AppTheme.radiusCard),
+                  return Transform.translate(
+                    offset: offset,
+                    child: Transform.rotate(
+                      angle: _isAnimatingOut ? _dragDx / 1000 : _rotation,
+                      alignment: Alignment.center,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          widget.child,
+                          if (_overlayColor != null && !_isAnimatingOut)
+                            IgnorePointer(
+                              child: Container(
+                                margin:
+                                    const EdgeInsets.all(AppTheme.spacingUnit),
+                                decoration: BoxDecoration(
+                                  color: _overlayColor,
+                                  borderRadius: BorderRadius.circular(
+                                      AppTheme.radiusCard),
+                                ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },

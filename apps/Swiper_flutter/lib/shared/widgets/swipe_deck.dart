@@ -75,17 +75,17 @@ class _SwipeDeckState extends State<SwipeDeck> {
   String? _currentTopId;
   String? _impressionId;
   DateTime? _impressionStartedAt;
-  // Reserved for programmatic swipe triggers (e.g., button controls)
-  // ignore: unused_field
   VoidCallback? _triggerSwipeLeft;
-  // ignore: unused_field
   VoidCallback? _triggerSwipeRight;
-  // ignore: unused_field
   bool Function()? _isAnimatingGetter;
+  bool _buttonSwipeInFlight = false;
 
   // Undo support: track last swiped item and direction
   Item? _lastSwipedItem;
   String? _lastSwipeDirection;
+
+  bool get _isDeckAnimating =>
+      _buttonSwipeInFlight || (_isAnimatingGetter?.call() ?? false);
 
   @override
   void initState() {
@@ -105,6 +105,7 @@ class _SwipeDeckState extends State<SwipeDeck> {
         _triggerSwipeLeft = null;
         _triggerSwipeRight = null;
         _isAnimatingGetter = null;
+        _buttonSwipeInFlight = false;
       }
       WidgetsBinding.instance
           .addPostFrameCallback((_) => _maybeStartImpression());
@@ -145,7 +146,9 @@ class _SwipeDeckState extends State<SwipeDeck> {
   void _endImpressionIfAny(String endReason) {
     if (_impressionId == null ||
         _impressionStartedAt == null ||
-        widget.onCardImpressionEnd == null) return;
+        widget.onCardImpressionEnd == null) {
+      return;
+    }
     final itemId = _currentTopId ?? '';
     final durationMs =
         DateTime.now().difference(_impressionStartedAt!).inMilliseconds;
@@ -170,6 +173,9 @@ class _SwipeDeckState extends State<SwipeDeck> {
   }
 
   void _onSwipeAnimationEnd(Item item) {
+    if (_buttonSwipeInFlight) {
+      setState(() => _buttonSwipeInFlight = false);
+    }
     widget.onSwipeAnimationEnd?.call(item);
   }
 
@@ -191,30 +197,29 @@ class _SwipeDeckState extends State<SwipeDeck> {
     widget.onSwipeRight(top, 0);
   }
 
-  void _onSwipeLeftButton() {
-    if (widget.items.isEmpty) return;
+  void _triggerButtonSwipe(String direction) {
+    if (widget.items.isEmpty || _isDeckAnimating) return;
     final top = widget.items.first;
     _lastSwipedItem = top;
-    _lastSwipeDirection = 'left';
+    _lastSwipeDirection = direction;
     _endImpressionIfAny('swipe');
-    widget.onSwipeLeft(top, 0, gesture: 'button');
-    // Always remove directly for button presses (reliable, no animation timing issues)
-    widget.onSwipeAnimationEnd?.call(top);
-  }
-
-  void _onSwipeRightButton() {
-    if (widget.items.isEmpty) return;
-    final top = widget.items.first;
-    _lastSwipedItem = top;
-    _lastSwipeDirection = 'right';
-    _endImpressionIfAny('swipe');
-    widget.onSwipeRight(top, 0, gesture: 'button');
-    // Always remove directly for button presses (reliable, no animation timing issues)
-    widget.onSwipeAnimationEnd?.call(top);
+    if (direction == 'left') {
+      widget.onSwipeLeft(top, 0, gesture: 'button');
+    } else {
+      widget.onSwipeRight(top, 0, gesture: 'button');
+    }
+    final trigger =
+        direction == 'left' ? _triggerSwipeLeft : _triggerSwipeRight;
+    if (trigger == null) {
+      widget.onSwipeAnimationEnd?.call(top);
+      return;
+    }
+    setState(() => _buttonSwipeInFlight = true);
+    trigger();
   }
 
   Future<void> _onTapDetail() async {
-    if (widget.items.isEmpty) return;
+    if (widget.items.isEmpty || _isDeckAnimating) return;
     final top = widget.items.first;
     _endImpressionIfAny('detail_open');
     if (widget.onTapDetail != null) {
@@ -299,43 +304,73 @@ class _SwipeDeckState extends State<SwipeDeck> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingUnit),
-          child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _ControlButton(
-                    icon: Icons.close,
-                    color: AppTheme.negativeDislike,
-                    onPressed: _onSwipeLeftButton,
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.spacingUnit,
+            AppTheme.spacingUnit / 2,
+            AppTheme.spacingUnit,
+            AppTheme.spacingUnit,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingUnit,
+                  vertical: AppTheme.spacingUnit * 0.75,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                  border: Border.all(
+                    color: AppTheme.outlineSoft.withValues(alpha: 0.8),
                   ),
-                  const SizedBox(width: AppTheme.spacingUnit * 2),
-                  _ControlButton(
-                    icon: Icons.favorite,
-                    color: AppTheme.positiveLike,
-                    onPressed: _onSwipeRightButton,
-                  ),
-                  const SizedBox(width: AppTheme.spacingUnit * 2),
-                  _ControlButton(
-                    icon: Icons.undo,
-                    color: AppTheme.textSecondary,
-                    onPressed: widget.onSwipeUndo != null &&
-                            _lastSwipedItem != null
-                        ? () {
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _DeckActionButton(
+                      icon: Icons.close_rounded,
+                      color: AppTheme.negativeDislike,
+                      tooltip: 'Pass',
+                      onPressed: _isDeckAnimating
+                          ? null
+                          : () => _triggerButtonSwipe('left'),
+                    ),
+                    _DeckActionButton(
+                      icon: Icons.info_outline_rounded,
+                      color: AppTheme.secondaryAction,
+                      tooltip: 'Details',
+                      onPressed: _isDeckAnimating ? null : _onTapDetail,
+                    ),
+                    _DeckActionButton(
+                      icon: Icons.favorite_rounded,
+                      color: AppTheme.positiveLike,
+                      tooltip: 'Save',
+                      onPressed: _isDeckAnimating
+                          ? null
+                          : () => _triggerButtonSwipe('right'),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.onSwipeUndo != null && _lastSwipedItem != null)
+                Positioned(
+                  left: 18,
+                  top: -18,
+                  child: _UndoActionButton(
+                    onPressed: _isDeckAnimating
+                        ? null
+                        : () {
                             final item = _lastSwipedItem!;
                             final direction = _lastSwipeDirection ?? 'right';
                             _lastSwipedItem = null;
                             _lastSwipeDirection = null;
                             widget.onSwipeUndo!(item, direction);
-                          }
-                        : null,
+                            setState(() {});
+                          },
                   ),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
         ),
       ],
@@ -343,21 +378,75 @@ class _SwipeDeckState extends State<SwipeDeck> {
   }
 }
 
-class _ControlButton extends StatelessWidget {
-  const _ControlButton(
-      {required this.icon, required this.color, required this.onPressed});
+class _DeckActionButton extends StatefulWidget {
+  const _DeckActionButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onPressed,
+  });
 
   final IconData icon;
   final Color color;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_DeckActionButton> createState() => _DeckActionButtonState();
+}
+
+class _DeckActionButtonState extends State<_DeckActionButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null;
+    return GestureDetector(
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+      child: AnimatedScale(
+        scale: _pressed ? 0.88 : 1,
+        duration: const Duration(milliseconds: 130),
+        curve: Curves.easeOutCubic,
+        child: Material(
+          color: widget.color.withValues(alpha: enabled ? 0.15 : 0.08),
+          shape: const CircleBorder(),
+          child: IconButton(
+            icon: Icon(
+              widget.icon,
+              size: 30,
+              color: enabled ? widget.color : AppTheme.textCaption,
+            ),
+            tooltip: widget.tooltip,
+            onPressed: widget.onPressed,
+            splashRadius: 28,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UndoActionButton extends StatelessWidget {
+  const _UndoActionButton({required this.onPressed});
+
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.filled(
-      icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
+    return IconButton.filledTonal(
+      icon: Icon(
+        Icons.undo_rounded,
+        color:
+            onPressed != null ? AppTheme.textSecondary : AppTheme.textCaption,
+      ),
+      tooltip: 'Undo',
       onPressed: onPressed,
-      style:
-          IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
+      style: IconButton.styleFrom(
+        backgroundColor: AppTheme.surface.withValues(alpha: 0.95),
+        side: BorderSide(color: AppTheme.outlineSoft.withValues(alpha: 0.8)),
+      ),
     );
   }
 }

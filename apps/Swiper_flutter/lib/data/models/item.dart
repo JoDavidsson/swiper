@@ -61,6 +61,16 @@ class Item {
     this.featuredLabel,
     this.subCategory,
     this.roomTypes = const [],
+    // Rich furniture specs
+    this.seatHeightCm,
+    this.seatDepthCm,
+    this.seatWidthCm,
+    this.seatCount,
+    this.weightKg,
+    this.frameMaterial,
+    this.coverMaterial,
+    this.legMaterial,
+    this.cushionFilling,
   });
 
   final String id;
@@ -99,7 +109,34 @@ class Item {
   final String? subCategory;
   final List<String> roomTypes;
 
+  // Rich furniture specs
+  final double? seatHeightCm;
+  final double? seatDepthCm;
+  final double? seatWidthCm;
+  final int? seatCount;
+  final double? weightKg;
+  final String? frameMaterial;
+  final String? coverMaterial;
+  final String? legMaterial;
+  final String? cushionFilling;
+
+  /// Whether this item has any rich specification data.
+  bool get hasSpecs =>
+      seatHeightCm != null ||
+      seatDepthCm != null ||
+      seatWidthCm != null ||
+      seatCount != null ||
+      weightKg != null ||
+      frameMaterial != null ||
+      coverMaterial != null ||
+      legMaterial != null ||
+      cushionFilling != null;
+
   String? get firstImageUrl => images.isNotEmpty ? images.first.url : null;
+  bool get hasValidPrice => priceAmount > 0;
+  String priceLabel({String missingLabel = 'Price N/A'}) => hasValidPrice
+      ? '${priceAmount.toStringAsFixed(0)} $priceCurrency'
+      : missingLabel;
 
   factory Item.fromJson(Map<String, dynamic> json) {
     final imagesRaw = json['images'] as List? ?? [];
@@ -161,6 +198,19 @@ class Item {
           _string(json['featuredLabel']) ?? _string(json['featured_label']),
       subCategory: _string(json['subCategory']),
       roomTypes: _stringList(json['roomTypes']),
+      // Rich furniture specs (also look in facets map as fallback)
+      seatHeightCm: (json['seatHeightCm'] as num?)?.toDouble() ??
+          ((json['facets'] as Map?)?['sitthojd'] as num?)?.toDouble(),
+      seatDepthCm: (json['seatDepthCm'] as num?)?.toDouble() ??
+          ((json['facets'] as Map?)?['sittdjup'] as num?)?.toDouble(),
+      seatWidthCm: (json['seatWidthCm'] as num?)?.toDouble() ??
+          ((json['facets'] as Map?)?['sittbredd'] as num?)?.toDouble(),
+      seatCount: (json['seatCount'] as num?)?.toInt(),
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
+      frameMaterial: _string(json['frameMaterial']),
+      coverMaterial: _string(json['coverMaterial']),
+      legMaterial: _string(json['legMaterial']),
+      cushionFilling: _string(json['cushionFilling']),
     );
   }
 
@@ -193,6 +243,15 @@ class Item {
       if (featuredLabel != null) 'featuredLabel': featuredLabel,
       if (subCategory != null) 'subCategory': subCategory,
       if (roomTypes.isNotEmpty) 'roomTypes': roomTypes,
+      if (seatHeightCm != null) 'seatHeightCm': seatHeightCm,
+      if (seatDepthCm != null) 'seatDepthCm': seatDepthCm,
+      if (seatWidthCm != null) 'seatWidthCm': seatWidthCm,
+      if (seatCount != null) 'seatCount': seatCount,
+      if (weightKg != null) 'weightKg': weightKg,
+      if (frameMaterial != null) 'frameMaterial': frameMaterial,
+      if (coverMaterial != null) 'coverMaterial': coverMaterial,
+      if (legMaterial != null) 'legMaterial': legMaterial,
+      if (cushionFilling != null) 'cushionFilling': cushionFilling,
     };
   }
 }

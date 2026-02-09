@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-02-09T16:31:30.220998Z",
+  "config": {
+    "batchSize": 1,
+    "pagesPerSite": 20,
+    "rateLimitRps": 0.4,
+    "extractWorkers": 3,
+    "imageTimeoutSeconds": 8.0,
+    "maxImagesPerProduct": 5,
+    "urlFile": "scripts/url_lists/sleepo_only_2026-02-09.txt"
+  },
+  "input": {
+    "rawUrlTokenCount": 1,
+    "validEntryCount": 1,
+    "invalidTokenCount": 0,
+    "invalidTokenSamples": [],
+    "duplicateCount": 0,
+    "uniqueUrlCount": 1
+  },
+  "summary": {
+    "entryTotal": 1,
+    "entryPassed": 1,
+    "entryPassRate": 1.0,
+    "uniqueSiteTotal": 1,
+    "uniqueSitePassed": 1,
+    "uniqueSitePassRate": 1.0,
+    "uniqueSiteFullCompletion": 1,
+    "uniqueSiteFullCompletionRate": 1.0,
+    "testedPages": 20,
+    "acceptedPages": 20,
+    "pageCompletionRate": 1.0,
+    "discoveredUrls": 296,
+    "productHintUrls": 233,
+    "highConfidenceUrls": 233,
+    "productHintShareOfDiscovered": 0.7871621621621622,
+    "highConfidenceShareOfDiscovered": 0.7871621621621622,
+    "acceptedShareOfDiscovered": 0.06756756756756757,
+    "acceptedShareOfProductHints": 0.08583690987124463,
+    "sitesDiscoveredZero": 0,
+    "sitesDiscoveredNonzeroProductHintZero": 0,
+    "sitesProductHintNonzeroAcceptedZero": 0,
+    "sitesProductHintNonzeroAcceptedNonzero": 1,
+    "checkedImageUrls": 96,
+    "validImageUrls": 96,
+    "imageUrlValidRate": 1.0,
+    "acceptedProducts": 20,
+    "productsWithWorkingPrimaryImage": 20,
+    "primaryImageCoverageRate": 1.0,
+    "sitesWithInvalidImageUrls": 0,
+    "sitesWithPrimaryImageGap": 0,
+    "fetchErrorBreakdown": [],
+    "parseErrorBreakdown": [],
+    "imageIssueBreakdown": [],
+    "topFailureReasons": []
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "siteCount": 1,
+      "passed": 1,
+      "fullCompletion": 1,
+      "durationSec": 79.24549984931946,
+      "sites": [
+        "https://www.sleepo.se/"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "siteUrl": "https://www.sleepo.se/",
+      "status": "passed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.sleepo.se/",
+        "normalizedUrl": "https://www.sleepo.se",
+        "baseUrl": "https://www.sleepo.se",
+        "seedUrl": "https://www.sleepo.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl",
+        "fallbackUsed": false,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 296,
+        "productHintCount": 233,
+        "highConfidenceCount": 233
+      },
+      "pages": {
+        "tested": 20,
+        "accepted": 20,
+        "completionRate": 1.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 0,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {},
+        "parseErrorBreakdown": {},
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 20,
+        "productsWithImages": 20,
+        "productsWithWorkingPrimaryImage": 20,
+        "primaryImageCoverageRate": 1.0,
+        "urlsChecked": 96,
+        "urlsValid": 96,
+        "urlsInvalid": 0,
+        "urlValidRate": 1.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {
+          "jsonld": 20
+        },
+        "fetch": {
+          "http": 20
+        }
+      },
+      "non100Reasons": [],
+      "durationSec": 79.24,
+      "fullCompletion": true
+    }
+  ]
+}

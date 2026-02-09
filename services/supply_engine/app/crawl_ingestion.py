@@ -10,6 +10,7 @@ Pipeline:
 """
 from __future__ import annotations
 
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -45,6 +46,10 @@ class CrawlLogger:
     
     def info(self, msg: str):
         print(f"{self._prefix()}   {msg}", flush=True)
+
+    def detail(self, msg: str):
+        """Low-priority diagnostic output."""
+        print(f"{self._prefix()}   · {msg}", flush=True)
     
     def success(self, msg: str):
         print(f"{self._prefix()}   ✓ {msg}", flush=True)
@@ -75,6 +80,10 @@ class CrawlLogger:
         print(f"  Failed:             {stats.get('failed', 0)}", flush=True)
         if stats.get('blockedCount', 0) > 0:
             print(f"  Blocked (robots):   {stats.get('blockedCount', 0)}", flush=True)
+        if stats.get("currencyMismatchSkipped", 0) > 0:
+            print(f"  Currency mismatch:  {stats.get('currencyMismatchSkipped', 0)}", flush=True)
+        if stats.get("currencyUnknownSkipped", 0) > 0:
+            print(f"  Currency unknown:   {stats.get('currencyUnknownSkipped', 0)}", flush=True)
         print(f"{'-'*60}\n", flush=True)
 
 from app.firestore_client import (
@@ -97,7 +106,17 @@ from app.locator.sitemap import discover_from_sitemaps
 from app.locator.crawler import discover_from_category_crawl
 from app.extractor.cascade import extract_product_from_html, extract_products_batch_from_html
 from app.extractor.signals import extract_page_signals
-from app.normalization import canonical_url as canonicalize_url, normalize_material, normalize_color_family, normalize_size_class, infer_color_from_title, infer_size_from_title
+from app.normalization import (
+    canonical_url as canonicalize_url,
+    clean_description_text,
+    infer_color_from_title,
+    infer_size_from_title,
+    normalize_color_family,
+    normalize_material,
+    normalize_price_amount,
+    normalize_size_class,
+    validate_currency,
+)
 from app.monitor.drift import check_drift
 
 
@@ -239,6 +258,67 @@ def _missing_fields_for_product(product: Any) -> list[str]:
     if not (product.brand and str(product.brand).strip()):
         missing.append("brand")
     return missing
+
+
+def _coerce_item_price(*candidates: Any) -> float | None:
+    """Return first valid positive price from candidate raw values."""
+    for raw in candidates:
+        value = normalize_price_amount(raw)
+        if value is not None:
+            return value
+    return None
+
+
+_NON_SEK_CURRENCY_RE = re.compile(r"(?i)(?:\beur\b|€|\busd\b|\$|\bgbp\b|£|\bdkk\b|\bnok\b|\bchf\b)")
+_SEK_CURRENCY_RE = re.compile(r"(?i)(?:\bsek\b|\bkr\b|\bkron(?:a|or)\b)")
+
+
+def _currency_evidence_from_raw(raw: Any) -> str | None:
+    """Infer currency evidence from raw price text.
+
+    Returns:
+      - "sek" when there is explicit SEK/kr evidence
+      - "non_sek" when there is explicit foreign-currency evidence
+      - None when no clear currency token is present
+    """
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if _NON_SEK_CURRENCY_RE.search(text):
+        return "non_sek"
+    if _SEK_CURRENCY_RE.search(text):
+        return "sek"
+    return None
+
+
+def _resolve_item_currency(product: Any) -> tuple[str | None, str]:
+    """Resolve item currency with strict SEK-only policy.
+
+    Returns (currency, reason):
+      - ("SEK", "ok") for accepted SEK prices
+      - (None, "mismatch") for explicit non-SEK evidence
+      - (None, "unknown") when currency cannot be confidently determined
+    """
+    evidence = _currency_evidence_from_raw(getattr(product, "price_raw", None))
+    # Raw text evidence is the strongest signal. It catches cases where parser
+    # defaults (or stale fields) would otherwise mask explicit foreign currency.
+    if evidence == "non_sek":
+        return None, "mismatch"
+
+    raw_currency = getattr(product, "price_currency", None)
+    validated = validate_currency(raw_currency)
+    if validated:
+        return validated, "ok"
+
+    if evidence == "sek":
+        return "SEK", "ok"
+
+    # Explicit, non-accepted currency from extractor.
+    if raw_currency is not None and str(raw_currency).strip():
+        return None, "mismatch"
+    return None, "unknown"
 
 
 def _base_url(source: dict) -> str:
@@ -483,6 +563,9 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         "dimensionsRate": 0.0,
         "materialRate": 0.0,
         "browserFetchCount": 0,
+        "invalidPriceSkipped": 0,
+        "currencyMismatchSkipped": 0,
+        "currencyUnknownSkipped": 0,
     }
 
     # Get effective configuration (supports both new derived and legacy formats)
@@ -859,8 +942,29 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             for u in (product.images or [])
                             if isinstance(u, str) and u
                         ]
-                        price_amount = float(product.price_amount) if product.price_amount is not None else 0.0
-                        price_currency = (product.price_currency or "SEK").strip() or "SEK"
+                        price_amount = _coerce_item_price(
+                            product.price_amount, product.price_original, product.price_raw
+                        )
+                        if price_amount is None or price_amount <= 0:
+                            stats["invalidPriceSkipped"] = (
+                                int(stats.get("invalidPriceSkipped") or 0) + 1
+                            )
+                            continue
+                        price_currency, currency_reason = _resolve_item_currency(product)
+                        if price_currency is None:
+                            if currency_reason == "mismatch":
+                                stats["currencyMismatchSkipped"] = int(stats.get("currencyMismatchSkipped") or 0) + 1
+                                log.detail(
+                                    f"Skipping item with non-SEK currency evidence: "
+                                    f"{(product.price_currency or product.price_raw or '')[:60]}"
+                                )
+                            else:
+                                stats["currencyUnknownSkipped"] = int(stats.get("currencyUnknownSkipped") or 0) + 1
+                                log.detail(
+                                    f"Skipping item with unknown currency (no SEK evidence): "
+                                    f"{(product.price_raw or '')[:60]}"
+                                )
+                            continue
 
                         batch_items.append({
                             "sourceId": source_id,
@@ -869,7 +973,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             "canonicalUrl": canon,
                             "title": title,
                             "brand": (product.brand or "").strip() or None,
-                            "descriptionShort": (product.description or "").strip() or None,
+                            "descriptionShort": clean_description_text(product.description),
                             "priceAmount": price_amount,
                             "priceCurrency": price_currency,
                             "dimensionsCm": product.dimensions_raw,
@@ -903,6 +1007,16 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             "deliveryEta": product.delivery_eta,
                             "shippingCost": product.shipping_cost,
                             "enrichmentEvidence": product.enrichment_evidence or [],
+                            # Rich furniture specs
+                            "seatHeightCm": product.seat_height_cm,
+                            "seatDepthCm": product.seat_depth_cm,
+                            "seatWidthCm": product.seat_width_cm,
+                            "seatCount": product.seat_count,
+                            "weightKg": product.weight_kg,
+                            "frameMaterial": product.frame_material,
+                            "coverMaterial": product.cover_material,
+                            "legMaterial": product.leg_material,
+                            "cushionFilling": product.cushion_filling,
                             "extractionMeta": {
                                 "method": "browser" if resp.method == "browser" else product.method,
                                 "extractorMethod": product.method,
@@ -1132,8 +1246,29 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 canon = canonicalize_url(product.canonical_url)
                 title = product.title.strip()[:500] if product.title else "Untitled"
                 img_objs = [{"url": u, "alt": title[:200]} for u in (product.images or []) if isinstance(u, str) and u]
-                price_amount = float(product.price_amount) if product.price_amount is not None else 0.0
-                price_currency = (product.price_currency or "SEK").strip() or "SEK"
+                price_amount = _coerce_item_price(
+                    product.price_amount, product.price_original, product.price_raw
+                )
+                if price_amount is None or price_amount <= 0:
+                    stats["invalidPriceSkipped"] = (
+                        int(stats.get("invalidPriceSkipped") or 0) + 1
+                    )
+                    continue
+                price_currency, currency_reason = _resolve_item_currency(product)
+                if price_currency is None:
+                    if currency_reason == "mismatch":
+                        stats["currencyMismatchSkipped"] = int(stats.get("currencyMismatchSkipped") or 0) + 1
+                        log.detail(
+                            f"Skipping item with non-SEK currency evidence: "
+                            f"{(product.price_currency or product.price_raw or '')[:60]}"
+                        )
+                    else:
+                        stats["currencyUnknownSkipped"] = int(stats.get("currencyUnknownSkipped") or 0) + 1
+                        log.detail(
+                            f"Skipping item with unknown currency (no SEK evidence): "
+                            f"{(product.price_raw or '')[:60]}"
+                        )
+                    continue
                 dims = product.dimensions_raw
                 width_cm = (dims or {}).get("w") if dims else None
                 items.append(
@@ -1144,7 +1279,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                         "canonicalUrl": canon,
                         "title": title,
                         "brand": (product.brand or "").strip() or None,
-                        "descriptionShort": (product.description or "").strip() or None,
+                        "descriptionShort": clean_description_text(product.description),
                         "priceAmount": price_amount,
                         "priceCurrency": price_currency,
                         "dimensionsCm": dims,
@@ -1179,6 +1314,16 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                         "deliveryEta": product.delivery_eta,
                         "shippingCost": product.shipping_cost,
                         "enrichmentEvidence": product.enrichment_evidence or [],
+                        # Rich furniture specs
+                        "seatHeightCm": product.seat_height_cm,
+                        "seatDepthCm": product.seat_depth_cm,
+                        "seatWidthCm": product.seat_width_cm,
+                        "seatCount": product.seat_count,
+                        "weightKg": product.weight_kg,
+                        "frameMaterial": product.frame_material,
+                        "coverMaterial": product.cover_material,
+                        "legMaterial": product.leg_material,
+                        "cushionFilling": product.cushion_filling,
                         "extractionMeta": {
                             "method": "browser" if er.fetch_method == "browser" else product.method,
                             "extractorMethod": product.method,
@@ -1282,10 +1427,29 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                                 for u in (rp.images or [])
                                 if isinstance(u, str) and u
                             ]
-                            price_amount = (
-                                float(rp.price_amount) if rp.price_amount is not None else 0.0
+                            price_amount = _coerce_item_price(
+                                rp.price_amount, rp.price_original, rp.price_raw
                             )
-                            price_currency = (rp.price_currency or "SEK").strip() or "SEK"
+                            if price_amount is None or price_amount <= 0:
+                                stats["invalidPriceSkipped"] = (
+                                    int(stats.get("invalidPriceSkipped") or 0) + 1
+                                )
+                                continue
+                            price_currency, currency_reason = _resolve_item_currency(rp)
+                            if price_currency is None:
+                                if currency_reason == "mismatch":
+                                    stats["currencyMismatchSkipped"] = int(stats.get("currencyMismatchSkipped") or 0) + 1
+                                    log.detail(
+                                        f"Skipping refetch item with non-SEK currency evidence: "
+                                        f"{(rp.price_currency or rp.price_raw or '')[:60]}"
+                                    )
+                                else:
+                                    stats["currencyUnknownSkipped"] = int(stats.get("currencyUnknownSkipped") or 0) + 1
+                                    log.detail(
+                                        f"Skipping refetch item with unknown currency (no SEK evidence): "
+                                        f"{(rp.price_raw or '')[:60]}"
+                                    )
+                                continue
                             dims = rp.dimensions_raw
                             width_cm = (dims or {}).get("w") if dims else None
                             items.append(
@@ -1296,7 +1460,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                                     "canonicalUrl": canon,
                                     "title": title,
                                     "brand": (rp.brand or "").strip() or None,
-                                    "descriptionShort": (rp.description or "").strip() or None,
+                                    "descriptionShort": clean_description_text(rp.description),
                                     "priceAmount": price_amount,
                                     "priceCurrency": price_currency,
                                     "dimensionsCm": dims,
@@ -1332,6 +1496,16 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                                     "deliveryEta": rp.delivery_eta,
                                     "shippingCost": rp.shipping_cost,
                                     "enrichmentEvidence": rp.enrichment_evidence or [],
+                                    # Rich furniture specs
+                                    "seatHeightCm": rp.seat_height_cm,
+                                    "seatDepthCm": rp.seat_depth_cm,
+                                    "seatWidthCm": rp.seat_width_cm,
+                                    "seatCount": rp.seat_count,
+                                    "weightKg": rp.weight_kg,
+                                    "frameMaterial": rp.frame_material,
+                                    "coverMaterial": rp.cover_material,
+                                    "legMaterial": rp.leg_material,
+                                    "cushionFilling": rp.cushion_filling,
                                     "extractionMeta": {
                                         "method": "browser" if rer.fetch_method == "browser" else rp.method,
                                         "extractorMethod": rp.method,
@@ -1439,6 +1613,8 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 "materialRate": stats.get("materialRate", 0.0),
                 "browserFetchCount": stats.get("browserFetchCount", 0),
                 "blockedRate": stats["blockedRate"],
+                "currencyMismatchSkipped": int(stats.get("currencyMismatchSkipped") or 0),
+                "currencyUnknownSkipped": int(stats.get("currencyUnknownSkipped") or 0),
             },
         )
 

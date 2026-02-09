@@ -96,6 +96,24 @@ export function scoreItemWithSignals(
   const priceBucket = toPriceBucket(data.priceAmount);
   addWeightedSignal(priceBucket ? `price_bucket:${priceBucket}` : null, weights, state);
 
+  // Rich furniture spec signals
+  const seatCount = data.seatCount;
+  if (typeof seatCount === "number" && seatCount > 0 && seatCount <= 20) {
+    addWeightedSignal(`seats:${seatCount}`, weights, state);
+  }
+
+  const coverMaterial = normalizeToken(data.coverMaterial);
+  addWeightedSignal(coverMaterial ? `cover:${coverMaterial}` : null, weights, state);
+
+  const frameMaterial = normalizeToken(data.frameMaterial);
+  addWeightedSignal(frameMaterial ? `frame:${frameMaterial}` : null, weights, state);
+
+  const legMaterial = normalizeToken(data.legMaterial);
+  addWeightedSignal(legMaterial ? `legs:${legMaterial}` : null, weights, state);
+
+  const cushionFilling = normalizeToken(data.cushionFilling);
+  addWeightedSignal(cushionFilling ? `filling:${cushionFilling}` : null, weights, state);
+
   return state;
 }
 

@@ -1,0 +1,130 @@
+{
+  "generatedAt": "2026-02-09T10:03:35.227306Z",
+  "config": {
+    "batchSize": 20,
+    "pagesPerSite": 5,
+    "rateLimitRps": 1.0,
+    "extractWorkers": 5,
+    "imageTimeoutSeconds": 8.0,
+    "maxImagesPerProduct": 5,
+    "urlFile": "scripts/url_lists/fatal_retry_2026-02-08.txt"
+  },
+  "input": {
+    "rawUrlTokenCount": 12,
+    "validEntryCount": 12,
+    "invalidTokenCount": 0,
+    "invalidTokenSamples": [],
+    "duplicateCount": 0,
+    "uniqueUrlCount": 1
+  },
+  "summary": {
+    "entryTotal": 12,
+    "entryPassed": 0,
+    "entryPassRate": 0.0,
+    "uniqueSiteTotal": 1,
+    "uniqueSitePassed": 0,
+    "uniqueSitePassRate": 0.0,
+    "uniqueSiteFullCompletion": 0,
+    "uniqueSiteFullCompletionRate": 0.0,
+    "testedPages": 1,
+    "acceptedPages": 0,
+    "pageCompletionRate": 0.0,
+    "discoveredUrls": 0,
+    "productHintUrls": 0,
+    "highConfidenceUrls": 0,
+    "productHintShareOfDiscovered": 0.0,
+    "highConfidenceShareOfDiscovered": 0.0,
+    "acceptedShareOfDiscovered": 0.0,
+    "acceptedShareOfProductHints": 0.0,
+    "sitesDiscoveredZero": 1,
+    "sitesDiscoveredNonzeroProductHintZero": 0,
+    "sitesProductHintNonzeroAcceptedZero": 0,
+    "sitesProductHintNonzeroAcceptedNonzero": 0,
+    "checkedImageUrls": 0,
+    "validImageUrls": 0,
+    "imageUrlValidRate": 0.0,
+    "acceptedProducts": 0,
+    "productsWithWorkingPrimaryImage": 0,
+    "primaryImageCoverageRate": 0.0,
+    "topFailureReasons": [
+      [
+        "fetch-error",
+        1
+      ]
+    ]
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "siteCount": 1,
+      "passed": 0,
+      "fullCompletion": 0,
+      "durationSec": 16.33056616783142,
+      "sites": [
+        "https://www.mhdesign.se/"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "siteUrl": "https://www.mhdesign.se/",
+      "status": "failed",
+      "fatalError": null,
+      "discovery": {
+        "inputUrl": "https://www.mhdesign.se/",
+        "normalizedUrl": "https://www.mhdesign.se",
+        "baseUrl": "https://www.mhdesign.se",
+        "seedUrl": "https://www.mhdesign.se",
+        "seedPathPattern": "",
+        "suggestedStrategy": "crawl-first-bounded",
+        "strategyReason": "bounded category crawl with sitemap fallback when candidates are insufficient",
+        "strategyUsed": "crawl+sitemap-fallback",
+        "fallbackUsed": true,
+        "sitemapCount": 0,
+        "warnings": [],
+        "errors": [],
+        "discoveryError": "",
+        "discoveredCount": 0,
+        "productHintCount": 0,
+        "highConfidenceCount": 0
+      },
+      "pages": {
+        "tested": 1,
+        "accepted": 0,
+        "completionRate": 0.0,
+        "failures": {
+          "fetchBlocked": 0,
+          "fetchError": 1,
+          "parse": 0,
+          "invalidPrice": 0,
+          "currencyMismatch": 0
+        },
+        "fetchErrorBreakdown": {
+          "dns-failure": 1
+        },
+        "parseErrorSamples": []
+      },
+      "images": {
+        "productsAccepted": 0,
+        "productsWithImages": 0,
+        "productsWithWorkingPrimaryImage": 0,
+        "primaryImageCoverageRate": 0.0,
+        "urlsChecked": 0,
+        "urlsValid": 0,
+        "urlsInvalid": 0,
+        "urlValidRate": 0.0,
+        "issueBreakdown": {},
+        "invalidSamples": []
+      },
+      "methods": {
+        "extractor": {},
+        "fetch": {}
+      },
+      "non100Reasons": [
+        "fetch-error:1"
+      ],
+      "durationSec": 16.33,
+      "fullCompletion": false
+    }
+  ]
+}

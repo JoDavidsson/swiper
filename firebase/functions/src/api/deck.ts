@@ -1044,7 +1044,18 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       onboardingPicksSnap,
       onboardingV2Snap,
     ] = await Promise.all([
-      db.collection("swipes").where("sessionId", "==", sessionId).orderBy("createdAt", "desc").limit(500).get(),
+      // Only exclude swipes from the last 7 days so items can be recycled.
+      // This prevents running out of cards when the catalog is small.
+      (() => {
+        const recycleAfterDays = parseInt(process.env.DECK_RECYCLE_AFTER_DAYS || "7", 10);
+        const recycleAfter = new Date(Date.now() - recycleAfterDays * 24 * 60 * 60 * 1000);
+        return db.collection("swipes")
+          .where("sessionId", "==", sessionId)
+          .where("createdAt", ">", recycleAfter)
+          .orderBy("createdAt", "desc")
+          .limit(500)
+          .get();
+      })(),
       db.collection("likes").where("sessionId", "==", sessionId).get(),
       db.collection("anonSessions").doc(sessionId).get(),
       db.collection("anonSessions").doc(sessionId).collection("preferenceWeights").doc("weights").get(),
@@ -1535,6 +1546,25 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     }
   }
 
+  // Exhaustion fallback: if no candidates after exclusion, clear seen items
+  // and re-accept from queue docs so the user never sees an empty deck.
+  let recycled = false;
+  if (candidateDocs.length === 0 && seenItemIds.size > 0) {
+    recycled = true;
+    seenItemIds.clear();
+    // Re-run acceptance from all queue docs
+    for (const queue of QUEUE_ORDER) {
+      const state = queueState.get(queue);
+      if (!state) continue;
+      state.cursor = 0;
+      while (state.cursor < state.docs.length && candidateDocs.length < candidateCap) {
+        const doc = state.docs[state.cursor++];
+        tryAcceptCandidate(doc, queue);
+      }
+    }
+    console.info(`[deck] Exhaustion fallback: recycled ${candidateDocs.length} candidates for session ${sessionId}`);
+  }
+
   const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
   const sessionContext: SessionContext = { preferenceWeights };
 
@@ -1663,6 +1693,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       styleDistanceTop4Min,
       featuredServing,
       ...(onboardingProfileSummary != null ? { onboardingProfile: onboardingProfileSummary } : {}),
+      ...(recycled ? { recycled: true } : {}),
     },
     itemScores,
   };

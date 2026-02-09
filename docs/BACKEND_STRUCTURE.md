@@ -62,6 +62,15 @@ Primary collection for all furniture products.
 | `dimensionsCm` | `object` | — | `{w, h, d}` in cm |
 | `subCategory` | `string` | — | Sofa sub-type: `2_seater`, `3_seater`, `4_seater`, `corner_sofa`, `u_sofa`, `chaise_sofa`, `modular_sofa`, `sleeper_sofa` |
 | `roomTypes` | `string[]` | — | Room placement tags: `living_room`, `bedroom`, `outdoor`, `office`, `hallway`, `kids_room` |
+| `seatHeightCm` | `number` | — | Seat height in cm |
+| `seatDepthCm` | `number` | — | Seat depth in cm |
+| `seatWidthCm` | `number` | — | Seat width in cm |
+| `seatCount` | `number` | — | Number of seats |
+| `weightKg` | `number` | — | Product weight in kg |
+| `frameMaterial` | `string` | — | Frame material |
+| `coverMaterial` | `string` | — | Cover/upholstery material |
+| `legMaterial` | `string` | — | Leg material |
+| `cushionFilling` | `string` | — | Cushion filling material |
 | `extractionMeta` | `object` | — | Extraction quality metadata `{method, extractorMethod, completeness, missingFields[], fetchMethod, extractedAt}` |
 | `firstSeenAt` | `timestamp` | ✓ | First ingestion time |
 | `lastUpdatedAt` | `timestamp` | ✓ | Last update time |

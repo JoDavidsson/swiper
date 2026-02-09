@@ -451,11 +451,12 @@ class _LikeCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis),
                   Text(
-                      '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(color: AppTheme.primaryAction)),
+                    item.priceLabel(),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(color: AppTheme.primaryAction),
+                  ),
                   if (item.brand != null)
                     Text(item.brand!,
                         style: Theme.of(context).textTheme.bodySmall),
@@ -540,7 +541,7 @@ class _LikeListTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${item.priceAmount.toStringAsFixed(0)} ${item.priceCurrency}',
+                        item.priceLabel(),
                         style: Theme.of(context)
                             .textTheme
                             .titleSmall
