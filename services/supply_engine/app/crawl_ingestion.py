@@ -10,6 +10,7 @@ Pipeline:
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 import time
@@ -1548,22 +1549,53 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         classified = 0
         gold_promoted = 0
         review_queued = 0
+        training_would_reject = 0
+        training_overrides_applied = 0
+        training_shadow_candidates = 0
         try:
-            from app.sorting.policy import classify_and_decide
+            from app.sorting.policy import (
+                classify_and_decide,
+                load_training_config_latest,
+                resolve_training_rules_mode,
+            )
+            training_mode = resolve_training_rules_mode(os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE"))
+            training_config = load_training_config_latest(db) if training_mode != "off" else None
             log.info(f"Classifying {len(items)} items...")
             for item_id, item_data in zip(item_ids, items):
                 if not item_id:
                     continue  # Skip items that failed to write
                 try:
-                    result = classify_and_decide(item_id=item_id, item_data=item_data)
+                    result = classify_and_decide(
+                        item_id=item_id,
+                        item_data=item_data,
+                        training_config=training_config,
+                        training_mode=training_mode,
+                    )
                     # Write classification + eligibility + sub-category + room types back to item
                     cls = result["classification"]
+                    training_diag = result.get("trainingRules", {})
+                    if training_diag.get("wouldReject"):
+                        training_would_reject += 1
+                    if training_diag.get("appliedSurfaces"):
+                        training_overrides_applied += 1
+                    if training_diag.get("shadowSurfaces"):
+                        training_shadow_candidates += 1
                     update_fields: dict = {
                         "classification": cls,
                         "eligibility": result["decisions"],
                     }
                     # Promote subCategory and roomTypes to top-level fields for
                     # fast Firestore queries and deck filtering
+                    if cls.get("primaryCategory"):
+                        update_fields["primaryCategory"] = cls["primaryCategory"]
+                    if cls.get("sofaTypeShape"):
+                        update_fields["sofaTypeShape"] = cls["sofaTypeShape"]
+                    if cls.get("sofaFunction"):
+                        update_fields["sofaFunction"] = cls["sofaFunction"]
+                    if cls.get("seatCountBucket"):
+                        update_fields["seatCountBucket"] = cls["seatCountBucket"]
+                    if cls.get("environment") and cls.get("environment") != "unknown":
+                        update_fields["environment"] = cls["environment"]
                     if cls.get("subCategory"):
                         update_fields["subCategory"] = cls["subCategory"]
                     if cls.get("roomTypes"):
@@ -1594,6 +1626,9 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         stats["classified"] = classified
         stats["goldPromoted"] = gold_promoted
         stats["reviewQueued"] = review_queued
+        stats["trainingWouldReject"] = training_would_reject
+        stats["trainingOverrideApplied"] = training_overrides_applied
+        stats["trainingShadowCandidates"] = training_shadow_candidates
 
         # 5) Daily metrics (best-effort)
         upsert_metrics_daily(

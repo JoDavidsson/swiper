@@ -30,6 +30,12 @@ import { onboardingPicksPost, onboardingPicksGet } from "./onboarding_picks";
 import { onboardingV2Post, onboardingV2Get } from "./onboarding_v2";
 import { adminCuratedSofasGet, adminCuratedSofasPost, adminCuratedSofasDelete, adminCuratedSofasReorder } from "./admin_curated";
 import { adminValidateImagesPost, adminCreativeHealthStatsGet } from "./admin_image_validation";
+import {
+  adminReviewActionPost,
+  adminReviewQueueGet,
+  adminSamplingCandidatesGet,
+  adminTrainCategorizerPost,
+} from "./admin_review";
 import { imageProxyGet, imageMetaGet } from "./image_proxy";
 import { authLinkSessionPost, authMeGet } from "./auth";
 import {
@@ -286,15 +292,19 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     // Review queue proxy endpoints (EPIC D)
     if (method === "GET" && path === "admin/review-queue") {
-      await adminProxyToSupplyEngine(req, res, "/review-queue", "GET");
+      await adminReviewQueueGet(req, res);
       return;
     }
     if (method === "POST" && path === "admin/review-action") {
-      await adminProxyToSupplyEngine(req, res, "/review-action", "POST");
+      await adminReviewActionPost(req, res);
       return;
     }
     if (method === "GET" && path === "admin/sampling-candidates") {
-      await adminProxyToSupplyEngine(req, res, "/sampling-candidates", "GET");
+      await adminSamplingCandidatesGet(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/train-categorizer") {
+      await adminTrainCategorizerPost(req, res);
       return;
     }
     if (method === "POST" && path === "admin/calibrate") {

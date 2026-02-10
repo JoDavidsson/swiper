@@ -13,12 +13,22 @@ const SUBMIT_FAILURE_ALERT_THRESHOLD = 0.02;
 const SUBMIT_FAILURE_ALERT_MIN_SAMPLES = 20;
 const LATENCY_REGRESSION_ALERT_THRESHOLD = 0.15;
 const LATENCY_REGRESSION_ALERT_MIN_SAMPLES = 30;
+const NEAR_DUPLICATE_RATE_ALERT_THRESHOLD = 0.2;
+const NEAR_DUPLICATE_RATE_ALERT_MIN_SAMPLES = 20;
+const FALLBACK_RECYCLED_RATE_ALERT_THRESHOLD = 0.08;
+const FALLBACK_ALERT_MIN_SAMPLES = 20;
 
 type DeckObservation = {
   timestampMs: number;
   latencyMs: number;
   sameFamilyTop8Rate?: number;
   styleDistanceTop4Min?: number;
+  fallbackStage?: "none" | "recycled_seen_items" | "catalog_exhausted";
+  droppedHardNearDuplicate?: number;
+  droppedSoftNearDuplicate?: number;
+  droppedSoftForQuality?: number;
+  droppedSoftForStyleDistance?: number;
+  allowedSoftNearDuplicate?: number;
 };
 
 type WeeklyExperimentEvent = {
@@ -136,6 +146,53 @@ export function buildGoldenV2ObservabilitySummary(params: {
   const styleDistanceTop4MinAvg = average(
     currentDeckSamples.map((sample) => sample.styleDistanceTop4Min)
   );
+  const droppedHardNearDuplicateAvg = average(
+    currentDeckSamples.map((sample) => sample.droppedHardNearDuplicate)
+  );
+  const droppedSoftNearDuplicateAvg = average(
+    currentDeckSamples.map((sample) => sample.droppedSoftNearDuplicate)
+  );
+  const droppedSoftForQualityAvg = average(
+    currentDeckSamples.map((sample) => sample.droppedSoftForQuality)
+  );
+  const droppedSoftForStyleDistanceAvg = average(
+    currentDeckSamples.map((sample) => sample.droppedSoftForStyleDistance)
+  );
+  const allowedSoftNearDuplicateAvg = average(
+    currentDeckSamples.map((sample) => sample.allowedSoftNearDuplicate)
+  );
+  const nearDuplicateRateAlertTriggered =
+    currentDeckSamples.length >= NEAR_DUPLICATE_RATE_ALERT_MIN_SAMPLES &&
+    (sameFamilyTop8RateAvg ?? 0) > NEAR_DUPLICATE_RATE_ALERT_THRESHOLD;
+
+  const fallbackStageCounts = {
+    none: 0,
+    recycledSeenItems: 0,
+    catalogExhausted: 0,
+  };
+  for (const sample of currentDeckSamples) {
+    if (sample.fallbackStage === "recycled_seen_items") {
+      fallbackStageCounts.recycledSeenItems += 1;
+      continue;
+    }
+    if (sample.fallbackStage === "catalog_exhausted") {
+      fallbackStageCounts.catalogExhausted += 1;
+      continue;
+    }
+    fallbackStageCounts.none += 1;
+  }
+  const recycledRate =
+    currentDeckSamples.length > 0
+      ? fallbackStageCounts.recycledSeenItems / currentDeckSamples.length
+      : 0;
+  const catalogExhaustedRate =
+    currentDeckSamples.length > 0
+      ? fallbackStageCounts.catalogExhausted / currentDeckSamples.length
+      : 0;
+  const fallbackAlertTriggered =
+    currentDeckSamples.length >= FALLBACK_ALERT_MIN_SAMPLES &&
+    (fallbackStageCounts.catalogExhausted > 0 ||
+      recycledRate > FALLBACK_RECYCLED_RATE_ALERT_THRESHOLD);
 
   return {
     funnel24h: {
@@ -176,6 +233,35 @@ export function buildGoldenV2ObservabilitySummary(params: {
         sameFamilyTop8RateAvg != null ? round(sameFamilyTop8RateAvg) : null,
       styleDistanceTop4MinAvg:
         styleDistanceTop4MinAvg != null ? round(styleDistanceTop4MinAvg) : null,
+      nearDuplicateShapingAvg: {
+        droppedHardNearDuplicate:
+          droppedHardNearDuplicateAvg != null ? round(droppedHardNearDuplicateAvg) : null,
+        droppedSoftNearDuplicate:
+          droppedSoftNearDuplicateAvg != null ? round(droppedSoftNearDuplicateAvg) : null,
+        droppedSoftForQuality:
+          droppedSoftForQualityAvg != null ? round(droppedSoftForQualityAvg) : null,
+        droppedSoftForStyleDistance:
+          droppedSoftForStyleDistanceAvg != null ? round(droppedSoftForStyleDistanceAvg) : null,
+        allowedSoftNearDuplicate:
+          allowedSoftNearDuplicateAvg != null ? round(allowedSoftNearDuplicateAvg) : null,
+      },
+      nearDuplicateRateAlert: {
+        triggered: nearDuplicateRateAlertTriggered,
+        threshold: NEAR_DUPLICATE_RATE_ALERT_THRESHOLD,
+        minSamples: NEAR_DUPLICATE_RATE_ALERT_MIN_SAMPLES,
+      },
+      fallbackStage: {
+        counts: fallbackStageCounts,
+        ratesPct: {
+          recycledSeenItems: round(recycledRate * 100),
+          catalogExhausted: round(catalogExhaustedRate * 100),
+        },
+        alert: {
+          triggered: fallbackAlertTriggered,
+          recycledRateThresholdPct: FALLBACK_RECYCLED_RATE_ALERT_THRESHOLD * 100,
+          minSamples: FALLBACK_ALERT_MIN_SAMPLES,
+        },
+      },
     },
     sampling: {
       eventsV1SampledCount: params.sampledEventCount,
@@ -423,12 +509,32 @@ export async function adminStatsGet(req: Request, res: Response): Promise<void> 
       const perf = asObject(data.perf);
       const latencyMs = asNumber(perf?.latencyMs);
       if (latencyMs == null) continue;
+      const nearDuplicateShaping = asObject(rank?.nearDuplicateShaping);
+      const fallbackStageRaw =
+        typeof rank?.fallbackStage === "string" ? rank.fallbackStage : null;
+      const fallbackStage =
+        fallbackStageRaw === "none" ||
+        fallbackStageRaw === "recycled_seen_items" ||
+        fallbackStageRaw === "catalog_exhausted"
+          ? fallbackStageRaw
+          : undefined;
 
       deckObservations.push({
         timestampMs: createdAtMs,
         latencyMs,
         sameFamilyTop8Rate: asNumber(rank?.sameFamilyTop8Rate) ?? undefined,
         styleDistanceTop4Min: asNumber(rank?.styleDistanceTop4Min) ?? undefined,
+        fallbackStage,
+        droppedHardNearDuplicate:
+          asNumber(nearDuplicateShaping?.droppedHardNearDuplicate) ?? undefined,
+        droppedSoftNearDuplicate:
+          asNumber(nearDuplicateShaping?.droppedSoftNearDuplicate) ?? undefined,
+        droppedSoftForQuality:
+          asNumber(nearDuplicateShaping?.droppedSoftForQuality) ?? undefined,
+        droppedSoftForStyleDistance:
+          asNumber(nearDuplicateShaping?.droppedSoftForStyleDistance) ?? undefined,
+        allowedSoftNearDuplicate:
+          asNumber(nearDuplicateShaping?.allowedSoftNearDuplicate) ?? undefined,
       });
     }
 

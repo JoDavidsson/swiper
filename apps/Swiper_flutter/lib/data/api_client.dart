@@ -576,6 +576,98 @@ class ApiClient {
     return r.data ?? {'items': []};
   }
 
+  Future<Map<String, dynamic>> adminClassify({
+    String? itemId,
+    String? sourceId,
+    List<String>? surfaceIds,
+    int limit = 100,
+  }) async {
+    final r =
+        await _dio.post<Map<String, dynamic>>('/api/admin/classify', data: {
+      if (itemId != null && itemId.isNotEmpty) 'item_id': itemId,
+      if (sourceId != null && sourceId.isNotEmpty) 'source_id': sourceId,
+      if (surfaceIds != null && surfaceIds.isNotEmpty)
+        'surface_ids': surfaceIds,
+      'limit': limit,
+    });
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> adminGetReviewQueue({
+    String status = 'pending',
+    int limit = 50,
+  }) async {
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/admin/review-queue', queryParameters: {
+      'status': status,
+      'limit': limit,
+    });
+    return r.data ?? {'items': <Map<String, dynamic>>[]};
+  }
+
+  Future<Map<String, dynamic>> adminGetSamplingCandidates({
+    String strategy = 'uncertain',
+    int limit = 30,
+    String? targetCategory,
+  }) async {
+    final r = await _dio.get<Map<String, dynamic>>(
+      '/api/admin/sampling-candidates',
+      queryParameters: {
+        'strategy': strategy,
+        'limit': limit,
+        if (targetCategory != null && targetCategory.isNotEmpty)
+          'target_category': targetCategory,
+      },
+    );
+    return r.data ?? {'items': <Map<String, dynamic>>[]};
+  }
+
+  Future<Map<String, dynamic>> adminReviewAction({
+    required String itemId,
+    required String action,
+    String? correctCategory,
+    String? reason,
+    String reviewerId = 'admin',
+    bool trainingOnly = false,
+    String? labelCategory,
+    String? labelDecision,
+  }) async {
+    final r = await _dio
+        .post<Map<String, dynamic>>('/api/admin/review-action', data: {
+      'item_id': itemId,
+      'action': action,
+      if (correctCategory != null && correctCategory.isNotEmpty)
+        'correct_category': correctCategory,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+      'reviewer_id': reviewerId,
+      if (trainingOnly) 'training_only': true,
+      if (labelCategory != null && labelCategory.isNotEmpty)
+        'label_category': labelCategory,
+      if (labelDecision != null && labelDecision.isNotEmpty)
+        'label_decision': labelDecision,
+    });
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> adminCalibrate() async {
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/calibrate');
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> adminGetEvaluationReport() async {
+    final r =
+        await _dio.get<Map<String, dynamic>>('/api/admin/evaluation-report');
+    return r.data ?? {};
+  }
+
+  Future<Map<String, dynamic>> adminTrainCategorizer({String? category}) async {
+    final r = await _dio
+        .post<Map<String, dynamic>>('/api/admin/train-categorizer', data: {
+      if (category != null && category.isNotEmpty) 'category': category,
+    });
+    return r.data ?? {};
+  }
+
   /// Trigger image validation for items
   Future<Map<String, dynamic>> adminValidateImages({
     int limit = 50,

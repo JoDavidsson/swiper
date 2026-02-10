@@ -59,6 +59,11 @@ class Item {
     this.isFeatured = false,
     this.campaignId,
     this.featuredLabel,
+    this.primaryCategory,
+    this.sofaTypeShape,
+    this.sofaFunction,
+    this.seatCountBucket,
+    this.environment,
     this.subCategory,
     this.roomTypes = const [],
     // Rich furniture specs
@@ -105,7 +110,12 @@ class Item {
   final String? campaignId;
   final String? featuredLabel;
 
-  // Classification sub-category and room types
+  // Classification axes
+  final String? primaryCategory;
+  final String? sofaTypeShape;
+  final String? sofaFunction;
+  final String? seatCountBucket;
+  final String? environment;
   final String? subCategory;
   final List<String> roomTypes;
 
@@ -196,6 +206,11 @@ class Item {
       campaignId: campaignId,
       featuredLabel:
           _string(json['featuredLabel']) ?? _string(json['featured_label']),
+      primaryCategory: _string(json['primaryCategory']),
+      sofaTypeShape: _string(json['sofaTypeShape']),
+      sofaFunction: _string(json['sofaFunction']),
+      seatCountBucket: _string(json['seatCountBucket']),
+      environment: _string(json['environment']),
       subCategory: _string(json['subCategory']),
       roomTypes: _stringList(json['roomTypes']),
       // Rich furniture specs (also look in facets map as fallback)
@@ -241,6 +256,11 @@ class Item {
       if (isFeatured) 'isFeatured': isFeatured,
       if (campaignId != null) 'campaignId': campaignId,
       if (featuredLabel != null) 'featuredLabel': featuredLabel,
+      if (primaryCategory != null) 'primaryCategory': primaryCategory,
+      if (sofaTypeShape != null) 'sofaTypeShape': sofaTypeShape,
+      if (sofaFunction != null) 'sofaFunction': sofaFunction,
+      if (seatCountBucket != null) 'seatCountBucket': seatCountBucket,
+      if (environment != null) 'environment': environment,
       if (subCategory != null) 'subCategory': subCategory,
       if (roomTypes.isNotEmpty) 'roomTypes': roomTypes,
       if (seatHeightCm != null) 'seatHeightCm': seatHeightCm,

@@ -117,6 +117,115 @@ describe("admin_stats golden v2 observability summary", () => {
     expect(latencyAlert.triggered).toBe(false);
   });
 
+  it("rolls up fallback stages and near-duplicate shaping metrics", () => {
+    const nowMs = Date.now();
+    const observations = [
+      {
+        timestampMs: nowMs - 30 * 60 * 1000,
+        latencyMs: 900,
+        sameFamilyTop8Rate: 0.1,
+        styleDistanceTop4Min: 0.5,
+        fallbackStage: "none" as const,
+        droppedHardNearDuplicate: 2,
+        droppedSoftNearDuplicate: 1,
+        droppedSoftForQuality: 0,
+        droppedSoftForStyleDistance: 1,
+        allowedSoftNearDuplicate: 1,
+      },
+      {
+        timestampMs: nowMs - 20 * 60 * 1000,
+        latencyMs: 920,
+        sameFamilyTop8Rate: 0.15,
+        styleDistanceTop4Min: 0.45,
+        fallbackStage: "recycled_seen_items" as const,
+        droppedHardNearDuplicate: 3,
+        droppedSoftNearDuplicate: 2,
+        droppedSoftForQuality: 1,
+        droppedSoftForStyleDistance: 0,
+        allowedSoftNearDuplicate: 1,
+      },
+      {
+        timestampMs: nowMs - 10 * 60 * 1000,
+        latencyMs: 980,
+        sameFamilyTop8Rate: 0.2,
+        styleDistanceTop4Min: 0.4,
+        fallbackStage: "catalog_exhausted" as const,
+        droppedHardNearDuplicate: 1,
+        droppedSoftNearDuplicate: 1,
+        droppedSoftForQuality: 1,
+        droppedSoftForStyleDistance: 1,
+        allowedSoftNearDuplicate: 0,
+      },
+    ];
+
+    const summary = __adminStatsTestUtils.buildGoldenV2ObservabilitySummary({
+      nowMs,
+      introShownCount: 0,
+      stepViewedCount: 0,
+      stepCompletedCount: 0,
+      summaryConfirmedCount: 0,
+      skippedCount: 0,
+      attemptedSessionCount: 0,
+      completedProfileCount: 0,
+      deckObservations: observations,
+      sampledEventCount: observations.length,
+      sampleCap: 30000,
+    });
+
+    const deckQuality = summary.deckQuality24h as Record<string, unknown>;
+    const shaping = deckQuality.nearDuplicateShapingAvg as Record<string, unknown>;
+    const fallback = deckQuality.fallbackStage as Record<string, unknown>;
+    const fallbackCounts = fallback.counts as Record<string, unknown>;
+    const fallbackRates = fallback.ratesPct as Record<string, unknown>;
+
+    expect(shaping.droppedHardNearDuplicate).toBe(2);
+    expect(shaping.droppedSoftNearDuplicate).toBe(1.33);
+    expect(shaping.allowedSoftNearDuplicate).toBe(0.67);
+    expect(fallbackCounts.none).toBe(1);
+    expect(fallbackCounts.recycledSeenItems).toBe(1);
+    expect(fallbackCounts.catalogExhausted).toBe(1);
+    expect(fallbackRates.recycledSeenItems).toBe(33.33);
+    expect(fallbackRates.catalogExhausted).toBe(33.33);
+  });
+
+  it("triggers fallback and near-duplicate alerts when thresholds are exceeded", () => {
+    const nowMs = Date.now();
+    const observations = Array.from({ length: 25 }, (_, index) => ({
+      timestampMs: nowMs - (index + 1) * 60 * 1000,
+      latencyMs: 1000 + index,
+      sameFamilyTop8Rate: 0.35,
+      styleDistanceTop4Min: 0.3,
+      fallbackStage: index < 4 ? "recycled_seen_items" as const : "none" as const,
+      droppedHardNearDuplicate: 2,
+      droppedSoftNearDuplicate: 1,
+      droppedSoftForQuality: 1,
+      droppedSoftForStyleDistance: 0,
+      allowedSoftNearDuplicate: 1,
+    }));
+
+    const summary = __adminStatsTestUtils.buildGoldenV2ObservabilitySummary({
+      nowMs,
+      introShownCount: 0,
+      stepViewedCount: 0,
+      stepCompletedCount: 0,
+      summaryConfirmedCount: 0,
+      skippedCount: 0,
+      attemptedSessionCount: 0,
+      completedProfileCount: 0,
+      deckObservations: observations,
+      sampledEventCount: observations.length,
+      sampleCap: 30000,
+    });
+
+    const deckQuality = summary.deckQuality24h as Record<string, unknown>;
+    const nearDuplicateAlert = deckQuality.nearDuplicateRateAlert as Record<string, unknown>;
+    const fallback = deckQuality.fallbackStage as Record<string, unknown>;
+    const fallbackAlert = fallback.alert as Record<string, unknown>;
+
+    expect(nearDuplicateAlert.triggered).toBe(true);
+    expect(fallbackAlert.triggered).toBe(true);
+  });
+
   it("builds weekly cohort slices with completion, swipe-rate, and quality metrics", () => {
     const summary = __adminStatsTestUtils.buildWeeklyExperimentCohortSummary({
       nowMs: Date.now(),

@@ -1,0 +1,177 @@
+[
+  {
+    "id": "cloud_beige",
+    "retailer": "ikea",
+    "title": "Cloud Sofa Beige 3-seater",
+    "colorFamily": "beige",
+    "styleTags": ["minimal"],
+    "material": "linen",
+    "seatCountBucket": "3",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/cloud-beige"
+  },
+  {
+    "id": "cloud_blue",
+    "retailer": "ikea",
+    "title": "Cloud Sofa Blue 3-seater",
+    "colorFamily": "blue",
+    "styleTags": ["minimal"],
+    "material": "linen",
+    "seatCountBucket": "3",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/cloud-blue"
+  },
+  {
+    "id": "cloud_green",
+    "retailer": "ikea",
+    "title": "Cloud Sofa Green 3-seater",
+    "colorFamily": "green",
+    "styleTags": ["minimal"],
+    "material": "linen",
+    "seatCountBucket": "3",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/cloud-green"
+  },
+  {
+    "id": "atlas_oat",
+    "retailer": "ikea",
+    "title": "Atlas Sofa Oat",
+    "colorFamily": "beige",
+    "styleTags": ["scandinavian"],
+    "material": "linen",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/atlas-oat"
+  },
+  {
+    "id": "breeze_stone",
+    "retailer": "ikea",
+    "title": "Breeze Sofa Stone",
+    "colorFamily": "grey",
+    "styleTags": ["modern"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/breeze-stone"
+  },
+  {
+    "id": "nimbus_taupe",
+    "retailer": "ikea",
+    "title": "Nimbus Sofa Taupe",
+    "colorFamily": "brown",
+    "styleTags": ["rustic"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/nimbus-taupe"
+  },
+  {
+    "id": "aurora_charcoal",
+    "retailer": "ikea",
+    "title": "Aurora Sofa Charcoal",
+    "colorFamily": "black",
+    "styleTags": ["industrial"],
+    "material": "leather",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/aurora-charcoal"
+  },
+  {
+    "id": "oslo_cream",
+    "retailer": "ikea",
+    "title": "Oslo Sofa Cream",
+    "colorFamily": "white",
+    "styleTags": ["coastal"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/oslo-cream"
+  },
+  {
+    "id": "terra_brown",
+    "retailer": "ikea",
+    "title": "Terra Sofa Brown",
+    "colorFamily": "brown",
+    "styleTags": ["classic"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/terra-brown"
+  },
+  {
+    "id": "sol_white",
+    "retailer": "ikea",
+    "title": "Sol Sofa White",
+    "colorFamily": "white",
+    "styleTags": ["minimal"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/sol-white"
+  },
+  {
+    "id": "vista_navy",
+    "retailer": "ikea",
+    "title": "Vista Sofa Navy",
+    "colorFamily": "blue",
+    "styleTags": ["modern"],
+    "material": "velvet",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/vista-navy"
+  },
+  {
+    "id": "dune_oak",
+    "retailer": "ikea",
+    "title": "Dune Sofa Oak",
+    "colorFamily": "brown",
+    "styleTags": ["rustic"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/dune-oak"
+  },
+  {
+    "id": "cloud_black_statement",
+    "retailer": "ikea",
+    "title": "Cloud Sofa Black XL",
+    "colorFamily": "black",
+    "styleTags": ["industrial"],
+    "material": "leather",
+    "seatCountBucket": "4_plus",
+    "images": ["img1", "img2", "img3"],
+    "sourceUrl": "https://example.com/cloud-black"
+  },
+  {
+    "id": "cloud_yellow_low",
+    "retailer": "ikea",
+    "title": "Cloud Sofa Yellow 3-seater",
+    "colorFamily": "yellow",
+    "styleTags": ["minimal"],
+    "material": "linen",
+    "seatCountBucket": "3",
+    "images": ["img1"],
+    "sourceUrl": "https://example.com/cloud-yellow"
+  },
+  {
+    "id": "harbor_sage",
+    "retailer": "ikea",
+    "title": "Harbor Sofa Sage",
+    "colorFamily": "green",
+    "styleTags": ["bohemian"],
+    "material": "fabric",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/harbor-sage"
+  },
+  {
+    "id": "orbit_ivory",
+    "retailer": "ikea",
+    "title": "Orbit Sofa Ivory",
+    "colorFamily": "white",
+    "styleTags": ["minimal"],
+    "material": "boucle",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/orbit-ivory"
+  },
+  {
+    "id": "mistral_rose",
+    "retailer": "ikea",
+    "title": "Mistral Sofa Rose",
+    "colorFamily": "pink",
+    "styleTags": ["vintage"],
+    "material": "velvet",
+    "images": ["img1", "img2"],
+    "sourceUrl": "https://example.com/mistral-rose"
+  }
+]

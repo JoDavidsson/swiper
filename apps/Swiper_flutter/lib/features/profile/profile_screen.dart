@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
 import '../../shared/widgets/app_shell.dart';
 
@@ -17,6 +19,19 @@ class ProfileScreen extends ConsumerWidget {
         locale.languageCode == 'sv' ? strings.swedish : strings.english;
     return AppShell(
       title: strings.profile,
+      showBottomNav: true,
+      onShareTap: () {
+        ref.read(eventTrackerProvider).track('shortlist_share', {
+          'share': {'method': 'native_share', 'linkType': 'unknown'},
+        });
+        final base = Uri.base;
+        final shareUrl =
+            base.hasAuthority ? '${base.origin}/deck' : 'https://swiper.app';
+        Share.share(
+          '${AppConstants.appName} - ${AppConstants.tagline}\n$shareUrl',
+          subject: AppConstants.appName,
+        );
+      },
       body: ListView(
         padding: const EdgeInsets.all(AppTheme.spacingUnit),
         children: [

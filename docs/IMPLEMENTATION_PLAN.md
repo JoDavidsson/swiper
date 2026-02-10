@@ -1,15 +1,15 @@
 # Swiper – Implementation Plan
 
-> **Last updated:** 2026-02-08  
+> **Last updated:** 2026-02-10  
 > Step-by-step build sequence with dependencies and milestones.
 
 ---
 
 ## Current Status
 
-**Phase:** Phase 13 (Retailer Console v1) In Progress + Phase 12/12a Implemented  
-**Next Phase:** Complete Retailer Console core workflows (campaign, catalog, insights, reporting) and iterate from pilot feedback  
-**Last Milestone:** Data quality sweep: 10 fixes shipped (image proxy domains, currency validation, zero-price gate, HTML stripping, description matching, image extraction heuristics, card layout, deck exhaustion fallback, rich spec extraction & display, recommendation engine signals)
+**Phase:** Phase 13 (Retailer Console v1) In Progress + Phase 13a (Taxonomy + Categorization Loop Closure) shipped  
+**Next Phase:** Roll out taxonomy runtime rules from shadow to active after validation, while completing remaining retailer campaign workflows  
+**Last Milestone:** Taxonomy sprint shipped: runtime training-rule consumption (`off`/`shadow`/`active`), review mode split, improved sampling, consumer taxonomy filters/chips, retailer taxonomy exposure, and docs alignment
 
 ---
 
@@ -329,6 +329,19 @@
 | 13.12 | ✅ Done (CSV export endpoint + in-app export action) |
 | 13.13 | ✅ Done (shareable report link generation + retrieval endpoint + in-app share action) |
 
+### Phase 13a: Taxonomy + Categorization Loop Closure (2026-02-10)
+
+| Step | Status |
+|------|--------|
+| 13a.1 | ✅ Done (`primaryCategory`, `sofaTypeShape`, `sofaFunction`, `seatCountBucket`, `environment` adopted as orthogonal taxonomy axes) |
+| 13a.2 | ✅ Done (runtime consumes `categorizationTrainingConfig/latest` with `CATEGORIZATION_TRAINING_RULES_MODE=off|shadow|active`) |
+| 13a.3 | ✅ Done (Admin Review split into Operations mode vs Training mode; training labels do not mutate queue/gold) |
+| 13a.4 | ✅ Done (sampling upgraded to paginated scan + multiclass uncertainty + per-item sampling reason) |
+| 13a.5 | ✅ Done (training adds holdout evaluation and runtime gate: `validated` vs `shadow_only`) |
+| 13a.6 | ✅ Done (deck API + consumer filters moved to taxonomy-first keys with legacy `subCategory` compatibility) |
+| 13a.7 | ✅ Done (retailer catalog API/UI now exposes taxonomy axes) |
+| 13a.8 | ⏳ In Progress (documentation alignment and migration notes across all architecture/data/event docs) |
+
 ### Phase 14: Admin Governance + v1 Launch
 
 | Step | Task | Priority | Dependencies |
@@ -505,6 +518,7 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 | 2026-02-07 | Embedded JS state extraction | Extract products from window.INITIAL_DATA / __INITIAL_STATE__ without headless browsers, unlocking Chilli and RoyalDesign |
 | 2026-02-08 | Golden Card v2 uses hybrid 4-step style-first onboarding | Increases cold-start signal quality while preserving low-friction swipe UX |
 | 2026-02-08 | Golden Card v2 rollout is hash-bucketed + kill-switch controlled | Enables safe 10/50/100 progressive rollout with immediate fallback via env flags |
+| 2026-02-10 | Taxonomy is hierarchical + orthogonal, with runtime training rules gated by shadow/validated modes | Decouples category vs attributes, improves precision control, and enables phased rollout without destabilizing serving |
 
 ---
 

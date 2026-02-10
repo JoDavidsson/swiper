@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 
 /// App shell: scaffold + top bar + optional bottom nav.
@@ -14,6 +15,7 @@ class AppShell extends StatelessWidget {
     this.actions = const [],
     this.transparentAppBar = false,
     this.extendBodyBehindAppBar = false,
+    this.onShareTap,
   });
 
   final String title;
@@ -24,6 +26,7 @@ class AppShell extends StatelessWidget {
   final List<Widget> actions;
   final bool transparentAppBar;
   final bool extendBodyBehindAppBar;
+  final VoidCallback? onShareTap;
 
   @override
   Widget build(BuildContext context) {
@@ -45,12 +48,15 @@ class AppShell extends StatelessWidget {
       body: body,
       bottomNavigationBar: showBottomNav
           ? BottomNavigationBar(
+              type: BottomNavigationBarType.fixed,
               currentIndex: _indexForRoute(GoRouterState.of(context).uri.path),
               onTap: (i) => _onNavTap(context, i),
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Deck'),
                 BottomNavigationBarItem(
                     icon: Icon(Icons.favorite), label: 'Likes'),
+                BottomNavigationBarItem(
+                    icon: Icon(Icons.share_outlined), label: 'Share'),
                 BottomNavigationBarItem(
                     icon: Icon(Icons.person), label: 'Profile'),
               ],
@@ -61,7 +67,7 @@ class AppShell extends StatelessWidget {
 
   int _indexForRoute(String path) {
     if (path.startsWith('/likes')) return 1;
-    if (path.startsWith('/profile')) return 2;
+    if (path.startsWith('/profile')) return 3;
     return 0;
   }
 
@@ -74,6 +80,16 @@ class AppShell extends StatelessWidget {
         context.go('/likes');
         break;
       case 2:
+        if (onShareTap != null) {
+          onShareTap!();
+        } else {
+          final base = Uri.base;
+          final shareUrl =
+              base.hasAuthority ? '${base.origin}/deck' : 'https://swiper.app';
+          Share.share('Swiper\n$shareUrl', subject: 'Swiper');
+        }
+        break;
+      case 3:
         context.go('/profile');
         break;
     }

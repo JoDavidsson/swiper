@@ -38,6 +38,58 @@ const FEATURED_PACING_BUFFER_RATIO = Math.max(
 /** Default boost value for onboarding pick attributes (cold-start) */
 const ONBOARDING_PICK_BOOST = 3;
 const ONBOARDING_V2_BOOST = 2.5;
+const UNIVERSAL_FAMILY_DEDUPE_TOP_N = Math.max(
+  0,
+  parseInt(String(process.env.UNIVERSAL_FAMILY_DEDUPE_TOP_N || "12"), 10) || 12
+);
+const ONBOARDING_HARD_CONSTRAINT_SWIPE_THRESHOLD = Math.max(
+  0,
+  parseInt(String(process.env.ONBOARDING_HARD_CONSTRAINT_SWIPE_THRESHOLD || "10"), 10) || 10
+);
+const ONBOARDING_MEDIUM_CONSTRAINT_SWIPE_THRESHOLD = Math.max(
+  0,
+  parseInt(String(process.env.ONBOARDING_MEDIUM_CONSTRAINT_SWIPE_THRESHOLD || "4"), 10) || 4
+);
+const HARD_NEAR_DUPLICATE_TOP_N = Math.max(
+  0,
+  parseInt(String(process.env.HARD_NEAR_DUPLICATE_TOP_N || "8"), 10) || 8
+);
+const SOFT_NEAR_DUPLICATE_TOP_N = Math.max(
+  HARD_NEAR_DUPLICATE_TOP_N,
+  parseInt(String(process.env.SOFT_NEAR_DUPLICATE_TOP_N || "12"), 10) || 12
+);
+const SOFT_NEAR_DUPLICATE_MAX_REPEATS = Math.max(
+  0,
+  parseInt(String(process.env.SOFT_NEAR_DUPLICATE_MAX_REPEATS || "1"), 10) || 1
+);
+const SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE = Math.min(
+  1,
+  Math.max(
+    0,
+    parseFloat(String(process.env.SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE || "0.28")) || 0.28
+  )
+);
+const SOFT_REPEAT_MIN_IMAGE_COUNT = Math.max(
+  1,
+  parseInt(String(process.env.SOFT_REPEAT_MIN_IMAGE_COUNT || "2"), 10) || 2
+);
+const SOFT_REPEAT_MIN_CREATIVE_SCORE = Math.max(
+  0,
+  parseFloat(String(process.env.SOFT_REPEAT_MIN_CREATIVE_SCORE || "60")) || 60
+);
+const SOURCE_DIVERSITY_TOP_N = Math.max(
+  HARD_NEAR_DUPLICATE_TOP_N,
+  parseInt(String(process.env.SOURCE_DIVERSITY_TOP_N || "12"), 10) || 12
+);
+const SOURCE_DIVERSITY_MAX_PER_SOURCE = Math.max(
+  1,
+  parseInt(String(process.env.SOURCE_DIVERSITY_MAX_PER_SOURCE || "6"), 10) || 6
+);
+const ENABLE_SCORE_QUALITY_GATE = process.env.ENABLE_SCORE_QUALITY_GATE !== "false";
+const QUALITY_SCORE_LOOKUP_LIMIT = Math.max(
+  0,
+  parseInt(String(process.env.QUALITY_SCORE_LOOKUP_LIMIT || "120"), 10) || 120
+);
 
 const MAX_LIMIT = parseInt(String(process.env.DECK_RESPONSE_LIMIT || "500"), 10) || 500;
 
@@ -113,6 +165,18 @@ type FeaturedLoggingStats = {
   estimatedSpendSEK: number;
 };
 
+type ExplorationDiversityStats = {
+  droppedHardNearDuplicate: number;
+  droppedSoftNearDuplicate: number;
+  droppedSoftForQuality: number;
+  droppedSoftForStyleDistance: number;
+  allowedSoftNearDuplicate: number;
+};
+
+type SourceDiversityStats = {
+  deferredForSourceCap: number;
+};
+
 const ONBOARDING_V2_SCENE_SIGNAL_MAP: Record<string, string[]> = {
   calm_minimal: ["minimal", "scandinavian", "modern", "color:white", "color:grey"],
   warm_organic: ["scandinavian", "material:wood", "color:beige", "color:brown"],
@@ -138,6 +202,12 @@ const ONBOARDING_V2_SEAT_SUBCATEGORIES: Record<string, string[]> = {
   "2": ["2_seater"],
   "3": ["3_seater"],
   "4_plus": ["4_seater", "corner_sofa", "u_sofa"],
+};
+
+const ONBOARDING_V2_SEAT_BUCKETS: Record<string, string[]> = {
+  "2": ["2"],
+  "3": ["3"],
+  "4_plus": ["4_plus"],
 };
 
 const QUEUE_ORDER: QueueName[] = [
@@ -673,6 +743,46 @@ async function getDocsByIds(
   return db.getAll(...refs);
 }
 
+async function loadCreativeHealthScoreByItemId(
+  db: admin.firestore.Firestore,
+  itemIds: string[]
+): Promise<Map<string, number>> {
+  const out = new Map<string, { score: number; impressions: number }>();
+  if (itemIds.length === 0 || !ENABLE_SCORE_QUALITY_GATE) return new Map<string, number>();
+
+  for (let start = 0; start < itemIds.length; start += 30) {
+    const chunk = itemIds.slice(start, start + 30);
+    if (chunk.length === 0) continue;
+    const scoreSnap = await db
+      .collection("scores")
+      .where("productId", "in", chunk)
+      .limit(400)
+      .get();
+
+    for (const scoreDoc of scoreSnap.docs) {
+      const data = (scoreDoc.data() || {}) as Record<string, unknown>;
+      if (asTrimmedString(data.timeWindow) !== "30d") continue;
+
+      const productId = asTrimmedString(data.productId);
+      const creativeHealthScore = asFiniteNumber(data.creativeHealthScore);
+      if (!productId || creativeHealthScore == null) continue;
+
+      const impressions = asFiniteNumber(data.impressions) ?? 0;
+      const previous = out.get(productId);
+      if (!previous || impressions > previous.impressions) {
+        out.set(productId, {
+          score: creativeHealthScore,
+          impressions,
+        });
+      }
+    }
+  }
+
+  const flattened = new Map<string, number>();
+  out.forEach((value, key) => flattened.set(key, value.score));
+  return flattened;
+}
+
 function parseOnboardingV2Profile(data: unknown): OnboardingV2Profile | null {
   if (!data || typeof data !== "object") return null;
   const raw = data as Record<string, unknown>;
@@ -742,17 +852,362 @@ function buildOnboardingV2Weights(profile: OnboardingV2Profile): Record<string, 
   return next;
 }
 
-function titleFamilyKey(title: unknown): string | null {
+const TITLE_COLOR_HINT_TOKENS = new Set([
+  "beige", "cream", "white", "offwhite", "ivory", "black", "grey", "gray", "charcoal", "brown",
+  "green", "blue", "red", "yellow", "orange", "pink", "purple", "navy", "sand", "stone", "taupe",
+  "natural", "oak", "walnut", "ash", "graphite", "multi", "gra", "graa", "svart", "vit", "vitra",
+  "beigefargad", "brun", "gron", "bla",
+]);
+const TITLE_VARIANT_NOISE_TOKENS = new Set([
+  "sofa", "soffa", "couch", "set", "module", "modular", "left", "right", "chaise", "corner",
+  "sectional", "seat", "seater", "sits", "sit", "with", "and", "the", "for", "new", "inkl",
+  "inklusive", "pack", "cm", "m", "l", "xl", "bed", "sleeper", "daybed", "daybeds",
+  "sofabed", "futon", "baddsoffa", "baddsoffor", "sovsoffa", "sangsoffa", "hornbaddsoffa",
+  "divanbaddsoffa", "langsbaddad",
+]);
+
+const TITLE_TOKEN_ALIASES: Record<string, string> = {
+  knobb: "knob",
+};
+
+function normalizeTitleForFamily(title: unknown): string | null {
   if (typeof title !== "string") return null;
   const normalized = title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function canonicalizeFamilyParts(parts: string[]): string | null {
+  const deduped = Array.from(new Set(parts.filter((part) => part.length > 1 && !/^\d+$/.test(part))));
+  if (deduped.length === 0) return null;
+  return deduped.slice(0, 2).sort().join("_");
+}
+
+function titleFamilyKey(title: unknown): string | null {
+  const normalized = normalizeTitleForFamily(title);
   if (!normalized) return null;
-  const parts = normalized.split(" ").filter((p) => p.length > 1);
+  const parts = normalized
+    .split(" ")
+    .map((part) => TITLE_TOKEN_ALIASES[part] || part)
+    .filter((p) => p.length > 1 && !/^\d+$/.test(p));
   if (parts.length === 0) return null;
-  return parts.slice(0, 2).join("_");
+
+  const informative = parts.filter(
+    (part) => !TITLE_COLOR_HINT_TOKENS.has(part) && !TITLE_VARIANT_NOISE_TOKENS.has(part)
+  );
+  const informativeKey = canonicalizeFamilyParts(informative);
+  if (informativeKey) return informativeKey;
+
+  const fallback = parts.filter((part) => !TITLE_VARIANT_NOISE_TOKENS.has(part));
+  const fallbackKey = canonicalizeFamilyParts(fallback);
+  if (fallbackKey) return fallbackKey;
+  return canonicalizeFamilyParts(parts);
+}
+
+function canonicalPathKey(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    const host = normalizeToken(parsed.hostname.replace(/^www\./, ""));
+    const path = normalizeToken(
+      parsed.pathname
+        .replace(/\/+/g, "/")
+        .replace(/\/$/, "")
+    );
+    if (!host || !path) return null;
+    return `${host}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+function itemModelKey(data: Record<string, unknown>): string | null {
+  return (
+    normalizeToken(data.familyId) ||
+    normalizeToken(data.collectionId) ||
+    normalizeToken(data.groupId) ||
+    titleFamilyKey(data.title) ||
+    canonicalPathKey(data.canonicalUrl)
+  );
+}
+
+function itemFamilyKey(data: Record<string, unknown>): string | null {
+  const modelKey = itemModelKey(data);
+  if (!modelKey) return null;
+  const retailer = normalizeToken(data.retailer ?? data.retailerId);
+  return retailer ? `${retailer}::${modelKey}` : modelKey;
+}
+
+function itemVariantKey(
+  data: Record<string, unknown>,
+  familyKey?: string | null,
+  modelKey?: string | null
+): string | null {
+  const base = modelKey ?? familyKey ?? itemModelKey(data) ?? itemFamilyKey(data);
+  if (!base) return null;
+  const classification = toRecord(data.classification);
+  const color = normalizeToken(data.colorFamily) || "unknown";
+  const seatCountBucket = normalizeToken(data.seatCountBucket ?? classification?.seatCountBucket) || "unknown";
+  return `${base}::${color}::${seatCountBucket}`;
+}
+
+function sourceHostKey(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    return normalizeToken(parsed.hostname.replace(/^www\./, ""));
+  } catch {
+    return null;
+  }
+}
+
+function itemSourceKey(data: Record<string, unknown>): string | null {
+  return (
+    normalizeToken(data.sourceId) ||
+    normalizeToken(data.retailer) ||
+    normalizeToken(data.retailerId) ||
+    sourceHostKey(data.canonicalUrl) ||
+    sourceHostKey(data.sourceUrl)
+  );
+}
+
+function passesSoftRepeatQualityGate(
+  data: Record<string, unknown>,
+  creativeScoreByItemId?: Map<string, number>
+): boolean {
+  const itemId = asTrimmedString(data.id);
+  if (itemId && creativeScoreByItemId?.has(itemId)) {
+    const score = creativeScoreByItemId.get(itemId)!;
+    return score >= SOFT_REPEAT_MIN_CREATIVE_SCORE;
+  }
+
+  const creativeHealth = toRecord(data.creativeHealth);
+  const explicitScore = asFiniteNumber(
+    creativeHealth?.score ?? data.creativeHealthScore ?? data.imageQualityScore ?? data.qualityScore
+  );
+  if (explicitScore != null) {
+    return explicitScore >= SOFT_REPEAT_MIN_CREATIVE_SCORE;
+  }
+
+  const images = Array.isArray(data.images) ? data.images : [];
+  const hasEnoughImages = images.length >= SOFT_REPEAT_MIN_IMAGE_COUNT;
+  const hasTitle = asTrimmedString(data.title) != null;
+  const hasSource = asTrimmedString(data.canonicalUrl) != null || asTrimmedString(data.sourceUrl) != null;
+  return hasEnoughImages && hasTitle && hasSource;
+}
+
+function minStyleDistanceToFamily(
+  candidate: Record<string, unknown>,
+  familyItems: Array<Record<string, unknown>>
+): number | null {
+  if (familyItems.length === 0) return null;
+  const candidateTokens = buildStyleTokenSet(candidate);
+  if (candidateTokens.size < 2) return null;
+
+  let minDistance: number | null = null;
+  for (const existing of familyItems) {
+    const existingTokens = buildStyleTokenSet(existing);
+    if (existingTokens.size < 2) continue;
+    const distance = jaccardDistance(candidateTokens, existingTokens);
+    minDistance = minDistance == null ? distance : Math.min(minDistance, distance);
+  }
+
+  if (minDistance == null) return null;
+  return Number(minDistance.toFixed(4));
+}
+
+function spreadDeferredNearDuplicates(
+  deferred: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  if (deferred.length < 2) return deferred;
+  const buckets = new Map<string, Array<Record<string, unknown>>>();
+  deferred.forEach((item, index) => {
+    const key =
+      itemModelKey(item) ||
+      itemFamilyKey(item) ||
+      asTrimmedString(item.id) ||
+      `unknown_${index}`;
+    const bucket = buckets.get(key) || [];
+    bucket.push(item);
+    buckets.set(key, bucket);
+  });
+
+  const orderedKeys = Array.from(buckets.keys());
+  const output: Array<Record<string, unknown>> = [];
+  while (output.length < deferred.length) {
+    orderedKeys.sort((a, b) => (buckets.get(b)?.length || 0) - (buckets.get(a)?.length || 0));
+    let advanced = false;
+    for (const key of orderedKeys) {
+      const bucket = buckets.get(key);
+      if (!bucket || bucket.length === 0) continue;
+      output.push(bucket.shift()!);
+      advanced = true;
+    }
+    if (!advanced) break;
+  }
+  return output;
+}
+
+function spreadDeferredBySource(
+  deferred: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  if (deferred.length < 2) return deferred;
+  const buckets = new Map<string, Array<Record<string, unknown>>>();
+  deferred.forEach((item, index) => {
+    const key = itemSourceKey(item) || itemFamilyKey(item) || asTrimmedString(item.id) || `unknown_${index}`;
+    const bucket = buckets.get(key) || [];
+    bucket.push(item);
+    buckets.set(key, bucket);
+  });
+
+  const orderedKeys = Array.from(buckets.keys());
+  const output: Array<Record<string, unknown>> = [];
+  while (output.length < deferred.length) {
+    orderedKeys.sort((a, b) => (buckets.get(b)?.length || 0) - (buckets.get(a)?.length || 0));
+    let advanced = false;
+    for (const key of orderedKeys) {
+      const bucket = buckets.get(key);
+      if (!bucket || bucket.length === 0) continue;
+      output.push(bucket.shift()!);
+      advanced = true;
+    }
+    if (!advanced) break;
+  }
+  return output;
+}
+
+function applyNearDuplicateExplorationPolicy(
+  rankedItems: Array<Record<string, unknown>>,
+  limit: number,
+  creativeScoreByItemId?: Map<string, number>
+): { items: Array<Record<string, unknown>>; stats: ExplorationDiversityStats } {
+  const shaped: Array<Record<string, unknown>> = [];
+  const deferred: Array<Record<string, unknown>> = [];
+  const familyToItems = new Map<string, Array<Record<string, unknown>>>();
+  const modelToItems = new Map<string, Array<Record<string, unknown>>>();
+  const seenVariantTop8 = new Set<string>();
+  let softRepeatsUsed = 0;
+  const softWindowTopN = Math.max(
+    SOFT_NEAR_DUPLICATE_TOP_N,
+    Math.min(rankedItems.length, Math.max(0, limit) + SOFT_NEAR_DUPLICATE_MAX_REPEATS)
+  );
+
+  const stats: ExplorationDiversityStats = {
+    droppedHardNearDuplicate: 0,
+    droppedSoftNearDuplicate: 0,
+    droppedSoftForQuality: 0,
+    droppedSoftForStyleDistance: 0,
+    allowedSoftNearDuplicate: 0,
+  };
+
+  for (const item of rankedItems) {
+    const familyKey = itemFamilyKey(item);
+    const modelKey = itemModelKey(item);
+    const variantKey = itemVariantKey(item, familyKey, modelKey);
+    const projectedPosition = shaped.length + 1;
+    const withinHardWindow = projectedPosition <= HARD_NEAR_DUPLICATE_TOP_N;
+    const withinSoftWindow = projectedPosition <= softWindowTopN;
+    const familyItems = familyKey ? familyToItems.get(familyKey) || [] : [];
+    const modelItems = modelKey ? modelToItems.get(modelKey) || [] : [];
+    const nearDuplicateItems = [...familyItems, ...modelItems];
+    const nearDuplicateSeen = nearDuplicateItems.length > 0;
+
+    if (withinHardWindow && nearDuplicateSeen) {
+      stats.droppedHardNearDuplicate += 1;
+      deferred.push(item);
+      continue;
+    }
+    if (withinHardWindow && variantKey && seenVariantTop8.has(variantKey)) {
+      stats.droppedHardNearDuplicate += 1;
+      deferred.push(item);
+      continue;
+    }
+
+    if (withinSoftWindow && nearDuplicateSeen) {
+      if (softRepeatsUsed >= SOFT_NEAR_DUPLICATE_MAX_REPEATS) {
+        stats.droppedSoftNearDuplicate += 1;
+        deferred.push(item);
+        continue;
+      }
+      if (!passesSoftRepeatQualityGate(item, creativeScoreByItemId)) {
+        stats.droppedSoftForQuality += 1;
+        deferred.push(item);
+        continue;
+      }
+      const minDistance = minStyleDistanceToFamily(item, nearDuplicateItems);
+      if (minDistance != null && minDistance < SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE) {
+        stats.droppedSoftForStyleDistance += 1;
+        deferred.push(item);
+        continue;
+      }
+      softRepeatsUsed += 1;
+      stats.allowedSoftNearDuplicate += 1;
+    }
+
+    shaped.push(item);
+    if (familyKey) {
+      familyToItems.set(familyKey, [...familyItems, item]);
+    }
+    if (modelKey) {
+      modelToItems.set(modelKey, [...modelItems, item]);
+    }
+    if (withinHardWindow && variantKey) {
+      seenVariantTop8.add(variantKey);
+    }
+  }
+
+  const spreadDeferred = spreadDeferredNearDuplicates(deferred);
+
+  return {
+    items: [...shaped, ...spreadDeferred],
+    stats,
+  };
+}
+
+function applySourceDiversityPolicy(
+  rankedItems: Array<Record<string, unknown>>,
+  limit: number
+): { items: Array<Record<string, unknown>>; stats: SourceDiversityStats } {
+  const shaped: Array<Record<string, unknown>> = [];
+  const deferred: Array<Record<string, unknown>> = [];
+  const sourceCounts = new Map<string, number>();
+  const capWindowTopN = Math.max(SOURCE_DIVERSITY_TOP_N, Math.min(rankedItems.length, Math.max(limit, 0)));
+
+  const stats: SourceDiversityStats = {
+    deferredForSourceCap: 0,
+  };
+
+  for (const item of rankedItems) {
+    const sourceKey = itemSourceKey(item);
+    const projectedPosition = shaped.length + 1;
+    const withinCapWindow = projectedPosition <= capWindowTopN;
+
+    if (withinCapWindow && sourceKey) {
+      const currentCount = sourceCounts.get(sourceKey) || 0;
+      if (currentCount >= SOURCE_DIVERSITY_MAX_PER_SOURCE) {
+        stats.deferredForSourceCap += 1;
+        deferred.push(item);
+        continue;
+      }
+      sourceCounts.set(sourceKey, currentCount + 1);
+    }
+
+    shaped.push(item);
+  }
+
+  return {
+    items: [...shaped, ...spreadDeferredBySource(deferred)],
+    stats,
+  };
 }
 
 function computeSameFamilyTop8Rate(items: Array<Record<string, unknown>>): number {
@@ -762,7 +1217,7 @@ function computeSameFamilyTop8Rate(items: Array<Record<string, unknown>>): numbe
   let duplicateCount = 0;
 
   for (const item of top) {
-    const family = titleFamilyKey(item.title);
+    const family = itemFamilyKey(item) || titleFamilyKey(item.title);
     if (!family) continue;
     familyCount += 1;
     if (seen.has(family)) {
@@ -776,13 +1231,49 @@ function computeSameFamilyTop8Rate(items: Array<Record<string, unknown>>): numbe
   return Number((duplicateCount / familyCount).toFixed(4));
 }
 
+function computeSourceConcentrationTop8(items: Array<Record<string, unknown>>): number {
+  const top = items.slice(0, 8);
+  if (top.length === 0) return 0;
+  const counts = new Map<string, number>();
+  for (const item of top) {
+    const source = itemSourceKey(item) || "unknown";
+    counts.set(source, (counts.get(source) || 0) + 1);
+  }
+  const maxCount = Math.max(0, ...Array.from(counts.values()));
+  return Number((maxCount / top.length).toFixed(4));
+}
+
+function computeSourceDiversityTop8(items: Array<Record<string, unknown>>): number {
+  const top = items.slice(0, 8);
+  if (top.length === 0) return 0;
+  const sources = new Set<string>();
+  for (const item of top) {
+    const source = itemSourceKey(item);
+    if (source) sources.add(source);
+  }
+  return sources.size;
+}
+
 function buildStyleTokenSet(data: Record<string, unknown>): Set<string> {
   const tokens = new Set<string>();
+  const classification = toRecord(data.classification);
   for (const tag of getStringArray(data.styleTags)) tokens.add(`style:${tag}`);
+  const primaryCategory = normalizeToken(
+    data.primaryCategory ?? classification?.primaryCategory ?? classification?.predictedCategory
+  );
+  if (primaryCategory) tokens.add(`primary:${primaryCategory}`);
   const material = normalizeToken(data.material);
   if (material) tokens.add(`material:${material}`);
   const color = normalizeToken(data.colorFamily);
   if (color) tokens.add(`color:${color}`);
+  const sofaTypeShape = normalizeToken(data.sofaTypeShape ?? classification?.sofaTypeShape);
+  if (sofaTypeShape) tokens.add(`sofa_shape:${sofaTypeShape}`);
+  const sofaFunction = normalizeToken(data.sofaFunction ?? classification?.sofaFunction);
+  if (sofaFunction) tokens.add(`sofa_function:${sofaFunction}`);
+  const seatCountBucket = normalizeToken(data.seatCountBucket ?? classification?.seatCountBucket);
+  if (seatCountBucket) tokens.add(`seat_bucket:${seatCountBucket}`);
+  const environment = normalizeToken(data.environment ?? classification?.environment);
+  if (environment && environment !== "unknown") tokens.add(`environment:${environment}`);
   const subCategory = normalizeToken(data.subCategory);
   if (subCategory) tokens.add(`subcat:${subCategory}`);
   for (const roomType of getStringArray(data.roomTypes)) tokens.add(`room:${roomType}`);
@@ -1134,22 +1625,42 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const sizeClassFilter = typeof filters.sizeClass === "string" ? filters.sizeClass : undefined;
   const colorFamilyFilter = typeof filters.colorFamily === "string" ? filters.colorFamily : undefined;
   const newUsedFilter = typeof filters.newUsed === "string" ? filters.newUsed : undefined;
+  const primaryCategoryFilter = normalizeToken(filters.primaryCategory);
+  const sofaTypeShapeFilter = normalizeToken(filters.sofaTypeShape);
+  const sofaFunctionFilter = normalizeToken(filters.sofaFunction);
+  const seatCountBucketFilter = normalizeToken(filters.seatCountBucket);
+  const environmentFilter = normalizeToken(filters.environment);
   const subCategoryFilter = typeof filters.subCategory === "string" ? filters.subCategory : undefined;
   const roomTypeFilter = typeof filters.roomType === "string" ? filters.roomType : undefined;
   const explicitPriceMin = asFiniteNumber(filters.priceMin);
   const explicitPriceMax = asFiniteNumber(filters.priceMax);
   const onboardingV2Constraints = onboardingV2Profile?.constraints ?? {};
+  const onboardingConstraintsMode =
+    swipesSnap.size >= ONBOARDING_HARD_CONSTRAINT_SWIPE_THRESHOLD
+      ? "hard"
+      : swipesSnap.size >= ONBOARDING_MEDIUM_CONSTRAINT_SWIPE_THRESHOLD
+        ? "medium"
+        : "soft";
+  const applyOnboardingMediumOrHardConstraints =
+    onboardingConstraintsMode === "medium" || onboardingConstraintsMode === "hard";
+  const applyOnboardingHardConstraints = onboardingConstraintsMode === "hard";
+  const onboardingSeatBuckets =
+    applyOnboardingMediumOrHardConstraints && onboardingV2Constraints.seatCount != null
+      ? ONBOARDING_V2_SEAT_BUCKETS[onboardingV2Constraints.seatCount] || []
+      : [];
   const onboardingSeatSubcats =
-    onboardingV2Constraints.seatCount != null
+    applyOnboardingMediumOrHardConstraints && onboardingV2Constraints.seatCount != null
       ? ONBOARDING_V2_SEAT_SUBCATEGORIES[onboardingV2Constraints.seatCount] || []
       : [];
-  const requireModular = onboardingV2Constraints.modularOnly === true;
-  const requireSmallSpace = onboardingV2Constraints.smallSpace === true;
+  const requireModular =
+    applyOnboardingMediumOrHardConstraints && onboardingV2Constraints.modularOnly === true;
+  const requireSmallSpace =
+    applyOnboardingMediumOrHardConstraints && onboardingV2Constraints.smallSpace === true;
 
-  // Apply budget filter from onboarding v2/v1 if no explicit price filter is set.
+  // Apply onboarding budget as hard filter only after enough behavior history.
   let budgetMin: number | undefined;
   let budgetMax: number | undefined;
-  if (explicitPriceMin == null && explicitPriceMax == null) {
+  if (explicitPriceMin == null && explicitPriceMax == null && applyOnboardingHardConstraints) {
     const budgetBand = onboardingV2Constraints.budgetBand;
     if (budgetBand && ONBOARDING_V2_BUDGET_BANDS[budgetBand]) {
       const range = ONBOARDING_V2_BUDGET_BANDS[budgetBand];
@@ -1336,6 +1847,8 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const acceptedIds = new Set<string>();
   const seenCanonicals = new Set<string>();
   const seenFamilyKeys = new Set<string>();
+  const seenModelKeys = new Set<string>();
+  let droppedForFamilyDedupe = 0;
   const candidateDocs: admin.firestore.DocumentSnapshot[] = [];
   const candidateQueueById = new Map<string, QueueName>();
   const featuredContextByItemId = new Map<
@@ -1368,16 +1881,21 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const SOFA_NEGATIVE_KEYWORDS = [
     "dynset", "sittdyna", "ryggdyna", "soffdyna", "dyna soffa",
     "soffbord", "soffkudde", "sofftäcke", "sofföverdrag", "överdrag",
-    "klädsel", "sofa table", "sofa cushion", "sofa cover",
+    "klädsel", "cover for", "slipcover", "sofa table", "sofa cushion", "sofa cover", "cover",
+    "förvaringsbänk", "forvaringsbank", "bänk", "bank", "bench",
     "funda", // Spanish "cover" (IKEA multi-locale)
   ];
+
+  const titleHasNegativeSofaKeyword = (title: string): boolean => {
+    const lower = title.toLowerCase();
+    return SOFA_NEGATIVE_KEYWORDS.some((kw) => lower.includes(kw));
+  };
 
   const titleLooksLikeSofa = (title: string): boolean => {
     const lower = title.toLowerCase();
     const hasPositive = SOFA_TITLE_KEYWORDS.some((kw) => lower.includes(kw));
     if (!hasPositive) return false;
-    const hasNegative = SOFA_NEGATIVE_KEYWORDS.some((kw) => lower.includes(kw));
-    return !hasNegative;
+    return !titleHasNegativeSofaKeyword(title);
   };
 
   const tryAcceptCandidate = (doc: admin.firestore.DocumentSnapshot, queue: QueueName): boolean => {
@@ -1387,6 +1905,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     if (acceptedIds.has(doc.id)) return false;
 
     const data = (doc.data() || {}) as Record<string, unknown>;
+    const classification = toRecord(data.classification);
 
     // Retailer catalog include/exclude override from console.
     if (data.retailerCatalogIncluded === false) return false;
@@ -1395,8 +1914,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     // item's classification matches the deck surface. Gold items are pre-filtered at
     // query time via eligibleSurfaces, but catalog items need a client-side check.
     if (deckSurface === "swiper_deck_sofas" && queue !== "fresh_promoted") {
-      const classification = data.classification as Record<string, unknown> | undefined;
       const eligibility = data.eligibility as Record<string, Record<string, unknown>> | undefined;
+      const title = typeof data.title === "string" ? data.title : "";
+
+      // Always reject clear sofa accessories/noise even if misclassified as sofa.
+      if (titleHasNegativeSofaKeyword(title)) return false;
 
       // First check: if eligibility data exists, use the surface decision
       const surfaceDecision = eligibility?.[deckSurface]?.decision;
@@ -1406,17 +1928,17 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         // Explicitly accepted – pass through
       } else if (classification) {
         // Has classification but no explicit accept – check category
-        const category = classification.predictedCategory as string | undefined;
+        const category =
+          (classification.primaryCategory as string | undefined) ||
+          (classification.predictedCategory as string | undefined);
         if (category && SOFA_SURFACE_CATEGORIES.has(category)) {
           // Classified as a sofa type – pass through
         } else {
           // Not a sofa category (or "unknown") – fall back to title heuristic
-          const title = typeof data.title === "string" ? data.title : "";
           if (!titleLooksLikeSofa(title)) return false;
         }
       } else {
         // No classification at all (e.g., sample feed items) – use title heuristic
-        const title = typeof data.title === "string" ? data.title : "";
         if (!titleLooksLikeSofa(title)) return false;
       }
     }
@@ -1465,10 +1987,31 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     if (!sizeClassFilter && requireSmallSpace && data.smallSpaceFriendly !== true) return false;
     if (colorFamilyFilter && data.colorFamily !== colorFamilyFilter) return false;
     if (newUsedFilter && data.newUsed !== newUsedFilter) return false;
+    const candidatePrimaryCategory = normalizeToken(
+      data.primaryCategory ?? classification?.primaryCategory ?? classification?.predictedCategory
+    );
+    const candidateSofaTypeShape = normalizeToken(data.sofaTypeShape ?? classification?.sofaTypeShape);
+    const candidateSofaFunction = normalizeToken(data.sofaFunction ?? classification?.sofaFunction);
+    const candidateSeatCountBucket = normalizeToken(data.seatCountBucket ?? classification?.seatCountBucket);
+    const candidateEnvironment = normalizeToken(data.environment ?? classification?.environment);
+    if (primaryCategoryFilter && candidatePrimaryCategory !== primaryCategoryFilter) return false;
+    if (sofaTypeShapeFilter && candidateSofaTypeShape !== sofaTypeShapeFilter) return false;
+    if (sofaFunctionFilter && candidateSofaFunction !== sofaFunctionFilter) return false;
+    if (seatCountBucketFilter && candidateSeatCountBucket !== seatCountBucketFilter) return false;
+    if (environmentFilter) {
+      if (!candidateEnvironment || candidateEnvironment === "unknown") return false;
+      if (environmentFilter === "indoor" && !["indoor", "both"].includes(candidateEnvironment)) return false;
+      if (environmentFilter === "outdoor" && !["outdoor", "both"].includes(candidateEnvironment)) return false;
+      if (environmentFilter === "both" && candidateEnvironment !== "both") return false;
+    }
     if (subCategoryFilter && data.subCategory !== subCategoryFilter) return false;
-    if (!subCategoryFilter && onboardingSeatSubcats.length > 0) {
-      const candidateSubCategory = normalizeToken(data.subCategory);
-      if (!candidateSubCategory || !onboardingSeatSubcats.includes(candidateSubCategory)) return false;
+    if (!subCategoryFilter && onboardingSeatBuckets.length > 0) {
+      if (candidateSeatCountBucket) {
+        if (!onboardingSeatBuckets.includes(candidateSeatCountBucket)) return false;
+      } else {
+        const candidateSubCategory = normalizeToken(data.subCategory);
+        if (!candidateSubCategory || !onboardingSeatSubcats.includes(candidateSubCategory)) return false;
+      }
     }
     if (requireModular && data.modular !== true) return false;
     if (roomTypeFilter) {
@@ -1485,14 +2028,14 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     const canonical = typeof data.canonicalUrl === "string" ? data.canonicalUrl.trim() : "";
     if (canonical && seenCanonicals.has(canonical)) return false;
 
-    // For v2 cold-start flows, avoid repeated product families in the first visible group.
-    if (onboardingV2Profile != null && candidateDocs.length < 8) {
-      const familyKey = normalizeToken(data.familyId) ||
-        normalizeToken(data.collectionId) ||
-        normalizeToken(data.groupId) ||
-        titleFamilyKey(data.title);
-      if (familyKey && seenFamilyKeys.has(familyKey)) return false;
-      if (familyKey) seenFamilyKeys.add(familyKey);
+    const familyKey = itemFamilyKey(data);
+    const modelKey = itemModelKey(data);
+    if (
+      candidateDocs.length < UNIVERSAL_FAMILY_DEDUPE_TOP_N &&
+      ((familyKey && seenFamilyKeys.has(familyKey)) || (modelKey && seenModelKeys.has(modelKey)))
+    ) {
+      droppedForFamilyDedupe += 1;
+      return false;
     }
 
     // For v2 cold-start first slate, enforce minimum visual/style distance.
@@ -1513,6 +2056,8 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
 
     acceptedIds.add(doc.id);
     if (canonical) seenCanonicals.add(canonical);
+    if (familyKey) seenFamilyKeys.add(familyKey);
+    if (modelKey) seenModelKeys.add(modelKey);
     candidateDocs.push(doc);
     candidateQueueById.set(doc.id, queue);
     queueContributions[queue] += 1;
@@ -1549,6 +2094,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   // Exhaustion fallback: if no candidates after exclusion, clear seen items
   // and re-accept from queue docs so the user never sees an empty deck.
   let recycled = false;
+  let fallbackStage: "none" | "recycled_seen_items" | "catalog_exhausted" = "none";
   if (candidateDocs.length === 0 && seenItemIds.size > 0) {
     recycled = true;
     seenItemIds.clear();
@@ -1562,7 +2108,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         tryAcceptCandidate(doc, queue);
       }
     }
+    fallbackStage = candidateDocs.length > 0 ? "recycled_seen_items" : "catalog_exhausted";
     console.info(`[deck] Exhaustion fallback: recycled ${candidateDocs.length} candidates for session ${sessionId}`);
+  }
+  if (candidateDocs.length === 0 && fallbackStage === "none") {
+    fallbackStage = "catalog_exhausted";
   }
 
   const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
@@ -1617,19 +2167,55 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       };
     });
 
+  const qualityLookupIds = rankedItems
+    .slice(0, Math.min(rankedItems.length, QUALITY_SCORE_LOOKUP_LIMIT))
+    .map((item) => asTrimmedString(item.id))
+    .filter((id): id is string => id != null);
+  const creativeScoreByItemId = await loadCreativeHealthScoreByItemId(
+    db,
+    Array.from(new Set(qualityLookupIds))
+  );
+
+  const nearDuplicatePhase1 = applyNearDuplicateExplorationPolicy(
+    rankedItems as Array<Record<string, unknown>>,
+    limit,
+    creativeScoreByItemId
+  );
+  const sourceDiversityPreFeatured = applySourceDiversityPolicy(
+    nearDuplicatePhase1.items as Array<Record<string, unknown>>,
+    limit
+  );
+  const nearDuplicatePreFeatured = applyNearDuplicateExplorationPolicy(
+    sourceDiversityPreFeatured.items as Array<Record<string, unknown>>,
+    limit,
+    creativeScoreByItemId
+  );
+  const shapedRankedItems = nearDuplicatePreFeatured.items as ItemCandidate[];
+
   const featuredFrequencyCap = deriveFeaturedFrequencyCap(activeCampaignTargeting);
   const featuredServing = applyFeaturedServingPolicy(
-    rankedItems as Array<Record<string, unknown>>,
+    shapedRankedItems as Array<Record<string, unknown>>,
     limit,
     featuredFrequencyCap,
     FEATURED_RETAILER_COOLDOWN
   );
-  const items = featuredServing.items as ItemCandidate[];
+  const sourceDiversityShaping = applySourceDiversityPolicy(
+    featuredServing.items as Array<Record<string, unknown>>,
+    limit
+  );
+  const nearDuplicateShaping = applyNearDuplicateExplorationPolicy(
+    sourceDiversityShaping.items as Array<Record<string, unknown>>,
+    limit,
+    creativeScoreByItemId
+  );
+  const items = nearDuplicateShaping.items as ItemCandidate[];
   const servedItemIds = items.map((item) => String(item.id));
 
   const itemsForMetrics = items.map((item) => item as Record<string, unknown>);
   const sameFamilyTop8Rate = computeSameFamilyTop8Rate(itemsForMetrics);
   const styleDistanceTop4Min = computeMinStyleDistanceTop4(itemsForMetrics);
+  const sourceConcentrationTop8 = computeSourceConcentrationTop8(itemsForMetrics);
+  const sourceDiversityTop8 = computeSourceDiversityTop8(itemsForMetrics);
 
   const itemScores: Record<string, number> = {};
   servedItemIds.forEach((id) => {
@@ -1691,7 +2277,30 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       scoreStats,
       sameFamilyTop8Rate,
       styleDistanceTop4Min,
+      sourceConcentrationTop8,
+      sourceDiversityTop8,
+      familyDedupeTopN: UNIVERSAL_FAMILY_DEDUPE_TOP_N,
+      droppedForFamilyDedupe,
+      nearDuplicatePolicy: {
+        hardTopN: HARD_NEAR_DUPLICATE_TOP_N,
+        softTopN: SOFT_NEAR_DUPLICATE_TOP_N,
+        softRepeatBudget: SOFT_NEAR_DUPLICATE_MAX_REPEATS,
+        minStyleDistance: SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE,
+        minImageCount: SOFT_REPEAT_MIN_IMAGE_COUNT,
+        minCreativeScore: SOFT_REPEAT_MIN_CREATIVE_SCORE,
+        qualityScoreLookupEnabled: ENABLE_SCORE_QUALITY_GATE,
+        qualityScoreLookupLimit: QUALITY_SCORE_LOOKUP_LIMIT,
+        qualityScoresFound: creativeScoreByItemId.size,
+      },
+      nearDuplicateShaping: nearDuplicateShaping.stats,
+      nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
+      sourceDiversityPolicy: {
+        topN: SOURCE_DIVERSITY_TOP_N,
+        maxPerSource: SOURCE_DIVERSITY_MAX_PER_SOURCE,
+      },
+      sourceDiversityShaping: sourceDiversityShaping.stats,
       featuredServing,
+      fallbackStage,
       ...(onboardingProfileSummary != null ? { onboardingProfile: onboardingProfileSummary } : {}),
       ...(recycled ? { recycled: true } : {}),
     },
@@ -1732,10 +2341,33 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       hasPersonaSignals: usePersonaRanker,
       explorationRate,
       budgetFilter: minPriceFilter != null || maxPriceFilter != null ? { min: minPriceFilter, max: maxPriceFilter } : "none",
+      onboardingConstraintMode: onboardingConstraintsMode,
+      onboardingMediumConstraintSwipeThreshold: ONBOARDING_MEDIUM_CONSTRAINT_SWIPE_THRESHOLD,
+      onboardingHardConstraintSwipeThreshold: ONBOARDING_HARD_CONSTRAINT_SWIPE_THRESHOLD,
+      swipeHistoryCount: swipesSnap.size,
+      fallbackStage,
       sourceFetchCounts: {
         freshPromoted: freshPromotedDocs.length,
         freshCatalog: freshCatalogDocs.length,
         personaById: personaDocs.length,
+      },
+      diversityGuards: {
+        universalFamilyDedupeTopN: UNIVERSAL_FAMILY_DEDUPE_TOP_N,
+        droppedForFamilyDedupe,
+        hardNearDuplicateTopN: HARD_NEAR_DUPLICATE_TOP_N,
+        softNearDuplicateTopN: SOFT_NEAR_DUPLICATE_TOP_N,
+        softNearDuplicateRepeatBudget: SOFT_NEAR_DUPLICATE_MAX_REPEATS,
+        softNearDuplicateMinStyleDistance: SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE,
+        softRepeatMinImageCount: SOFT_REPEAT_MIN_IMAGE_COUNT,
+        softRepeatMinCreativeScore: SOFT_REPEAT_MIN_CREATIVE_SCORE,
+        qualityScoreLookupEnabled: ENABLE_SCORE_QUALITY_GATE,
+        qualityScoreLookupLimit: QUALITY_SCORE_LOOKUP_LIMIT,
+        qualityScoresFound: creativeScoreByItemId.size,
+        nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
+        nearDuplicateShaping: nearDuplicateShaping.stats,
+        sourceDiversityTopN: SOURCE_DIVERSITY_TOP_N,
+        sourceDiversityMaxPerSource: SOURCE_DIVERSITY_MAX_PER_SOURCE,
+        sourceDiversityShaping: sourceDiversityShaping.stats,
       },
       featuredTargeting: {
         activeCampaignCount: activeCampaignTargeting.size,
@@ -1774,6 +2406,15 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     hasOnboardingV2: onboardingV2Profile != null,
     sameFamilyTop8Rate,
     styleDistanceTop4Min,
+    sourceConcentrationTop8,
+    sourceDiversityTop8,
+    droppedForFamilyDedupe,
+    nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
+    nearDuplicateShaping: nearDuplicateShaping.stats,
+    sourceDiversityShaping: sourceDiversityShaping.stats,
+    qualityScoresFound: creativeScoreByItemId.size,
+    onboardingConstraintMode: onboardingConstraintsMode,
+    fallbackStage,
     activeCampaignCount: activeCampaignTargeting.size,
     featuredTargetingStats,
     featuredServing,
@@ -1797,7 +2438,17 @@ export const __deckTestUtils = {
   buildOnboardingV2Weights,
   buildStyleTokenSet,
   jaccardDistance,
+  titleFamilyKey,
+  itemModelKey,
+  itemFamilyKey,
+  itemSourceKey,
+  itemVariantKey,
+  passesSoftRepeatQualityGate,
+  applyNearDuplicateExplorationPolicy,
+  applySourceDiversityPolicy,
   computeSameFamilyTop8Rate,
+  computeSourceConcentrationTop8,
+  computeSourceDiversityTop8,
   computeMinStyleDistanceTop4,
   extractCampaignIdFromPromotedItem,
   evaluatePromotedItemTargeting,

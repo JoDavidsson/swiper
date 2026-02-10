@@ -275,6 +275,11 @@ async function loadRetailerCatalogRows(
     const included = control != null ? control.included !== false : itemData.retailerCatalogIncluded !== false;
     const score = scoresByProductId.get(itemId);
     const creativeHealth = toRecord(itemData.creativeHealth);
+    const classification = toRecord(itemData.classification);
+    const environment = asTrimmedString(
+      itemData.environment ??
+        classification?.environment
+    );
 
     rows.push({
       id: itemId,
@@ -282,6 +287,24 @@ async function loadRetailerCatalogRows(
       priceAmount: asFiniteNumber(itemData.priceAmount),
       priceCurrency: asTrimmedString(itemData.priceCurrency) || "SEK",
       images: Array.isArray(itemData.images) ? itemData.images : [],
+      primaryCategory:
+        asTrimmedString(itemData.primaryCategory) ||
+        asTrimmedString(classification?.primaryCategory) ||
+        asTrimmedString(classification?.predictedCategory),
+      sofaTypeShape:
+        asTrimmedString(itemData.sofaTypeShape) ||
+        asTrimmedString(classification?.sofaTypeShape),
+      sofaFunction:
+        asTrimmedString(itemData.sofaFunction) ||
+        asTrimmedString(classification?.sofaFunction),
+      seatCountBucket:
+        asTrimmedString(itemData.seatCountBucket) ||
+        asTrimmedString(classification?.seatCountBucket),
+      environment: environment && environment.toLowerCase() !== "unknown" ? environment : null,
+      roomTypes: Array.isArray(itemData.roomTypes)
+        ? itemData.roomTypes
+        : (Array.isArray(classification?.roomTypes) ? classification?.roomTypes : []),
+      subCategory: asTrimmedString(itemData.subCategory) || asTrimmedString(classification?.subCategory),
       included,
       inclusionReason: asTrimmedString(control?.reason) || null,
       score:

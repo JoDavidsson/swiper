@@ -116,6 +116,19 @@ class _SharedShortlistScreenState extends ConsumerState<SharedShortlistScreen> {
                                 },
                               });
                             },
+                            onShare: (i) {
+                              tracker.track('shortlist_share', {
+                                'item': {
+                                  'itemId': i.id,
+                                  'source': 'shortlist',
+                                },
+                                'share': {
+                                  'method': 'native_share',
+                                  'linkType': 'item',
+                                  'linkId': i.id,
+                                },
+                              });
+                            },
                             onScroll: () => tracker.track('detail_scroll', {
                               'item': {'itemId': item.id}
                             }),

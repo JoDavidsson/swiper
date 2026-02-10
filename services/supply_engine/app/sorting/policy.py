@@ -6,6 +6,8 @@ Each decision is versioned and carries reason codes for auditability.
 """
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -25,6 +27,8 @@ DEFAULT_REJECT_THRESHOLD = 0.20   # Reject if top1_confidence <= this
 DEFAULT_MIN_MARGIN = 0.10         # Minimum margin between top-1 and top-2
 DEFAULT_MIN_COMPLETENESS = 0.40   # Minimum extraction completeness score
 DEFAULT_REQUIRE_IMAGES = True     # Require at least one image
+
+TRAINING_RULES_MODE = os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE", "shadow")
 
 
 @dataclass
@@ -46,6 +50,7 @@ class SurfacePolicy:
 SURFACE_POLICIES: dict[str, SurfacePolicy] = {
     "swiper_deck_sofas": SurfacePolicy(
         surface_id="swiper_deck_sofas",
+        # Legacy aliases kept during migration.
         allowed_categories=["sofa", "corner_sofa", "bed_sofa"],
         accept_threshold=0.55,
         min_margin=0.10,
@@ -78,6 +83,166 @@ class EligibilityDecision:
     def __post_init__(self):
         if not self.decided_at:
             self.decided_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+@dataclass
+class TrainingRuleAssessment:
+    """Assessment of source/category runtime rules for a classified item."""
+    mode: str
+    would_reject: bool
+    reasons: list[str] = field(default_factory=list)
+    matched_tokens: list[str] = field(default_factory=list)
+
+
+def resolve_training_rules_mode(mode: str | None = None) -> str:
+    """Normalize runtime training-rule mode to off|shadow|active."""
+    normalized = (mode or TRAINING_RULES_MODE or "off").strip().lower()
+    if normalized in {"off", "shadow", "active"}:
+        return normalized
+    return "off"
+
+
+def load_training_config_latest(db: Any) -> dict | None:
+    """
+    Load latest categorization training config.
+
+    Returns the full `categorizationTrainingConfig/latest` document dict,
+    or None when missing/unavailable.
+    """
+    try:
+        snap = db.collection("categorizationTrainingConfig").document("latest").get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict() or {}
+        if not isinstance(data.get("byCategory"), dict):
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+    except Exception:
+        return None
+    return None
+
+
+def _normalize_source_id(value: Any) -> str:
+    if not isinstance(value, str):
+        return "unknown"
+    token = value.strip().lower()
+    return token or "unknown"
+
+
+def _normalize_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    lowered = value.lower()
+    return re.sub(r"[^a-z0-9åäö]+", " ", lowered).strip()
+
+
+def _build_training_text_blob(item_data: dict) -> str:
+    breadcrumbs = item_data.get("breadcrumbs")
+    breadcrumb_text = ""
+    if isinstance(breadcrumbs, list):
+        breadcrumb_text = " ".join(str(x) for x in breadcrumbs)
+
+    raw = " ".join(
+        [
+            str(item_data.get("title", "")),
+            str(item_data.get("productType", "")),
+            str(item_data.get("descriptionShort", "")),
+            str(item_data.get("canonicalUrl", "")),
+            breadcrumb_text,
+        ]
+    )
+    return _normalize_text(raw)
+
+
+def _extract_category_training_config(
+    training_config: dict | None,
+    category_id: str,
+) -> dict | None:
+    if not isinstance(training_config, dict):
+        return None
+    by_category = training_config.get("byCategory")
+    if not isinstance(by_category, dict):
+        return None
+    cfg = by_category.get(category_id)
+    if isinstance(cfg, dict):
+        return cfg
+    return None
+
+
+def _assess_training_rules(
+    *,
+    classification: ClassificationResult,
+    item_data: dict,
+    has_images: bool,
+    training_config: dict | None,
+    training_mode: str,
+) -> TrainingRuleAssessment:
+    mode = resolve_training_rules_mode(training_mode)
+    if mode == "off":
+        return TrainingRuleAssessment(mode=mode, would_reject=False)
+
+    category_id = classification.primary_category or classification.predicted_category
+    if not category_id or category_id == "unknown":
+        return TrainingRuleAssessment(mode=mode, would_reject=False)
+
+    category_cfg = _extract_category_training_config(training_config, category_id)
+    if not isinstance(category_cfg, dict):
+        return TrainingRuleAssessment(mode=mode, would_reject=False)
+    runtime_status = str(category_cfg.get("runtimeStatus", "validated")).strip().lower()
+    if mode == "active" and runtime_status != "validated":
+        return TrainingRuleAssessment(
+            mode=mode,
+            would_reject=False,
+            reasons=[f"training_rule_not_validated:{runtime_status or 'unknown'}"],
+        )
+
+    source_id = _normalize_source_id(item_data.get("sourceId"))
+    reasons: list[str] = []
+    matched_tokens: list[str] = []
+
+    source_require_images = category_cfg.get("sourceRequireImages")
+    if isinstance(source_require_images, dict):
+        if bool(source_require_images.get(source_id, False)) and not has_images:
+            reasons.append("training_rule_missing_images")
+
+    source_category_min_conf = category_cfg.get("sourceCategoryMinConfidence")
+    if isinstance(source_category_min_conf, dict):
+        source_conf_map = source_category_min_conf.get(source_id)
+        if isinstance(source_conf_map, dict):
+            min_conf = _safe_float(source_conf_map.get(category_id))
+            if min_conf is not None and classification.top1_confidence < min_conf:
+                reasons.append(
+                    f"training_rule_min_conf:{classification.top1_confidence:.2f}<{min_conf:.2f}"
+                )
+
+    source_category_reject_tokens = category_cfg.get("sourceCategoryRejectTokens")
+    if isinstance(source_category_reject_tokens, dict):
+        source_token_map = source_category_reject_tokens.get(source_id)
+        if isinstance(source_token_map, dict):
+            raw_tokens = source_token_map.get(category_id)
+            if isinstance(raw_tokens, list):
+                text_blob = _build_training_text_blob(item_data)
+                for token in raw_tokens:
+                    norm = _normalize_text(token)
+                    if norm and norm in text_blob:
+                        matched_tokens.append(norm)
+                if matched_tokens:
+                    reasons.append(f"training_rule_reject_tokens:{','.join(matched_tokens[:5])}")
+
+    return TrainingRuleAssessment(
+        mode=mode,
+        would_reject=bool(reasons),
+        reasons=reasons,
+        matched_tokens=matched_tokens,
+    )
 
 
 def evaluate_eligibility(
@@ -113,7 +278,7 @@ def evaluate_eligibility(
             )
 
     reasons: list[str] = []
-    cat = classification.predicted_category
+    cat = classification.primary_category or classification.predicted_category
 
     # Gate 1: Category must be allowed
     if cat not in policy.allowed_categories and cat != "unknown":
@@ -223,7 +388,12 @@ def promote_to_gold(
     gold_doc = {
         "itemId": item_id,
         "eligibleSurfaces": accepted_surfaces,
+        "primaryCategory": classification.primary_category,
         "predictedCategory": classification.predicted_category,
+        "sofaTypeShape": classification.sofa_type_shape,
+        "sofaFunction": classification.sofa_function,
+        "seatCountBucket": classification.seat_count_bucket,
+        "environment": classification.environment if classification.environment != "unknown" else None,
         "subCategory": classification.sub_category,  # C6: sofa sub-type
         "roomTypes": classification.room_types or [],  # C7: room placement tags
         "categoryConfidence": classification.top1_confidence,
@@ -270,6 +440,8 @@ def classify_and_decide(
     item_id: str,
     item_data: dict,
     surface_ids: list[str] | None = None,
+    training_config: dict | None = None,
+    training_mode: str | None = None,
 ) -> dict:
     """
     Convenience function: classify an item and evaluate eligibility for all surfaces.
@@ -295,19 +467,45 @@ def classify_and_decide(
         product_type=item_data.get("productType"),
         facets=item_data.get("facets", {}),
         description=item_data.get("descriptionShort"),
+        seat_count=item_data.get("seatCount"),
     )
 
+    resolved_training_mode = resolve_training_rules_mode(training_mode)
+
     surfaces = surface_ids or list(SURFACE_POLICIES.keys())
+    has_images = bool(item_data.get("images"))
+    training_assessment = _assess_training_rules(
+        classification=classification,
+        item_data=item_data,
+        has_images=has_images,
+        training_config=training_config,
+        training_mode=resolved_training_mode,
+    )
+
     decisions: dict[str, EligibilityDecision] = {}
+    training_applied_surfaces: list[str] = []
+    training_shadow_by_surface: dict[str, dict] = {}
     for sid in surfaces:
         decisions[sid] = evaluate_eligibility(
             classification=classification,
             surface_id=sid,
             completeness_score=item_data.get("completenessScore", 0.5),
-            has_images=bool(item_data.get("images")),
+            has_images=has_images,
             has_price=item_data.get("priceAmount") is not None,
             price_amount=item_data.get("priceAmount"),
         )
+        if training_assessment.would_reject and resolved_training_mode == "active":
+            if decisions[sid].decision != "REJECT":
+                decisions[sid].decision = "REJECT"
+                decisions[sid].reason_codes = list(
+                    dict.fromkeys(decisions[sid].reason_codes + training_assessment.reasons)
+                )
+                training_applied_surfaces.append(sid)
+        elif training_assessment.would_reject and resolved_training_mode == "shadow":
+            training_shadow_by_surface[sid] = {
+                "wouldDecision": "REJECT",
+                "reasonCodes": training_assessment.reasons,
+            }
 
     # Build Gold doc if accepted for at least one surface
     gold_doc = None
@@ -321,7 +519,12 @@ def classify_and_decide(
 
     return {
         "classification": {
+            "primaryCategory": classification.primary_category,
             "predictedCategory": classification.predicted_category,
+            "sofaTypeShape": classification.sofa_type_shape,
+            "sofaFunction": classification.sofa_function,
+            "seatCountBucket": classification.seat_count_bucket,
+            "environment": classification.environment,
             "subCategory": classification.sub_category,
             "roomTypes": classification.room_types or [],
             "categoryProbabilities": classification.category_probabilities,
@@ -336,8 +539,18 @@ def classify_and_decide(
                 "reasonCodes": d.reason_codes,
                 "confidence": d.confidence,
                 "decidedAt": d.decided_at,
+                "trainingOverrideApplied": sid in training_applied_surfaces,
+                "trainingShadowOverride": training_shadow_by_surface.get(sid),
             }
             for sid, d in decisions.items()
+        },
+        "trainingRules": {
+            "mode": resolved_training_mode,
+            "wouldReject": training_assessment.would_reject,
+            "reasons": training_assessment.reasons,
+            "matchedTokens": training_assessment.matched_tokens,
+            "appliedSurfaces": training_applied_surfaces,
+            "shadowSurfaces": list(training_shadow_by_surface.keys()),
         },
         "goldDoc": gold_doc,
     }

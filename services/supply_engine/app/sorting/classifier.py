@@ -1,13 +1,16 @@
 """
-C1: Generic category classification (replaces sofa-only confidence).
+C1: Primary-category classification (hierarchical taxonomy root).
 C2: Feature builder with evidence provenance.
 C3: Rule scorer with positive/negative taxonomy lexicons.
-C6: Sub-category extraction (sofa sub-types from title/description).
+C6: Sofa profile extraction (shape/function/seat count + legacy subCategory).
 C7: Room-type tagging (non-hierarchical placement tags).
 
-Classifies items into furniture categories using breadcrumbs, title, URL path,
-and facets as evidence. Each classification carries confidence, evidence trail,
-and version for reprocessing.
+Classifies items into primary furniture categories using breadcrumbs, title, URL
+path, and facets as evidence. For sofas, derives orthogonal attributes:
+- sofaTypeShape (single best match)
+- sofaFunction (single best match, defaults to standard)
+- seatCountBucket (optional)
+- environment (indoor/outdoor/both/unknown)
 """
 from __future__ import annotations
 
@@ -20,15 +23,16 @@ from typing import Any
 # C1: CATEGORY TAXONOMY
 # ============================================================================
 
-# Generic furniture taxonomy – each category has positive and negative lexicons.
+# Primary-category taxonomy – each category has positive and negative lexicons.
 # Positive tokens boost the category score; negative tokens suppress it.
 # Both Swedish and English keywords included for Swedish retailer coverage.
 CATEGORY_LEXICONS: dict[str, dict[str, list[str]]] = {
     "sofa": {
         "positive": [
             "soffa", "soffor", "sofa", "sofas", "couch",
-            "divansoffa", "hörnsoffa", "modulsoffa", "u-soffa",
-            "3-sits", "2-sits", "4-sits",
+            "divansoffa", "hörnsoffa", "modulsoffa", "u-soffa", "l-soffa",
+            "bäddsoffa", "bäddsoffor", "sleeper sofa", "sofa bed", "sov-soffa",
+            "3-sits", "2-sits", "4-sits", "3-seater", "2-seater", "4-seater",
         ],
         "negative": [
             "soffbord", "soffkudde", "sofftäcke", "sofa table", "sofa cushion",
@@ -39,14 +43,6 @@ CATEGORY_LEXICONS: dict[str, dict[str, list[str]]] = {
     "armchair": {
         "positive": ["fåtölj", "fåtöljer", "armchair", "armchairs", "karmstol", "öronlappsfåtölj", "snurrstol"],
         "negative": [],
-    },
-    "bed_sofa": {
-        "positive": ["bäddsoffa", "bäddsoffor", "sleeper sofa", "sofa bed", "sov-soffa"],
-        "negative": ["dynset", "sittdyna", "ryggdyna", "soffdyna", "överdrag"],
-    },
-    "corner_sofa": {
-        "positive": ["hörnsoffa", "hörnsoffor", "corner sofa", "divansoffa", "l-soffa", "u-soffa"],
-        "negative": ["dynset", "sittdyna", "ryggdyna", "soffdyna", "överdrag"],
     },
     "dining_table": {
         "positive": ["matbord", "dining table", "köksbord"],
@@ -80,10 +76,6 @@ CATEGORY_LEXICONS: dict[str, dict[str, list[str]]] = {
         "positive": ["skrivbord", "desk", "kontorsbord", "arbetsbord"],
         "negative": [],
     },
-    "outdoor": {
-        "positive": ["utomhus", "outdoor", "trädgård", "balkong", "utesoffa", "utemöbel"],
-        "negative": [],
-    },
     "decor": {
         "positive": ["inredning", "dekoration", "decor", "vas", "ljusstake", "spegel", "tavla", "konst"],
         "negative": [],
@@ -94,75 +86,67 @@ CATEGORY_LEXICONS: dict[str, dict[str, list[str]]] = {
     },
 }
 
-CLASSIFICATION_VERSION = 2  # Bumped: added subCategory + roomTypes
+CLASSIFICATION_VERSION = 3  # Bumped: hierarchical sofa profile + environment
 
 
 # ============================================================================
-# C6: SOFA SUB-CATEGORY TAXONOMY
+# C6: SOFA PROFILE TAXONOMY
 # ============================================================================
-# Ordered by specificity – first match wins. Checked against title + description.
-
-SOFA_SUB_CATEGORIES: list[dict[str, Any]] = [
+# Ordered by specificity – first match wins.
+SOFA_TYPE_SHAPE_LEXICONS: list[dict[str, Any]] = [
     {
-        "id": "sleeper_sofa",
-        "label": "Bäddsoffa",
-        "label_en": "Sleeper Sofa",
-        "keywords": ["bäddsoffa", "bäddsoffor", "sleeper sofa", "sofa bed", "sov-soffa", "sofá-cama", "sofá cama"],
+        "id": "u_shaped",
+        "keywords": ["u-soffa", "u formad soffa", "u-formad soffa", "u-shaped sofa", "u shaped sofa", "u shape sofa"],
     },
     {
-        "id": "u_sofa",
-        "label": "U-soffa",
-        "label_en": "U-Shaped Sofa",
-        "keywords": ["u-soffa", "u-formad soffa", "u-shaped sofa", "u shaped"],
-    },
-    {
-        "id": "corner_sofa",
-        "label": "Hörnsoffa",
-        "label_en": "Corner Sofa",
+        "id": "corner",
         "keywords": [
-            "hörnsoffa", "hörnsoffor", "corner sofa", "l-soffa", "l-formad",
+            "hörnsoffa", "hörnsoffor", "corner sofa", "l-soffa", "l formad", "l-formad",
             "esquina",  # Spanish – IKEA multi-locale
         ],
     },
     {
-        "id": "chaise_sofa",
-        "label": "Divansoffa",
-        "label_en": "Chaise Sofa",
+        "id": "chaise",
         "keywords": [
             "divansoffa", "divan soffa", "chaise longue", "chaise lounge",
-            "schäslong", "med schäslong", "c/chaise",
+            "schäslong", "med schäslong", "chaselong", "c/chaise",
         ],
     },
     {
-        "id": "modular_sofa",
-        "label": "Modulsoffa",
-        "label_en": "Modular Sofa",
-        "keywords": ["modulsoffa", "modulsoffor", "modular sofa", "sektionssoffa", "byggsoffa"],
-    },
-    {
-        "id": "4_seater",
-        "label": "4-sitssoffa",
-        "label_en": "4-Seater Sofa",
-        "keywords": ["4-sits", "4 sits", "4-sitssoffa", "4-seater", "4 seater", "4 asientos"],
-    },
-    {
-        "id": "3_seater",
-        "label": "3-sitssoffa",
-        "label_en": "3-Seater Sofa",
-        "keywords": ["3-sits", "3 sits", "3-sitssoffa", "3-seater", "3 seater", "3 asientos"],
-    },
-    {
-        "id": "2_seater",
-        "label": "2-sitssoffa",
-        "label_en": "2-Seater Sofa",
-        "keywords": ["2-sits", "2 sits", "2-sitssoffa", "2-seater", "2 seater", "2 asientos", "loveseat"],
+        "id": "modular",
+        "keywords": ["modulsoffa", "modulsoffor", "modular sofa", "sektionssoffa", "byggsoffa", "sectional"],
     },
 ]
 
-# Lookup map for sub-category labels
+SOFA_FUNCTION_LEXICONS: list[dict[str, Any]] = [
+    {
+        "id": "sleeper",
+        "keywords": ["bäddsoffa", "bäddsoffor", "sleeper sofa", "sofa bed", "sov-soffa", "sofá-cama", "sofá cama", "futon", "daybed", "dagbädd"],
+    },
+]
+
+SEAT_COUNT_KEYWORDS: dict[str, list[str]] = {
+    "2": ["2-sits", "2 sits", "2-sitssoffa", "2-seater", "2 seater", "tvåsits", "loveseat"],
+    "3": ["3-sits", "3 sits", "3-sitssoffa", "3-seater", "3 seater", "tresits"],
+    "4_plus": ["4-sits", "4 sits", "4-sitssoffa", "4-seater", "4 seater", "5-sits", "6-sits", "5-seater", "6-seater"],
+}
+
+SEAT_COUNT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("4_plus", re.compile(r"\b([4-9]|[1-9]\d)\s*[- ]?(?:sits|seater|seat)\b", re.IGNORECASE)),
+    ("3", re.compile(r"\b3\s*[- ]?(?:sits|seater|seat)\b", re.IGNORECASE)),
+    ("2", re.compile(r"\b2\s*[- ]?(?:sits|seater|seat)\b", re.IGNORECASE)),
+]
+
+# Legacy sofa sub-category labels retained for compatibility in UI and filters.
 SUB_CATEGORY_LABELS: dict[str, dict[str, str]] = {
-    sc["id"]: {"sv": sc["label"], "en": sc["label_en"]}
-    for sc in SOFA_SUB_CATEGORIES
+    "2_seater": {"sv": "2-sitssoffa", "en": "2-Seater Sofa"},
+    "3_seater": {"sv": "3-sitssoffa", "en": "3-Seater Sofa"},
+    "4_seater": {"sv": "4-sitssoffa", "en": "4-Seater Sofa"},
+    "corner_sofa": {"sv": "Hörnsoffa", "en": "Corner Sofa"},
+    "u_sofa": {"sv": "U-soffa", "en": "U-Shaped Sofa"},
+    "chaise_sofa": {"sv": "Divansoffa", "en": "Chaise Sofa"},
+    "modular_sofa": {"sv": "Modulsoffa", "en": "Modular Sofa"},
+    "sleeper_sofa": {"sv": "Bäddsoffa", "en": "Sleeper Sofa"},
 }
 
 
@@ -230,11 +214,16 @@ class CategoryEvidence:
 @dataclass
 class ClassificationResult:
     """Output of the category classifier (C1 + C6 + C7)."""
-    predicted_category: str  # Top-1 predicted category
+    primary_category: str  # Canonical top-level category
+    predicted_category: str  # Legacy alias for primary_category
     category_probabilities: dict[str, float]  # Top-N probabilities
     top1_confidence: float  # Confidence of top prediction (0.0-1.0)
     top1_top2_margin: float  # Gap between top-1 and top-2
-    sub_category: str | None = None  # Sofa sub-type (C6), e.g., "3_seater"
+    sofa_type_shape: str | None = None  # straight|corner|u_shaped|chaise|modular
+    sofa_function: str | None = None  # standard|sleeper
+    seat_count_bucket: str | None = None  # 2|3|4_plus
+    environment: str = "unknown"  # indoor|outdoor|both|unknown
+    sub_category: str | None = None  # Legacy sofa sub-type (C6 compatibility)
     room_types: list[str] = field(default_factory=list)  # Room placement tags (C7)
     classification_version: int = CLASSIFICATION_VERSION
     evidence: list[dict] = field(default_factory=list)  # Serializable evidence trail
@@ -243,6 +232,19 @@ class ClassificationResult:
 # ============================================================================
 # C2: FEATURE BUILDER
 # ============================================================================
+
+def _map_product_type_to_primary_category(product_type: str | None) -> str | None:
+    """Map enrichment product_type values to primary-category IDs."""
+    if not product_type:
+        return None
+    normalized = product_type.strip().lower()
+    if normalized in CATEGORY_LEXICONS:
+        return normalized
+    if normalized in {"bed_sofa", "corner_sofa"}:
+        return "sofa"
+    # "outdoor" is modeled as environment, not a primary category.
+    return None
+
 
 def _build_features(
     *,
@@ -303,11 +305,12 @@ def _build_features(
                 ))
 
     # Source 4: Product type (from enrichment)
-    if product_type:
+    mapped_product_type = _map_product_type_to_primary_category(product_type)
+    if mapped_product_type:
         all_evidence.append(CategoryEvidence(
             source="enrichment_product_type",
-            snippet=product_type,
-            matched_tokens=[product_type],
+            snippet=product_type or mapped_product_type,
+            matched_tokens=[mapped_product_type],
             weight=2.5,
         ))
 
@@ -356,7 +359,7 @@ def _score_categories(evidence: list[CategoryEvidence]) -> dict[str, float]:
     for ev in evidence:
         for cat, lex in CATEGORY_LEXICONS.items():
             # Count how many of this evidence's tokens belong to this category's positive lexicon
-            pos_hits = sum(1 for t in ev.matched_tokens if t in lex["positive"])
+            pos_hits = sum(1 for t in ev.matched_tokens if t == cat or t in lex["positive"])
             neg_hits = sum(1 for t in ev.matched_tokens if t in lex["negative"])
 
             if pos_hits > 0:
@@ -379,37 +382,166 @@ def _score_categories(evidence: list[CategoryEvidence]) -> dict[str, float]:
 
 
 # ============================================================================
-# C6: SUB-CATEGORY EXTRACTOR
+# C6: SOFA PROFILE EXTRACTORS
 # ============================================================================
 
-def _extract_sub_category(
+OUTDOOR_ENVIRONMENT_KEYWORDS = [
+    "utomhus", "outdoor", "trädgård", "garden", "balkong", "patio", "terrace", "terrass",
+    "altan", "utesoffa", "utemöbel", "utegrupp",
+]
+INDOOR_ENVIRONMENT_KEYWORDS = [
+    "indoor", "inomhus", "vardagsrum", "living room", "lounge", "tv-rum",
+    "sovrum", "bedroom", "kontor", "office", "hall", "hallway",
+]
+INDOOR_ROOM_TYPE_IDS = {"living_room", "bedroom", "office", "hallway", "kids_room"}
+
+
+def _combine_text_signals(
     *,
     title: str,
     description: str | None,
-    predicted_category: str,
-) -> str | None:
-    """
-    Extract sofa sub-type from title and description text.
+    breadcrumbs: list[str] | None = None,
+    url_path: str = "",
+    facets: dict[str, str] | None = None,
+) -> str:
+    parts = [title.lower()]
+    if description:
+        parts.append(description.lower()[:500])
+    if breadcrumbs:
+        parts.append(" ".join(breadcrumbs).lower())
+    if url_path:
+        parts.append(url_path.lower())
+    if facets:
+        facet_text = " ".join(f"{k} {v}" for k, v in facets.items())
+        parts.append(facet_text.lower()[:800])
+    return " ".join(parts)
 
-    Only runs for sofa-family categories (sofa, corner_sofa, bed_sofa).
-    Returns the most specific matching sub-category ID, or None.
-    Ordered by specificity – first match wins.
-    """
-    # Only extract sub-categories for sofa-family items
-    sofa_categories = {"sofa", "corner_sofa", "bed_sofa"}
-    if predicted_category not in sofa_categories:
+
+def _extract_sofa_type_shape(
+    *,
+    primary_category: str,
+    text: str,
+) -> str | None:
+    """Extract sofa shape from combined text signals."""
+    if primary_category != "sofa":
         return None
 
-    # Combine title + description for matching
-    text = title.lower()
-    if description:
-        text += " " + description.lower()[:500]
+    for shape in SOFA_TYPE_SHAPE_LEXICONS:
+        if any(keyword in text for keyword in shape["keywords"]):
+            return shape["id"]
 
-    for sub_cat in SOFA_SUB_CATEGORIES:
-        for keyword in sub_cat["keywords"]:
-            if keyword in text:
-                return sub_cat["id"]
+    return "straight"
 
+
+def _extract_sofa_function(
+    *,
+    primary_category: str,
+    text: str,
+) -> str | None:
+    """Extract sofa function from combined text signals."""
+    if primary_category != "sofa":
+        return None
+
+    for fn in SOFA_FUNCTION_LEXICONS:
+        if any(keyword in text for keyword in fn["keywords"]):
+            return fn["id"]
+
+    return "standard"
+
+
+def _extract_seat_count_bucket(
+    *,
+    primary_category: str,
+    text: str,
+    seat_count: int | None = None,
+) -> str | None:
+    """Extract optional seat-count bucket (2|3|4_plus)."""
+    if primary_category != "sofa":
+        return None
+
+    if isinstance(seat_count, int) and seat_count > 0:
+        if seat_count >= 4:
+            return "4_plus"
+        if seat_count == 3:
+            return "3"
+        if seat_count == 2:
+            return "2"
+        return None
+
+    for bucket, keywords in SEAT_COUNT_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            return bucket
+
+    for bucket, pattern in SEAT_COUNT_PATTERNS:
+        if pattern.search(text):
+            return bucket
+
+    return None
+
+
+def _extract_environment(
+    *,
+    primary_category: str,
+    text: str,
+    product_type: str | None,
+    room_types: list[str],
+) -> str:
+    """
+    Extract environment axis: indoor|outdoor|both|unknown.
+
+    "unknown" is intended as internal fallback; UI may choose not to display it.
+    """
+    has_outdoor = any(keyword in text for keyword in OUTDOOR_ENVIRONMENT_KEYWORDS)
+    has_indoor = any(keyword in text for keyword in INDOOR_ENVIRONMENT_KEYWORDS)
+
+    normalized_product_type = (product_type or "").strip().lower()
+    if normalized_product_type == "outdoor":
+        has_outdoor = True
+
+    if any(room == "outdoor" for room in room_types):
+        has_outdoor = True
+    if any(room in INDOOR_ROOM_TYPE_IDS for room in room_types):
+        has_indoor = True
+
+    if has_outdoor and has_indoor:
+        return "both"
+    if has_outdoor:
+        return "outdoor"
+    if has_indoor:
+        return "indoor"
+
+    # For sofas, assume indoor by default unless explicit outdoor evidence exists.
+    if primary_category == "sofa":
+        return "indoor"
+    return "unknown"
+
+
+def _derive_legacy_sub_category(
+    *,
+    primary_category: str,
+    sofa_type_shape: str | None,
+    sofa_function: str | None,
+    seat_count_bucket: str | None,
+) -> str | None:
+    """Derive legacy subCategory for backwards-compatible filters."""
+    if primary_category != "sofa":
+        return None
+    if sofa_function == "sleeper":
+        return "sleeper_sofa"
+    if sofa_type_shape == "u_shaped":
+        return "u_sofa"
+    if sofa_type_shape == "corner":
+        return "corner_sofa"
+    if sofa_type_shape == "chaise":
+        return "chaise_sofa"
+    if sofa_type_shape == "modular":
+        return "modular_sofa"
+    if seat_count_bucket == "4_plus":
+        return "4_seater"
+    if seat_count_bucket == "3":
+        return "3_seater"
+    if seat_count_bucket == "2":
+        return "2_seater"
     return None
 
 
@@ -458,19 +590,22 @@ def classify_item(
     product_type: str | None = None,
     facets: dict[str, str] | None = None,
     description: str | None = None,
+    seat_count: int | None = None,
 ) -> ClassificationResult:
     """
-    Classify an item into a furniture category, extract sub-category, and tag room types.
+    Classify an item into a primary category and derive sofa profile attributes.
 
     Uses all available signals (breadcrumbs, title, URL, facets, description)
     with evidence provenance for explainability and reprocessing.
     """
+    safe_breadcrumbs = breadcrumbs or []
+    safe_facets = facets or {}
     evidence = _build_features(
         title=title,
-        breadcrumbs=breadcrumbs or [],
+        breadcrumbs=safe_breadcrumbs,
         url_path=url_path,
         product_type=product_type,
-        facets=facets or {},
+        facets=safe_facets,
         description=description,
     )
 
@@ -483,19 +618,39 @@ def classify_item(
     top2_conf = sorted_cats[1][1] if len(sorted_cats) > 1 else 0.0
     margin = top1_conf - top2_conf
 
-    # C6: Extract sofa sub-category
-    sub_category = _extract_sub_category(
-        title=title,
-        description=description,
-        predicted_category=top1_cat,
-    )
-
     # C7: Extract room-type tags
     room_types = _extract_room_types(
         title=title,
         description=description,
-        breadcrumbs=breadcrumbs or [],
+        breadcrumbs=safe_breadcrumbs,
         url_path=url_path,
+    )
+
+    profile_text = _combine_text_signals(
+        title=title,
+        description=description,
+        breadcrumbs=safe_breadcrumbs,
+        url_path=url_path,
+        facets=safe_facets,
+    )
+    sofa_type_shape = _extract_sofa_type_shape(primary_category=top1_cat, text=profile_text)
+    sofa_function = _extract_sofa_function(primary_category=top1_cat, text=profile_text)
+    seat_count_bucket = _extract_seat_count_bucket(
+        primary_category=top1_cat,
+        text=profile_text,
+        seat_count=seat_count,
+    )
+    environment = _extract_environment(
+        primary_category=top1_cat,
+        text=profile_text,
+        product_type=product_type,
+        room_types=room_types,
+    )
+    sub_category = _derive_legacy_sub_category(
+        primary_category=top1_cat,
+        sofa_type_shape=sofa_type_shape,
+        sofa_function=sofa_function,
+        seat_count_bucket=seat_count_bucket,
     )
 
     # Serialize evidence for storage
@@ -510,10 +665,15 @@ def classify_item(
     ]
 
     return ClassificationResult(
+        primary_category=top1_cat,
         predicted_category=top1_cat,
         category_probabilities=dict(sorted_cats[:5]),  # Top 5 categories
         top1_confidence=top1_conf,
         top1_top2_margin=margin,
+        sofa_type_shape=sofa_type_shape,
+        sofa_function=sofa_function,
+        seat_count_bucket=seat_count_bucket,
+        environment=environment,
         sub_category=sub_category,
         room_types=room_types,
         classification_version=CLASSIFICATION_VERSION,

@@ -1,0 +1,18 @@
+[
+  {"id":"mono_beige","retailer":"ikea","title":"Mono Sofa Beige"},
+  {"id":"mono_blue","retailer":"ikea","title":"Mono Sofa Blue"},
+  {"id":"alpha","title":"Alpha Sofa"},
+  {"id":"beta","title":"Beta Couch"},
+  {"id":"gamma","title":"Gamma Sofa"},
+  {"id":"delta","title":"Delta Sofa"},
+  {"id":"epsilon","title":"Epsilon Sofa"},
+  {"id":"zeta","title":"Zeta Sofa"},
+  {"id":"eta","title":"Eta Sofa"},
+  {"id":"theta","title":"Theta Sofa"},
+  {"id":"mono_green","retailer":"ikea","title":"Mono Sofa Green"},
+  {"id":"iota","title":"Iota Sofa"},
+  {"id":"kappa","title":"Kappa Sofa"},
+  {"id":"lambda","title":"Lambda Sofa"},
+  {"id":"mu","title":"Mu Sofa"},
+  {"id":"mono_yellow","retailer":"ikea","title":"Mono Sofa Yellow"}
+]

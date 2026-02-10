@@ -79,6 +79,319 @@ describe("deck v2 helper utilities", () => {
     expect(rate).toBe(0.5);
   });
 
+  it("normalizes color variants into the same title family key", () => {
+    const beige = __deckTestUtils.titleFamilyKey("Cloud Sofa Beige 3-seater");
+    const blue = __deckTestUtils.titleFamilyKey("Cloud Sofa Blue 3-seater");
+    expect(beige).toBe("cloud");
+    expect(blue).toBe("cloud");
+  });
+
+  it("normalizes sofa-bed diacritics and token order into one family key", () => {
+    const first = __deckTestUtils.titleFamilyKey("Lean Bäddsoffa 130 x 200");
+    const second = __deckTestUtils.titleFamilyKey("Bäddsoffa Lean");
+    const knob = __deckTestUtils.titleFamilyKey("BÄDDSOFFA KNOB");
+    expect(first).toBe("lean");
+    expect(second).toBe("lean");
+    expect(knob).toBe("knob");
+  });
+
+  it("builds retailer-agnostic model keys for near-duplicate detection", () => {
+    const model = __deckTestUtils.itemModelKey({
+      retailer: "ikea",
+      title: "Cloud Sofa Beige 3-seater",
+    });
+    expect(model).toBe("cloud");
+  });
+
+  it("builds retailer-aware family keys for near-duplicate detection", () => {
+    const family = __deckTestUtils.itemFamilyKey({
+      retailer: "ikea",
+      title: "Cloud Sofa Beige 3-seater",
+    });
+    expect(family).toBe("ikea::cloud");
+  });
+
+  it("derives stable source keys from sourceId and URL host", () => {
+    expect(
+      __deckTestUtils.itemSourceKey({
+        sourceId: "ret-1",
+        sourceUrl: "https://example.com/a",
+      })
+    ).toBe("ret-1");
+
+    expect(
+      __deckTestUtils.itemSourceKey({
+        canonicalUrl: "https://www.ellos.se/product/abc",
+      })
+    ).toBe("ellos.se");
+  });
+
+  it("enforces hard top-8 family dedupe and allows one qualified soft repeat", () => {
+    const ranked = [
+      {
+        id: "cloud-1",
+        retailer: "ikea",
+        title: "Cloud Sofa Beige 3-seater",
+        colorFamily: "beige",
+        styleTags: ["minimal"],
+        material: "linen",
+        seatCountBucket: "3",
+        images: ["img1", "img2"],
+      },
+      {
+        id: "cloud-2",
+        retailer: "ikea",
+        title: "Cloud Sofa Blue 3-seater",
+        colorFamily: "blue",
+        styleTags: ["minimal"],
+        material: "linen",
+        seatCountBucket: "3",
+        images: ["img1", "img2"],
+      },
+      { id: "u1", retailer: "a", title: "Aster Sofa", styleTags: ["scandinavian"], images: ["i1", "i2"] },
+      { id: "u2", retailer: "b", title: "Harbor Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      { id: "u3", retailer: "c", title: "Canyon Sofa", styleTags: ["rustic"], images: ["i1", "i2"] },
+      { id: "u4", retailer: "d", title: "Lotus Sofa", styleTags: ["bohemian"], images: ["i1", "i2"] },
+      { id: "u5", retailer: "e", title: "Atlas Sofa", styleTags: ["industrial"], images: ["i1", "i2"] },
+      { id: "u6", retailer: "f", title: "Marina Sofa", styleTags: ["coastal"], images: ["i1", "i2"] },
+      { id: "u7", retailer: "g", title: "Ridge Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      {
+        id: "cloud-3",
+        retailer: "ikea",
+        title: "Cloud Sofa Black XL",
+        colorFamily: "black",
+        styleTags: ["industrial"],
+        material: "leather",
+        seatCountBucket: "4_plus",
+        sourceUrl: "https://example.com/cloud-black",
+        images: ["img1", "img2", "img3"],
+      },
+      {
+        id: "cloud-4",
+        retailer: "ikea",
+        title: "Cloud Sofa Green XL",
+        colorFamily: "green",
+        styleTags: ["minimal"],
+        material: "linen",
+        seatCountBucket: "3",
+        sourceUrl: "https://example.com/cloud-green",
+        images: ["img1", "img2"],
+      },
+      { id: "u8", retailer: "h", title: "Nova Sofa", styleTags: ["minimal"], images: ["i1", "i2"] },
+      { id: "u9", retailer: "i", title: "Milo Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      { id: "u10", retailer: "j", title: "Pico Sofa", styleTags: ["minimal"], images: ["i1", "i2"] },
+      { id: "u11", retailer: "k", title: "Echo Sofa", styleTags: ["coastal"], images: ["i1", "i2"] },
+      { id: "u12", retailer: "l", title: "Willow Sofa", styleTags: ["rustic"], images: ["i1", "i2"] },
+    ];
+
+    const result = __deckTestUtils.applyNearDuplicateExplorationPolicy(ranked, 12);
+    const top8Families = result.items
+      .slice(0, 8)
+      .map((item) => __deckTestUtils.itemFamilyKey(item))
+      .filter((value): value is string => value != null);
+    const cloudCountTop8 = top8Families.filter((family) => family === "ikea::cloud").length;
+    const cloudCountTop12 = result.items
+      .slice(0, 12)
+      .map((item) => __deckTestUtils.itemFamilyKey(item))
+      .filter((family) => family === "ikea::cloud").length;
+
+    expect(cloudCountTop8).toBe(1);
+    expect(cloudCountTop12).toBe(2);
+    expect(result.stats.droppedHardNearDuplicate).toBeGreaterThan(0);
+    expect(result.stats.allowedSoftNearDuplicate).toBe(1);
+    expect(result.stats.droppedSoftNearDuplicate).toBeGreaterThan(0);
+  });
+
+  it("spreads deferred near-duplicates to avoid family streaks", () => {
+    const ranked = [
+      { id: "lean-1", retailer: "ikea", title: "Lean Bäddsoffa 130 x 200", colorFamily: "beige", images: ["i1"] },
+      { id: "lean-2", retailer: "ikea", title: "Bäddsoffa Lean", colorFamily: "blue", images: ["i1"] },
+      { id: "lean-3", retailer: "ikea", title: "Lean Bäddsoffa 130 x 190", colorFamily: "gray", images: ["i1"] },
+      { id: "knob-1", retailer: "ikea", title: "BÄDDSOFFA KNOB", colorFamily: "green", images: ["i1"] },
+      { id: "knob-2", retailer: "ikea", title: "BÄDDSOFFA KNOB", colorFamily: "beige", images: ["i1"] },
+      { id: "knob-3", retailer: "ikea", title: "BÄDDSOFFA KNOB", colorFamily: "brown", images: ["i1"] },
+      { id: "flip-1", retailer: "ikea", title: "Flip bäddsoffa", colorFamily: "beige", images: ["i1"] },
+      { id: "flip-2", retailer: "ikea", title: "Flip bäddsoffa", colorFamily: "blue", images: ["i1"] },
+      { id: "flip-3", retailer: "ikea", title: "Flip bäddsoffa", colorFamily: "green", images: ["i1"] },
+    ];
+
+    const result = __deckTestUtils.applyNearDuplicateExplorationPolicy(ranked, 12);
+    const topFamilies = result.items.slice(0, 9).map((item) => __deckTestUtils.itemFamilyKey(item));
+    let maxRun = 0;
+    let run = 0;
+    let prev: string | null = null;
+    for (const family of topFamilies) {
+      const key = family ?? "unknown";
+      if (key === prev) {
+        run += 1;
+      } else {
+        run = 1;
+        prev = key;
+      }
+      if (run > maxRun) maxRun = run;
+    }
+
+    expect(maxRun).toBeLessThanOrEqual(1);
+  });
+
+  it("caps single-source dominance in early deck positions", () => {
+    const ranked = [
+      { id: "a-1", sourceId: "ikea", title: "A1 Sofa" },
+      { id: "a-2", sourceId: "ikea", title: "A2 Sofa" },
+      { id: "a-3", sourceId: "ikea", title: "A3 Sofa" },
+      { id: "a-4", sourceId: "ikea", title: "A4 Sofa" },
+      { id: "a-5", sourceId: "ikea", title: "A5 Sofa" },
+      { id: "a-6", sourceId: "ikea", title: "A6 Sofa" },
+      { id: "a-7", sourceId: "ikea", title: "A7 Sofa" },
+      { id: "a-8", sourceId: "ikea", title: "A8 Sofa" },
+      { id: "a-9", sourceId: "ikea", title: "A9 Sofa" },
+      { id: "a-10", sourceId: "ikea", title: "A10 Sofa" },
+      { id: "b-1", sourceId: "homeroom", title: "B1 Sofa" },
+      { id: "c-1", sourceId: "ellos", title: "C1 Sofa" },
+      { id: "d-1", sourceId: "source-d", title: "D1 Sofa" },
+      { id: "e-1", sourceId: "source-e", title: "E1 Sofa" },
+      { id: "f-1", sourceId: "source-f", title: "F1 Sofa" },
+      { id: "g-1", sourceId: "source-g", title: "G1 Sofa" },
+    ];
+
+    const result = __deckTestUtils.applySourceDiversityPolicy(ranked, 12);
+    const ikeaTop12 = result.items
+      .slice(0, 12)
+      .map((item) => __deckTestUtils.itemSourceKey(item))
+      .filter((key) => key === "ikea").length;
+
+    expect(ikeaTop12).toBeLessThanOrEqual(6);
+    expect(result.stats.deferredForSourceCap).toBeGreaterThan(0);
+  });
+
+  it("computes top-8 source concentration and diversity", () => {
+    const concentration = __deckTestUtils.computeSourceConcentrationTop8([
+      { sourceId: "ikea" },
+      { sourceId: "ikea" },
+      { sourceId: "ikea" },
+      { sourceId: "homeroom" },
+      { sourceId: "homeroom" },
+      { sourceId: "ellos" },
+      { sourceId: "ellos" },
+      { sourceId: "source-x" },
+    ]);
+    const diversity = __deckTestUtils.computeSourceDiversityTop8([
+      { sourceId: "ikea" },
+      { sourceId: "ikea" },
+      { sourceId: "ikea" },
+      { sourceId: "homeroom" },
+      { sourceId: "homeroom" },
+      { sourceId: "ellos" },
+      { sourceId: "ellos" },
+      { sourceId: "source-x" },
+    ]);
+
+    expect(concentration).toBe(0.375);
+    expect(diversity).toBe(4);
+  });
+
+  it("blocks soft-window repeats that fail quality gates", () => {
+    const ranked = [
+      {
+        id: "cloud-1",
+        retailer: "ikea",
+        title: "Cloud Sofa Beige 3-seater",
+        colorFamily: "beige",
+        styleTags: ["minimal"],
+        images: ["img1", "img2"],
+      },
+      { id: "u1", retailer: "a", title: "Aster Sofa", styleTags: ["scandinavian"], images: ["i1", "i2"] },
+      { id: "u2", retailer: "b", title: "Harbor Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      { id: "u3", retailer: "c", title: "Canyon Sofa", styleTags: ["rustic"], images: ["i1", "i2"] },
+      { id: "u4", retailer: "d", title: "Lotus Sofa", styleTags: ["bohemian"], images: ["i1", "i2"] },
+      { id: "u5", retailer: "e", title: "Atlas Sofa", styleTags: ["industrial"], images: ["i1", "i2"] },
+      { id: "u6", retailer: "f", title: "Marina Sofa", styleTags: ["coastal"], images: ["i1", "i2"] },
+      { id: "u7", retailer: "g", title: "Ridge Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      {
+        id: "cloud-2",
+        retailer: "ikea",
+        title: "Cloud Sofa Blue 3-seater",
+        colorFamily: "blue",
+        styleTags: ["industrial"],
+        images: ["img1"],
+      },
+      { id: "u8", retailer: "h", title: "Nova Sofa", styleTags: ["minimal"], images: ["i1", "i2"] },
+    ];
+
+    const result = __deckTestUtils.applyNearDuplicateExplorationPolicy(ranked, 12);
+    const cloudCountTop9 = result.items
+      .slice(0, 9)
+      .map((item) => __deckTestUtils.itemFamilyKey(item))
+      .filter((family) => family === "ikea::cloud").length;
+
+    expect(cloudCountTop9).toBe(1);
+    expect(result.stats.droppedSoftForQuality).toBeGreaterThan(0);
+  });
+
+  it("uses objective quality score map when evaluating soft repeat quality", () => {
+    expect(
+      __deckTestUtils.passesSoftRepeatQualityGate(
+        { id: "item-high", images: ["img1"] },
+        new Map([["item-high", 90]])
+      )
+    ).toBe(true);
+    expect(
+      __deckTestUtils.passesSoftRepeatQualityGate(
+        { id: "item-low", images: ["img1", "img2"], sourceUrl: "https://x.test/item-low" },
+        new Map([["item-low", 40]])
+      )
+    ).toBe(false);
+  });
+
+  it("allows qualified soft repeats via score-map even when proxy quality is low", () => {
+    const ranked = [
+      {
+        id: "cloud-1",
+        retailer: "ikea",
+        title: "Cloud Sofa Beige 3-seater",
+        colorFamily: "beige",
+        styleTags: ["minimal"],
+        images: ["img1", "img2"],
+      },
+      { id: "u1", retailer: "a", title: "Aster Sofa", styleTags: ["scandinavian"], images: ["i1", "i2"] },
+      { id: "u2", retailer: "b", title: "Harbor Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      { id: "u3", retailer: "c", title: "Canyon Sofa", styleTags: ["rustic"], images: ["i1", "i2"] },
+      { id: "u4", retailer: "d", title: "Lotus Sofa", styleTags: ["bohemian"], images: ["i1", "i2"] },
+      { id: "u5", retailer: "e", title: "Atlas Sofa", styleTags: ["industrial"], images: ["i1", "i2"] },
+      { id: "u6", retailer: "f", title: "Marina Sofa", styleTags: ["coastal"], images: ["i1", "i2"] },
+      { id: "u7", retailer: "g", title: "Ridge Sofa", styleTags: ["modern"], images: ["i1", "i2"] },
+      {
+        id: "cloud-2",
+        retailer: "ikea",
+        title: "Cloud Sofa Blue 3-seater",
+        colorFamily: "blue",
+        styleTags: ["industrial"],
+        images: ["img1"],
+      },
+      { id: "u8", retailer: "h", title: "Nova Sofa", styleTags: ["minimal"], images: ["i1", "i2"] },
+    ];
+
+    const withoutMap = __deckTestUtils.applyNearDuplicateExplorationPolicy(ranked, 12);
+    const withMap = __deckTestUtils.applyNearDuplicateExplorationPolicy(
+      ranked,
+      12,
+      new Map([["cloud-2", 92]])
+    );
+
+    const cloudCountTop9WithoutMap = withoutMap.items
+      .slice(0, 9)
+      .map((item) => __deckTestUtils.itemFamilyKey(item))
+      .filter((family) => family === "ikea::cloud").length;
+    const cloudCountTop9WithMap = withMap.items
+      .slice(0, 9)
+      .map((item) => __deckTestUtils.itemFamilyKey(item))
+      .filter((family) => family === "ikea::cloud").length;
+
+    expect(cloudCountTop9WithoutMap).toBe(1);
+    expect(cloudCountTop9WithMap).toBe(2);
+    expect(withMap.stats.allowedSoftNearDuplicate).toBe(1);
+  });
+
   it("computes minimum style distance across top 4", () => {
     const min = __deckTestUtils.computeMinStyleDistanceTop4([
       { styleTags: ["scandinavian"], material: "linen", colorFamily: "beige" },

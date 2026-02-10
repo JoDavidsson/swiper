@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
@@ -29,11 +30,66 @@ const _roomTypeLabels = {
   'kids_room': 'Barnrum',
 };
 
+const _primaryCategoryLabels = {
+  'sofa': 'Sofa',
+  'armchair': 'Armchair',
+  'dining_table': 'Dining table',
+  'coffee_table': 'Coffee table',
+  'bed': 'Bed',
+  'chair': 'Chair',
+  'rug': 'Rug',
+  'lamp': 'Lamp',
+  'storage': 'Storage',
+  'desk': 'Desk',
+  'decor': 'Decor',
+  'textile': 'Textile',
+};
+
+const _sofaShapeLabels = {
+  'straight': 'Straight',
+  'corner': 'Corner',
+  'u_shaped': 'U-shaped',
+  'chaise': 'Chaise',
+  'modular': 'Modular',
+};
+
+const _sofaFunctionLabels = {
+  'standard': 'Standard',
+  'sleeper': 'Sleeper',
+};
+
+const _seatBucketLabels = {
+  '2': '2 seats',
+  '3': '3 seats',
+  '4_plus': '4+ seats',
+};
+
+const _environmentLabels = {
+  'indoor': 'Indoor',
+  'outdoor': 'Outdoor',
+  'both': 'Indoor + Outdoor',
+};
+
 String _subCatDisplayLabel(String id) =>
     _subCatLabels[id] ?? id.replaceAll('_', ' ');
 
 String _roomTypeDisplayLabel(String id) =>
     _roomTypeLabels[id] ?? id.replaceAll('_', ' ');
+
+String _primaryCategoryDisplayLabel(String id) =>
+    _primaryCategoryLabels[id] ?? id.replaceAll('_', ' ');
+
+String _sofaShapeDisplayLabel(String id) =>
+    _sofaShapeLabels[id] ?? id.replaceAll('_', ' ');
+
+String _sofaFunctionDisplayLabel(String id) =>
+    _sofaFunctionLabels[id] ?? id.replaceAll('_', ' ');
+
+String _seatBucketDisplayLabel(String id) =>
+    _seatBucketLabels[id] ?? id.replaceAll('_', ' ');
+
+String _environmentDisplayLabel(String id) =>
+    _environmentLabels[id] ?? id.replaceAll('_', ' ');
 
 String _decodeHtmlEntities(String input) {
   var out = input;
@@ -131,6 +187,7 @@ Future<void> showDetailSheet(
   Item item, {
   String? goBaseUrl,
   void Function(Item item)? onOutboundClick,
+  void Function(Item item)? onShare,
   void Function()? onScroll,
   void Function(int imageIndex)? onGalleryPageChange,
   void Function(Item item)? onOutboundRedirectStart,
@@ -163,6 +220,7 @@ Future<void> showDetailSheet(
         scrollController: scrollController,
         goBaseUrl: goBaseUrl,
         onOutboundClick: onOutboundClick,
+        onShare: onShare,
         onScroll: onScroll,
         onGalleryPageChange: onGalleryPageChange,
         onOutboundRedirectStart: onOutboundRedirectStart,
@@ -182,6 +240,7 @@ class DetailSheetContent extends StatefulWidget {
     required this.scrollController,
     this.goBaseUrl,
     this.onOutboundClick,
+    this.onShare,
     this.onScroll,
     this.onGalleryPageChange,
     this.onOutboundRedirectStart,
@@ -195,6 +254,7 @@ class DetailSheetContent extends StatefulWidget {
   final ScrollController scrollController;
   final String? goBaseUrl;
   final void Function(Item item)? onOutboundClick;
+  final void Function(Item item)? onShare;
   final void Function()? onScroll;
   final void Function(int imageIndex)? onGalleryPageChange;
   final void Function(Item item)? onOutboundRedirectStart;
@@ -409,7 +469,13 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                 const SizedBox(height: AppTheme.spacingUnit / 2),
                 _SpecificationsTable(item: widget.item),
               ],
-              if (widget.item.subCategory != null ||
+              if (widget.item.primaryCategory != null ||
+                  widget.item.sofaTypeShape != null ||
+                  widget.item.sofaFunction != null ||
+                  widget.item.seatCountBucket != null ||
+                  (widget.item.environment != null &&
+                      widget.item.environment != 'unknown') ||
+                  widget.item.subCategory != null ||
                   widget.item.roomTypes.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: AppTheme.spacingUnit),
@@ -417,6 +483,77 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                     spacing: AppTheme.spacingUnit / 2,
                     runSpacing: AppTheme.spacingUnit / 2,
                     children: [
+                      if (widget.item.primaryCategory != null)
+                        Chip(
+                          label: Text(_primaryCategoryDisplayLabel(
+                              widget.item.primaryCategory!)),
+                          backgroundColor:
+                              AppTheme.primaryAction.withValues(alpha: 0.12),
+                          labelStyle:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: AppTheme.primaryAction,
+                                  ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      if (widget.item.sofaTypeShape != null)
+                        Chip(
+                          label: Text(_sofaShapeDisplayLabel(
+                              widget.item.sofaTypeShape!)),
+                          backgroundColor:
+                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                          labelStyle:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: AppTheme.textSecondary,
+                                  ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      if (widget.item.sofaFunction != null)
+                        Chip(
+                          label: Text(_sofaFunctionDisplayLabel(
+                              widget.item.sofaFunction!)),
+                          backgroundColor:
+                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                          labelStyle:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: AppTheme.textSecondary,
+                                  ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      if (widget.item.seatCountBucket != null)
+                        Chip(
+                          label: Text(_seatBucketDisplayLabel(
+                              widget.item.seatCountBucket!)),
+                          backgroundColor:
+                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                          labelStyle:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: AppTheme.textSecondary,
+                                  ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      if (widget.item.environment != null &&
+                          widget.item.environment != 'unknown')
+                        Chip(
+                          label: Text(_environmentDisplayLabel(
+                              widget.item.environment!)),
+                          backgroundColor:
+                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                          labelStyle:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: AppTheme.textSecondary,
+                                  ),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
                       if (widget.item.subCategory != null)
                         Chip(
                           label: Text(
@@ -493,6 +630,20 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                         ),
                       ),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: AppTheme.spacingUnit),
+                    child: IconButton.filled(
+                      onPressed: _shareItem,
+                      icon: const Icon(Icons.share_outlined),
+                      tooltip: 'Share',
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.surface,
+                        side: BorderSide(
+                          color: AppTheme.textCaption.withValues(alpha: 0.3),
+                        ),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () {
@@ -527,6 +678,15 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
     } catch (e) {
       widget.onOutboundRedirectFail?.call(widget.item, e);
     }
+  }
+
+  Future<void> _shareItem() async {
+    widget.onShare?.call(widget.item);
+    final shareUrl = ApiClient.goUrl(widget.item.id);
+    await Share.share(
+      '${widget.item.title}\n$shareUrl',
+      subject: widget.item.title,
+    );
   }
 }
 

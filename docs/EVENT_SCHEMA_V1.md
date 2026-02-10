@@ -18,7 +18,7 @@ Server adds **createdAtServer** on ingestion.
 
 | Event | Required payload |
 |-------|------------------|
-| **deck_response** | rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate); recommended rank.requestId, rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min; perf.latencyMs |
+| **deck_response** | rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate); recommended rank.requestId, rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min, rank.nearDuplicateShaping, rank.fallbackStage; perf.latencyMs |
 | **card_impression_start** | item.itemId, item.positionInDeck, impression.impressionId |
 | **card_impression_end** | impression.visibleDurationMs, impression.endReason; same impressionId as start; optional impression.bucket (0_1s, 1_3s, 3_8s, 8s_plus) |
 | **deck_refresh** | — (no required payload) |
@@ -26,7 +26,7 @@ Server adds **createdAtServer** on ingestion.
 | **swipe_left / swipe_right** | item.itemId, item.positionInDeck, interaction.gesture, interaction.direction; ideally item.priceSEKAtTime, item.snapshot (brand/newUsed/size/material/color/style), rank.rankerRunId, rank.scoreAtRender |
 | **detail_open / detail_close** | item.itemId; on close include duration (ext.durationMs or impression.visibleDurationMs) |
 | **outbound_click** | item.itemId, outbound.destinationDomain; optional outbound.redirectId |
-| **filters_apply** | filters.active (full snapshot) |
+| **filters_apply** | filters.active (full snapshot including taxonomy keys: primaryCategory, sofaTypeShape, sofaFunction, seatCountBucket, environment; legacy subCategory allowed during migration) |
 
 ## Tracker API (Flutter)
 
@@ -34,6 +34,10 @@ Use the event tracker in `lib/data/event_tracker.dart`:
 
 - **track(eventName, partial)** — Enqueues a v1 event. Auto-fills schemaVersion, eventId, createdAtClient, sessionId, clientSeq, app.*, and optionally surface from router. `partial` can contain item, rank, impression, interaction, filters, onboarding, compare, share, outbound, perf, error, ext.
 - **Deck request correlation** — Include `ext.requestId` on `deck_request` and echo it on `deck_response` (and rank.requestId when available) so request/serve/impression chains can be joined reliably.
+
+For `filters_apply` / `filter_change`, taxonomy-first keys are now:
+- `primaryCategory`, `sofaTypeShape`, `sofaFunction`, `seatCountBucket`, `environment`, `roomType`
+- Legacy compatibility key: `subCategory`
 
 Events are buffered and flushed when: buffer size ≥ 20, oldest event ≥ 5s, or session_background / before unload.
 

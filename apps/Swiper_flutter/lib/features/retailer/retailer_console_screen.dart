@@ -745,6 +745,25 @@ class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
               final creativeHealth = row['creativeHealth'] is Map
                   ? Map<String, dynamic>.from(row['creativeHealth'] as Map)
                   : null;
+              final roomTypes = (row['roomTypes'] as List? ?? const [])
+                  .map((entry) => entry.toString())
+                  .where((entry) => entry.isNotEmpty)
+                  .toList();
+              final taxonomyLabels = <String>[
+                if ((row['primaryCategory']?.toString() ?? '').isNotEmpty)
+                  'Category: ${row['primaryCategory']}',
+                if ((row['sofaTypeShape']?.toString() ?? '').isNotEmpty)
+                  'Shape: ${row['sofaTypeShape']}',
+                if ((row['sofaFunction']?.toString() ?? '').isNotEmpty)
+                  'Function: ${row['sofaFunction']}',
+                if ((row['seatCountBucket']?.toString() ?? '').isNotEmpty)
+                  'Seats: ${row['seatCountBucket']}',
+                if ((row['environment']?.toString() ?? '').isNotEmpty)
+                  'Environment: ${row['environment']}',
+                if ((row['subCategory']?.toString() ?? '').isNotEmpty)
+                  'Legacy subcat: ${row['subCategory']}',
+                ...roomTypes.map((room) => 'Room: $room'),
+              ];
               final issues = (creativeHealth?['issues'] as List? ?? const [])
                   .map((e) => e.toString())
                   .toList();
@@ -775,6 +794,30 @@ class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
                       Text(
                         'Price: ${_num(row['priceAmount']).toStringAsFixed(0)} ${row['priceCurrency'] ?? 'SEK'}',
                       ),
+                      if (taxonomyLabels.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: taxonomyLabels
+                              .map(
+                                (label) => Chip(
+                                  label: Text(
+                                    label,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                            color: AppTheme.textSecondary),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
                       if (score != null)
                         Text(
                           'Score: ${_num(score['value']).toStringAsFixed(1)} (${score['band'] ?? '-'})',

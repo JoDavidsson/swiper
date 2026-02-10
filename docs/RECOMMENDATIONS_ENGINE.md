@@ -73,7 +73,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 
 **Public types**:
 
-- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`, `brand`, `deliveryComplexity`, `newUsed`, `ecoTags`, `smallSpaceFriendly`, `modular`, `priceAmount` (bucketed), `subCategory`, `roomTypes`, `seatCount`, `coverMaterial`, `frameMaterial`, `legMaterial`, `cushionFilling`.
+- **ItemCandidate** – `{ id: string } & Record<string, unknown>`; attributes used for scoring: `styleTags`, `material`, `colorFamily`, `sizeClass`, `brand`, `deliveryComplexity`, `newUsed`, `ecoTags`, `smallSpaceFriendly`, `modular`, `priceAmount` (bucketed), `primaryCategory`, `sofaTypeShape`, `sofaFunction`, `seatCountBucket`, `environment`, `subCategory`, `roomTypes`, `seatCount`, `coverMaterial`, `frameMaterial`, `legMaterial`, `cushionFilling`.
 - **SessionContext** – `{ preferenceWeights: Record<string, number> }`.
 - **PersonaSignals** – optional `itemScoresFromSimilarSessions` (itemId → score), `popularAmongSimilar` (ordered itemIds).
 - **RankOptions** – `{ limit: number; algorithmVersion?: string }`.
@@ -141,6 +141,10 @@ npm test
 
 Tests live in `src/ranker/__tests__/`: scoreItem.test.ts, preferenceWeightsRanker.test.ts, personalPlusPersonaRanker.test.ts, exploration.test.ts. All use in-memory data only (no Firebase).
 
+Deck-quality policy tests also run in API test suites:
+- `src/api/deck_v2_helpers.test.ts` (family dedupe, style distance, featured policy).
+- `src/api/deck_simulation_fixtures.test.ts` (fixture-catalog simulations: duplicate-heavy, single-retailer-heavy, sparse metadata).
+
 ---
 
 ## Optional runner
@@ -152,6 +156,11 @@ npm run runRanker
 ```
 
 Loads fixtures from `scripts/fixtures/` (items.json, sessionContext.json, optional personaSignals.json), runs PreferenceWeightsRanker, applies exploration, and prints ranked ids and scores. If personaSignals.json exists, also runs PersonalPlusPersonaRanker. Useful for manual/exploratory testing.
+
+Deck simulation fixture catalogs used by CI tests live in:
+- `scripts/fixtures/deck_simulation/duplicate_heavy_ranked_items.json`
+- `scripts/fixtures/deck_simulation/single_retailer_heavy_ranked_items.json`
+- `scripts/fixtures/deck_simulation/sparse_metadata_ranked_items.json`
 
 ---
 

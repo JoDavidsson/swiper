@@ -35,11 +35,16 @@ echo "For Supply Engine: export FIRESTORE_EMULATOR_HOST=localhost:8180"
 echo "Supply Engine default port: http://localhost:8081"
 echo ""
 
-# Import existing data if available, always export on exit to preserve state
-IMPORT_FLAG=""
+# Run from the firebase/ directory so paths stay clean.
+cd "$REPO_ROOT/firebase"
+
+# Import existing data if available, always export on exit to preserve state.
+# Use relative paths to avoid issues with spaces in directory names.
+EMULATOR_ARGS=(emulators:start --only firestore,functions)
 if [ -d "$REPO_ROOT/emulator-data" ]; then
   echo "Importing existing Firestore data from emulator-data/..."
-  IMPORT_FLAG="--import=$REPO_ROOT/emulator-data"
+  EMULATOR_ARGS+=(--import="../emulator-data")
 fi
+EMULATOR_ARGS+=(--export-on-exit="../emulator-data")
 
-firebase emulators:start --only firestore,functions $IMPORT_FLAG --export-on-exit="$REPO_ROOT/emulator-data"
+exec firebase "${EMULATOR_ARGS[@]}"

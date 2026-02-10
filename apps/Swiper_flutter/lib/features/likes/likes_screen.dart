@@ -40,6 +40,16 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       item,
       goBaseUrl: Uri.base.origin,
       onOutboundClick: (i) => _trackOutbound(tracker, i),
+      onShare: (i) {
+        tracker.track('shortlist_share', {
+          'item': {'itemId': i.id, 'source': 'detail'},
+          'share': {
+            'method': 'native_share',
+            'linkType': 'item',
+            'linkId': i.id,
+          },
+        });
+      },
       onScroll: () => tracker.track('detail_scroll', {
         'item': {'itemId': item.id}
       }),
@@ -130,6 +140,20 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
 
     return AppShell(
       title: strings.likes,
+      showBottomNav: true,
+      onShareTap: () {
+        final tracker = ref.read(eventTrackerProvider);
+        tracker.track('shortlist_share', {
+          'share': {'method': 'native_share', 'linkType': 'unknown'},
+        });
+        final base = Uri.base;
+        final shareUrl =
+            base.hasAuthority ? '${base.origin}/likes' : 'https://swiper.app';
+        Share.share(
+          'Swiper likes\n$shareUrl',
+          subject: 'Swiper',
+        );
+      },
       body: likesAsync.when(
         data: (items) {
           if (items.isEmpty) {

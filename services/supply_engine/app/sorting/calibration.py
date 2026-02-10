@@ -57,8 +57,9 @@ def run_calibration(db) -> CalibrationResult:
         correct_cat = data.get("correctCategory")
 
         # Label is "correct" if reviewer accepted or reclassified to same category
+        original_cat = original.get("primaryCategory", original.get("predictedCategory"))
         is_correct = action == "accept" or (
-            correct_cat is not None and correct_cat == original.get("predictedCategory")
+            correct_cat is not None and correct_cat == original_cat
         )
         entries.append((conf, is_correct))
 

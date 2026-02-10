@@ -574,10 +574,23 @@ def classify_items(request: ClassifyRequest):
     and promotes accepted items to goldItems collection.
     """
     from app.firestore_client import get_firestore_client
-    from app.sorting.policy import classify_and_decide
+    from app.sorting.policy import classify_and_decide, load_training_config_latest, resolve_training_rules_mode
 
     db = get_firestore_client()
-    results = {"processed": 0, "accepted": 0, "rejected": 0, "uncertain": 0, "errors": 0}
+    training_mode = resolve_training_rules_mode(os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE"))
+    training_config = load_training_config_latest(db) if training_mode != "off" else None
+    results = {
+        "processed": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "uncertain": 0,
+        "errors": 0,
+        "trainingMode": training_mode,
+        "trainingRulesLoaded": bool(training_config),
+        "trainingWouldReject": 0,
+        "trainingOverrideApplied": 0,
+        "trainingShadowCandidates": 0,
+    }
 
     # Build query
     if request.item_id:
@@ -598,16 +611,35 @@ def classify_items(request: ClassifyRequest):
                 item_id=item_id,
                 item_data=item_data,
                 surface_ids=request.surface_ids,
+                training_config=training_config,
+                training_mode=training_mode,
             )
 
             # Write classification back to item
             cls = result["classification"]
+            training_diag = result.get("trainingRules", {})
+            if training_diag.get("wouldReject"):
+                results["trainingWouldReject"] += 1
+            if training_diag.get("appliedSurfaces"):
+                results["trainingOverrideApplied"] += 1
+            if training_diag.get("shadowSurfaces"):
+                results["trainingShadowCandidates"] += 1
             update_data: dict = {
                 "classification": cls,
                 "eligibility": result["decisions"],
             }
             # Promote subCategory and roomTypes to top-level fields for
             # fast Firestore queries and deck filtering
+            if cls.get("primaryCategory"):
+                update_data["primaryCategory"] = cls["primaryCategory"]
+            if cls.get("sofaTypeShape"):
+                update_data["sofaTypeShape"] = cls["sofaTypeShape"]
+            if cls.get("sofaFunction"):
+                update_data["sofaFunction"] = cls["sofaFunction"]
+            if cls.get("seatCountBucket"):
+                update_data["seatCountBucket"] = cls["seatCountBucket"]
+            if cls.get("environment") and cls.get("environment") != "unknown":
+                update_data["environment"] = cls["environment"]
             if cls.get("subCategory"):
                 update_data["subCategory"] = cls["subCategory"]
             if cls.get("roomTypes"):
@@ -679,7 +711,10 @@ def classification_stats(source_id: Optional[str] = None):
         if classification:
             stats["classified"] += 1
             stats["by_source"][sid]["classified"] += 1
-            cat = classification.get("predictedCategory", "unknown")
+            cat = classification.get(
+                "primaryCategory",
+                classification.get("predictedCategory", "unknown"),
+            )
             stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
         else:
             stats["unclassified"] += 1
@@ -750,22 +785,30 @@ def get_review_queue(status: str = "pending", limit: int = 50):
 def review_action(request: ReviewActionRequest):
     """D2: Process a reviewer's action on a review queue item."""
     from app.firestore_client import get_firestore_client
-    from app.sorting.policy import SURFACE_POLICIES, evaluate_eligibility, promote_to_gold
-    from app.sorting.classifier import ClassificationResult
+    from app.sorting.policy import SURFACE_POLICIES
 
     db = get_firestore_client()
-
-    # Get the review queue item
-    review_doc = db.collection("reviewQueue").document(request.item_id).get()
-    if not review_doc.exists:
-        raise HTTPException(status_code=404, detail="Review item not found")
-
-    review_data = review_doc.to_dict() or {}
     item_doc = db.collection("items").document(request.item_id).get()
     if not item_doc.exists:
         raise HTTPException(status_code=404, detail="Item not found")
 
     item_data = item_doc.to_dict() or {}
+    review_doc = db.collection("reviewQueue").document(request.item_id).get()
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    # Allow review actions for sampled items that were not pre-enqueued.
+    if review_doc.exists:
+        review_data = review_doc.to_dict() or {}
+    else:
+        review_data = {
+            "itemId": request.item_id,
+            "classification": item_data.get("classification", {}),
+            "decisions": item_data.get("eligibility", {}),
+            "status": "pending",
+            "createdAt": now_iso,
+            "seededBy": "review_action",
+        }
+        db.collection("reviewQueue").document(request.item_id).set(review_data, merge=True)
 
     if request.action == "accept":
         # Force-accept: write to Gold collection
@@ -773,14 +816,28 @@ def review_action(request: ReviewActionRequest):
         gold_doc = {
             "itemId": request.item_id,
             "eligibleSurfaces": list(SURFACE_POLICIES.keys()),
+            "primaryCategory": classification.get(
+                "primaryCategory",
+                classification.get("predictedCategory", "unknown"),
+            ),
             "predictedCategory": classification.get("predictedCategory", "unknown"),
+            "sofaTypeShape": classification.get("sofaTypeShape"),
+            "sofaFunction": classification.get("sofaFunction"),
+            "seatCountBucket": classification.get("seatCountBucket"),
+            "environment": (
+                None
+                if classification.get("environment") == "unknown"
+                else classification.get("environment")
+            ),
+            "subCategory": classification.get("subCategory"),
+            "roomTypes": classification.get("roomTypes", []),
             "categoryConfidence": 1.0,  # Human-verified
             "classificationVersion": classification.get("classificationVersion", 1),
             "policyVersion": 1,
             "humanVerified": True,
             "reviewerId": request.reviewer_id,
             "reviewReason": request.reason,
-            "promotedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "promotedAt": now_iso,
             "title": item_data.get("title"),
             "brand": item_data.get("brand"),
             "priceAmount": item_data.get("priceAmount"),
@@ -805,9 +862,11 @@ def review_action(request: ReviewActionRequest):
     elif request.action == "reclassify" and request.correct_category:
         # Update classification with human-corrected category
         db.collection("items").document(request.item_id).update({
+            "classification.primaryCategory": request.correct_category,
             "classification.predictedCategory": request.correct_category,
             "classification.humanCorrected": True,
             "classification.correctedBy": request.reviewer_id,
+            "primaryCategory": request.correct_category,
         })
 
     # Update review queue status
@@ -817,7 +876,7 @@ def review_action(request: ReviewActionRequest):
         "reviewAction": request.action,
         "reviewReason": request.reason,
         "correctCategory": request.correct_category,
-        "reviewedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "reviewedAt": now_iso,
     })
 
     # D2: Store reviewer label for training data
@@ -828,7 +887,7 @@ def review_action(request: ReviewActionRequest):
         "reason": request.reason,
         "reviewerId": request.reviewer_id,
         "originalClassification": review_data.get("classification"),
-        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "createdAt": now_iso,
     })
 
     return {"status": "ok", "action": request.action, "itemId": request.item_id}
@@ -869,7 +928,7 @@ def sampling_candidates(limit: int = 20, strategy: str = "diverse"):
         by_cat: dict[str, list] = {}
         for item_id, data in all_items:
             cls = data.get("classification", {})
-            cat = cls.get("predictedCategory", "unclassified")
+            cat = cls.get("primaryCategory", cls.get("predictedCategory", "unclassified"))
             by_cat.setdefault(cat, []).append((item_id, data))
         candidates = []
         per_cat = max(1, limit // max(1, len(by_cat)))
@@ -955,7 +1014,7 @@ def evaluation_report():
     for label_doc in labels:
         label = label_doc.to_dict() or {}
         original = label.get("originalClassification", {})
-        predicted = original.get("predictedCategory", "unknown")
+        predicted = original.get("primaryCategory", original.get("predictedCategory", "unknown"))
         action = label.get("action")
         correct_cat = label.get("correctCategory")
 

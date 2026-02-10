@@ -29,6 +29,10 @@ function getStringArray(value: unknown): string[] {
   return value.map((v) => normalizeToken(v)).filter((v): v is string => v != null);
 }
 
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
 export function toPriceBucket(amount: unknown): string | null {
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) return null;
   if (amount <= 3000) return "budget";
@@ -48,6 +52,7 @@ export function scoreItemWithSignals(
   weights: Record<string, number>
 ): ScoreItemResult {
   const state = { score: 0, signalCount: 0 };
+  const classification = getRecord(data.classification);
   const tags = getStringArray(data.styleTags);
   for (const t of tags) {
     addWeightedSignal(t, weights, state);
@@ -82,6 +87,27 @@ export function scoreItemWithSignals(
   if (data.modular === true) {
     addWeightedSignal("feature:modular", weights, state);
   }
+
+  const primaryCategory = normalizeToken(
+    data.primaryCategory ?? classification?.primaryCategory ?? classification?.predictedCategory
+  );
+  addWeightedSignal(primaryCategory ? `primary:${primaryCategory}` : null, weights, state);
+
+  const sofaTypeShape = normalizeToken(data.sofaTypeShape ?? classification?.sofaTypeShape);
+  addWeightedSignal(sofaTypeShape ? `sofa_shape:${sofaTypeShape}` : null, weights, state);
+
+  const sofaFunction = normalizeToken(data.sofaFunction ?? classification?.sofaFunction);
+  addWeightedSignal(sofaFunction ? `sofa_function:${sofaFunction}` : null, weights, state);
+
+  const seatCountBucket = normalizeToken(data.seatCountBucket ?? classification?.seatCountBucket);
+  addWeightedSignal(seatCountBucket ? `seat_bucket:${seatCountBucket}` : null, weights, state);
+
+  const environment = normalizeToken(data.environment ?? classification?.environment);
+  addWeightedSignal(
+    environment && environment !== "unknown" ? `environment:${environment}` : null,
+    weights,
+    state
+  );
 
   // Sub-category signal (e.g., "subcat:3_seater", "subcat:corner_sofa")
   const subCategory = normalizeToken(data.subCategory);

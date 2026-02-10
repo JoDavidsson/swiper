@@ -60,6 +60,11 @@ Primary collection for all furniture products.
 | `colorFamily` | `string` | — | Normalized color |
 | `sizeClass` | `string` | — | `small` / `medium` / `large` |
 | `dimensionsCm` | `object` | — | `{w, h, d}` in cm |
+| `primaryCategory` | `string` | — | Primary taxonomy category (e.g. `sofa`, `armchair`) |
+| `sofaTypeShape` | `string` | — | Sofa shape axis: `straight`, `corner`, `u_shaped`, `chaise`, `modular` |
+| `sofaFunction` | `string` | — | Sofa function axis: `standard`, `sleeper` |
+| `seatCountBucket` | `string` | — | Optional seat bucket: `2`, `3`, `4_plus` |
+| `environment` | `string` | — | Environment axis: `indoor`, `outdoor`, `both`, `unknown` (internal fallback) |
 | `subCategory` | `string` | — | Sofa sub-type: `2_seater`, `3_seater`, `4_seater`, `corner_sofa`, `u_sofa`, `chaise_sofa`, `modular_sofa`, `sleeper_sofa` |
 | `roomTypes` | `string[]` | — | Room placement tags: `living_room`, `bedroom`, `outdoor`, `office`, `hallway`, `kids_room` |
 | `seatHeightCm` | `number` | — | Seat height in cm |
@@ -429,7 +434,12 @@ Items that have been classified and accepted by the sorting engine. The deck rea
 |-------|------|----------|-------------|
 | `itemId` | `string` | ✓ | Matches items collection doc ID |
 | `eligibleSurfaces` | `string[]` | ✓ | Surface IDs where item is accepted |
+| `primaryCategory` | `string` | ✓ | Canonical top-level category |
 | `predictedCategory` | `string` | ✓ | Category from classifier |
+| `sofaTypeShape` | `string` | — | Sofa shape axis |
+| `sofaFunction` | `string` | — | Sofa function axis |
+| `seatCountBucket` | `string` | — | Optional seat-count bucket |
+| `environment` | `string` | — | Environment axis (`unknown` is internal fallback) |
 | `subCategory` | `string` | — | Sofa sub-type (from C6 classifier) |
 | `roomTypes` | `string[]` | — | Room placement tags (from C7 classifier) |
 | `categoryConfidence` | `number` | ✓ | Classification confidence 0.0-1.0 |
@@ -463,6 +473,11 @@ Stores reviewer decisions as training data for future model calibration.
 |-------|------|----------|-------------|
 | `itemId` | `string` | ✓ | Item that was reviewed |
 | `action` | `string` | ✓ | "accept", "reject", "reclassify" |
+| `trainingOnly` | `boolean` | — | True when label came from training mode (no queue/gold mutation) |
+| `labelCategory` | `string` | — | Explicit category task for binary labeling |
+| `labelDecision` | `string` | — | `in_category` or `not_category` |
+| `isInCategory` | `boolean` | — | Normalized binary label for training/eval |
+| `source` | `string` | — | `training_lab` or `operations_review` |
 | `correctCategory` | `string` | | If reclassified, the correct category |
 | `reason` | `string` | | Reviewer's reason |
 | `reviewerId` | `string` | ✓ | Who reviewed |
@@ -481,7 +496,33 @@ Records of calibration runs that adjust classification thresholds.
 | `thresholdAdjustments` | `object` | ✓ | Old vs new thresholds |
 | `calibratedAt` | `string` | ✓ | ISO timestamp |
 
-### 2.25 `sources` – Crawl Config (Quality Fields)
+### 2.25 `categorizationTrainingConfig` – Runtime Label-Derived Rules
+
+Runtime-consumable source/category rules generated from reviewer labels.
+
+`categorizationTrainingConfig/latest`:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `version` | `number` | ✓ | Config schema version |
+| `updatedAt` | `string` | ✓ | Last update timestamp |
+| `lastTargetCategory` | `string` | — | Last trained target category |
+| `byCategory` | `object` | ✓ | Per-category configs |
+
+Per-category config (`byCategory.{category}`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `targetCategory` | `string` | ✓ | Category this config applies to |
+| `runtimeStatus` | `string` | ✓ | `validated` or `shadow_only` |
+| `sourceCategoryRejectTokens` | `object` | — | Source/category token reject lists |
+| `sourceCategoryMinConfidence` | `object` | — | Source/category confidence floors |
+| `sourceRequireImages` | `object` | — | Source-level image requirement overrides |
+| `evaluation` | `object` | — | Holdout baseline vs adjusted metrics + gate |
+| `trainingSplit` | `object` | — | Train/holdout counts used for this run |
+| `summary` | `object` | — | Coverage summary |
+
+### 2.26 `sources` – Crawl Config (Quality Fields)
 
 Additional crawl-source fields used by Supply Engine quality controls.
 
@@ -491,7 +532,7 @@ Additional crawl-source fields used by Supply Engine quality controls.
 | `enableQualityRefetch` | `boolean` | — | Optional second-pass refetch for stale low-completeness items |
 | `qualityRefetchLimit` | `number` | — | Max low-quality items to refetch per run (default `100`) |
 
-### 2.26 `retailerCatalogControls` – Retailer Product Include/Exclude
+### 2.27 `retailerCatalogControls` – Retailer Product Include/Exclude
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -504,7 +545,7 @@ Additional crawl-source fields used by Supply Engine quality controls.
 | `createdAt` | `timestamp` | ✓ | First write time |
 | `updatedAt` | `timestamp` | ✓ | Last update time |
 
-### 2.27 `retailerReportShares` – Shareable Report Snapshots
+### 2.28 `retailerReportShares` – Shareable Report Snapshots
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

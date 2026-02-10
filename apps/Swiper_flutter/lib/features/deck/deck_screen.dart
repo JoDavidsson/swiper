@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
@@ -160,7 +161,21 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 
     return AppShell(
       title: AppConstants.appName,
+      showBottomNav: true,
       transparentAppBar: true,
+      onShareTap: () {
+        final tracker = ref.read(eventTrackerProvider);
+        tracker.track('shortlist_share', {
+          'share': {'method': 'native_share', 'linkType': 'unknown'},
+        });
+        final base = Uri.base;
+        final shareUrl =
+            base.hasAuthority ? '${base.origin}/deck' : 'https://swiper.app';
+        Share.share(
+          '${AppConstants.appName} - ${AppConstants.tagline}\n$shareUrl',
+          subject: AppConstants.appName,
+        );
+      },
       leading: Padding(
         padding: const EdgeInsets.only(left: 8),
         child: _DeckHeaderButton(
@@ -420,6 +435,16 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
                               'item': {'itemId': i.id},
                               'outbound': {
                                 'destinationDomain': domain ?? 'unknown'
+                              },
+                            });
+                          },
+                          onShare: (i) {
+                            tracker.track('shortlist_share', {
+                              'item': {'itemId': i.id, 'source': 'detail'},
+                              'share': {
+                                'method': 'native_share',
+                                'linkType': 'item',
+                                'linkId': i.id,
                               },
                             });
                           },
@@ -1016,11 +1041,35 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
 
   void _trackFiltersApply(WidgetRef ref, Map<String, dynamic> filters) {
     final active = <String, dynamic>{};
+    final sizeClass = filters['sizeClass'] as String?;
+    if (sizeClass != null && sizeClass.isNotEmpty) {
+      active['sizeClass'] = sizeClass;
+    }
     final newUsed = filters['newUsed'] as String?;
     if (newUsed != null) active['newOnly'] = newUsed == 'new';
     final colorFamily = filters['colorFamily'] as String?;
     if (colorFamily != null && colorFamily.isNotEmpty) {
       active['colorFamilies'] = [colorFamily];
+    }
+    final sofaTypeShape = filters['sofaTypeShape'] as String?;
+    if (sofaTypeShape != null && sofaTypeShape.isNotEmpty) {
+      active['sofaTypeShape'] = sofaTypeShape;
+    }
+    final sofaFunction = filters['sofaFunction'] as String?;
+    if (sofaFunction != null && sofaFunction.isNotEmpty) {
+      active['sofaFunction'] = sofaFunction;
+    }
+    final seatCountBucket = filters['seatCountBucket'] as String?;
+    if (seatCountBucket != null && seatCountBucket.isNotEmpty) {
+      active['seatCountBucket'] = seatCountBucket;
+    }
+    final environment = filters['environment'] as String?;
+    if (environment != null && environment.isNotEmpty) {
+      active['environment'] = environment;
+    }
+    final roomType = filters['roomType'] as String?;
+    if (roomType != null && roomType.isNotEmpty) {
+      active['roomType'] = roomType;
     }
     ref.read(eventTrackerProvider).track('filters_apply', {
       'filters': {'active': active}
@@ -1194,17 +1243,17 @@ const List<String> _colorFamilyOptions = [
 /// New/used options.
 const List<String> _newUsedOptions = ['new', 'used'];
 
-/// Sofa sub-category options (C6 taxonomy).
-const List<String> _subCategoryOptions = [
-  '2_seater',
-  '3_seater',
-  '4_seater',
-  'corner_sofa',
-  'u_sofa',
-  'chaise_sofa',
-  'modular_sofa',
-  'sleeper_sofa',
+/// Taxonomy axis options.
+const List<String> _sofaTypeShapeOptions = [
+  'straight',
+  'corner',
+  'u_shaped',
+  'chaise',
+  'modular',
 ];
+const List<String> _sofaFunctionOptions = ['standard', 'sleeper'];
+const List<String> _seatCountBucketOptions = ['2', '3', '4_plus'];
+const List<String> _environmentOptions = ['indoor', 'outdoor', 'both'];
 
 /// Room type options (C7 taxonomy).
 const List<String> _roomTypeOptions = [
@@ -1240,7 +1289,10 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
   String? _sizeClass;
   String? _colorFamily;
   String? _newUsed;
-  String? _subCategory;
+  String? _sofaTypeShape;
+  String? _sofaFunction;
+  String? _seatCountBucket;
+  String? _environment;
   String? _roomType;
 
   @override
@@ -1249,7 +1301,10 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
     _sizeClass = widget.currentFilters['sizeClass'] as String?;
     _colorFamily = widget.currentFilters['colorFamily'] as String?;
     _newUsed = widget.currentFilters['newUsed'] as String?;
-    _subCategory = widget.currentFilters['subCategory'] as String?;
+    _sofaTypeShape = widget.currentFilters['sofaTypeShape'] as String?;
+    _sofaFunction = widget.currentFilters['sofaFunction'] as String?;
+    _seatCountBucket = widget.currentFilters['seatCountBucket'] as String?;
+    _environment = widget.currentFilters['environment'] as String?;
     _roomType = widget.currentFilters['roomType'] as String?;
   }
 
@@ -1267,13 +1322,72 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
     if (_newUsed != null && _newUsed!.isNotEmpty) {
       map['newUsed'] = _newUsed!;
     }
-    if (_subCategory != null && _subCategory!.isNotEmpty) {
-      map['subCategory'] = _subCategory!;
+    if (_sofaTypeShape != null && _sofaTypeShape!.isNotEmpty) {
+      map['sofaTypeShape'] = _sofaTypeShape!;
+    }
+    if (_sofaFunction != null && _sofaFunction!.isNotEmpty) {
+      map['sofaFunction'] = _sofaFunction!;
+    }
+    if (_seatCountBucket != null && _seatCountBucket!.isNotEmpty) {
+      map['seatCountBucket'] = _seatCountBucket!;
+    }
+    if (_environment != null && _environment!.isNotEmpty) {
+      map['environment'] = _environment!;
     }
     if (_roomType != null && _roomType!.isNotEmpty) {
       map['roomType'] = _roomType!;
     }
     return map;
+  }
+
+  String _sofaShapeLabel(String value) {
+    switch (value) {
+      case 'u_shaped':
+        return 'U-shaped';
+      case 'corner':
+        return 'Corner';
+      case 'chaise':
+        return 'Chaise';
+      case 'modular':
+        return 'Modular';
+      case 'straight':
+      default:
+        return 'Straight';
+    }
+  }
+
+  String _sofaFunctionLabel(String value) {
+    switch (value) {
+      case 'sleeper':
+        return 'Sleeper';
+      case 'standard':
+      default:
+        return 'Standard';
+    }
+  }
+
+  String _seatBucketLabel(String value) {
+    switch (value) {
+      case '4_plus':
+        return '4+ seats';
+      case '3':
+        return '3 seats';
+      case '2':
+      default:
+        return '2 seats';
+    }
+  }
+
+  String _environmentLabel(String value) {
+    switch (value) {
+      case 'both':
+        return 'Indoor + Outdoor';
+      case 'outdoor':
+        return 'Outdoor';
+      case 'indoor':
+      default:
+        return 'Indoor';
+    }
   }
 
   @override
@@ -1295,7 +1409,7 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                 .bodyMedium
                 ?.copyWith(color: AppTheme.textSecondary),
           ),
-          // --- Sofa Type (sub-category) ---
+          // --- Sofa shape ---
           const SizedBox(height: AppTheme.spacingUnit * 2),
           Text(strings.sofaType,
               style: Theme.of(context)
@@ -1309,21 +1423,120 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
             children: [
               AppFilterChip(
                 label: Text(strings.any),
-                selected: _subCategory == null,
+                selected: _sofaTypeShape == null,
                 onSelected: (_) {
                   widget.onFilterChange
-                      ?.call('subCategory', _subCategory, null);
-                  setState(() => _subCategory = null);
+                      ?.call('sofaTypeShape', _sofaTypeShape, null);
+                  setState(() => _sofaTypeShape = null);
                 },
               ),
-              ..._subCategoryOptions.map((v) => AppFilterChip(
-                    label: Text(strings.subCatLabel(v)),
-                    selected: _subCategory == v,
+              ..._sofaTypeShapeOptions.map((v) => AppFilterChip(
+                    label: Text(_sofaShapeLabel(v)),
+                    selected: _sofaTypeShape == v,
                     onSelected: (_) {
-                      widget.onFilterChange?.call('subCategory', _subCategory,
-                          _subCategory == v ? null : v);
+                      widget.onFilterChange?.call('sofaTypeShape',
+                          _sofaTypeShape, _sofaTypeShape == v ? null : v);
+                      setState(() =>
+                          _sofaTypeShape = _sofaTypeShape == v ? null : v);
+                    },
+                  )),
+            ],
+          ),
+          // --- Sofa function ---
+          const SizedBox(height: AppTheme.spacingUnit * 2),
+          Text('Function',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Wrap(
+            spacing: AppTheme.spacingUnit / 2,
+            runSpacing: AppTheme.spacingUnit / 2,
+            children: [
+              AppFilterChip(
+                label: Text(strings.any),
+                selected: _sofaFunction == null,
+                onSelected: (_) {
+                  widget.onFilterChange
+                      ?.call('sofaFunction', _sofaFunction, null);
+                  setState(() => _sofaFunction = null);
+                },
+              ),
+              ..._sofaFunctionOptions.map((v) => AppFilterChip(
+                    label: Text(_sofaFunctionLabel(v)),
+                    selected: _sofaFunction == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('sofaFunction', _sofaFunction,
+                          _sofaFunction == v ? null : v);
                       setState(
-                          () => _subCategory = _subCategory == v ? null : v);
+                          () => _sofaFunction = _sofaFunction == v ? null : v);
+                    },
+                  )),
+            ],
+          ),
+          // --- Seat count ---
+          const SizedBox(height: AppTheme.spacingUnit * 2),
+          Text('Seat count',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Wrap(
+            spacing: AppTheme.spacingUnit / 2,
+            runSpacing: AppTheme.spacingUnit / 2,
+            children: [
+              AppFilterChip(
+                label: Text(strings.any),
+                selected: _seatCountBucket == null,
+                onSelected: (_) {
+                  widget.onFilterChange
+                      ?.call('seatCountBucket', _seatCountBucket, null);
+                  setState(() => _seatCountBucket = null);
+                },
+              ),
+              ..._seatCountBucketOptions.map((v) => AppFilterChip(
+                    label: Text(_seatBucketLabel(v)),
+                    selected: _seatCountBucket == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('seatCountBucket',
+                          _seatCountBucket, _seatCountBucket == v ? null : v);
+                      setState(() =>
+                          _seatCountBucket = _seatCountBucket == v ? null : v);
+                    },
+                  )),
+            ],
+          ),
+          // --- Environment ---
+          const SizedBox(height: AppTheme.spacingUnit * 2),
+          Text('Environment',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spacingUnit / 2),
+          Wrap(
+            spacing: AppTheme.spacingUnit / 2,
+            runSpacing: AppTheme.spacingUnit / 2,
+            children: [
+              AppFilterChip(
+                label: Text(strings.any),
+                selected: _environment == null,
+                onSelected: (_) {
+                  widget.onFilterChange
+                      ?.call('environment', _environment, null);
+                  setState(() => _environment = null);
+                },
+              ),
+              ..._environmentOptions.map((v) => AppFilterChip(
+                    label: Text(_environmentLabel(v)),
+                    selected: _environment == v,
+                    onSelected: (_) {
+                      widget.onFilterChange?.call('environment', _environment,
+                          _environment == v ? null : v);
+                      setState(
+                          () => _environment = _environment == v ? null : v);
                     },
                   )),
             ],
@@ -1375,8 +1588,7 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                 label: Text(strings.any),
                 selected: _sizeClass == null,
                 onSelected: (_) {
-                  widget.onFilterChange
-                      ?.call('smallSpaceOnly', _sizeClass, null);
+                  widget.onFilterChange?.call('sizeClass', _sizeClass, null);
                   setState(() => _sizeClass = null);
                 },
               ),
@@ -1388,8 +1600,8 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                             : strings.large),
                     selected: _sizeClass == v,
                     onSelected: (_) {
-                      widget.onFilterChange?.call('smallSpaceOnly', _sizeClass,
-                          _sizeClass == v ? null : v);
+                      widget.onFilterChange?.call(
+                          'sizeClass', _sizeClass, _sizeClass == v ? null : v);
                       setState(() => _sizeClass = _sizeClass == v ? null : v);
                     },
                   )),
@@ -1411,7 +1623,7 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                 selected: _colorFamily == null,
                 onSelected: (_) {
                   widget.onFilterChange
-                      ?.call('colorFamilies', _colorFamily, null);
+                      ?.call('colorFamily', _colorFamily, null);
                   setState(() => _colorFamily = null);
                 },
               ),
@@ -1419,7 +1631,7 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                     label: Text(v[0].toUpperCase() + v.substring(1)),
                     selected: _colorFamily == v,
                     onSelected: (_) {
-                      widget.onFilterChange?.call('colorFamilies', _colorFamily,
+                      widget.onFilterChange?.call('colorFamily', _colorFamily,
                           _colorFamily == v ? null : v);
                       setState(
                           () => _colorFamily = _colorFamily == v ? null : v);
@@ -1442,8 +1654,7 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                 label: Text(strings.any),
                 selected: _newUsed == null,
                 onSelected: (_) {
-                  widget.onFilterChange
-                      ?.call('newOnly', _newUsed == 'new', null);
+                  widget.onFilterChange?.call('newUsed', _newUsed, null);
                   setState(() => _newUsed = null);
                 },
               ),
@@ -1452,8 +1663,8 @@ class _DeckFiltersSheetState extends State<_DeckFiltersSheet> {
                         Text(v == 'new' ? strings.newLabel : strings.usedLabel),
                     selected: _newUsed == v,
                     onSelected: (_) {
-                      widget.onFilterChange?.call('newOnly', _newUsed == 'new',
-                          _newUsed == v ? null : v == 'new');
+                      widget.onFilterChange
+                          ?.call('newUsed', _newUsed, _newUsed == v ? null : v);
                       setState(() => _newUsed = _newUsed == v ? null : v);
                     },
                   )),

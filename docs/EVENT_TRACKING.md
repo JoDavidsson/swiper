@@ -28,7 +28,7 @@ This doc lists what we track today and what we should track for a future ML reco
 | **session_resume** | App resumed after ≥30s background | — |
 | **session_end** | App backgrounded / hidden | — |
 | **deck_request** | Deck fetch started | filters.active (if any), ext.requestId, ext.requestedLimit |
-| **deck_response** | Deck fetch completed | rank.requestId, rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate), rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min, perf.latencyMs |
+| **deck_response** | Deck fetch completed | rank.requestId, rank.rankerRunId, rank.algorithmVersion, rank.itemIds (served slate), rank.candidateSetId, rank.candidateCount, rank.rankWindow, rank.retrievalQueues, rank.explorationPolicy, rank.variant, rank.variantBucket, rank.sameFamilyTop8Rate, rank.styleDistanceTop4Min, rank.nearDuplicateShaping, rank.fallbackStage, perf.latencyMs |
 | **deck_refresh** | User refreshes deck (Retry, Apply/Clear filters) | — |
 | **card_render** | Top card built (with impression start) | item, rank |
 | **card_impression_start** | Top card becomes visible | item, impression.impressionId, rank |
@@ -42,7 +42,7 @@ This doc lists what we track today and what we should track for a future ML reco
 | **outbound_click** | User taps “View on site” | item, outbound.destinationDomain |
 | **outbound_redirect_start / success / fail** | Around launchUrl | item, outbound.destinationDomain |
 | **filters_open** | User opens filter sheet | — |
-| **filters_apply** | User applies filters | filters.active |
+| **filters_apply** | User applies filters | filters.active (full snapshot; taxonomy-first keys + legacy compatibility keys) |
 | **filters_clear** | User taps Clear all | — |
 | **filter_change** | User changes a filter control (optional) | filters.change.key, from, to |
 | **compare_open / compare_close** | User opens/leaves compare | items, compare.compareCount |
@@ -99,7 +99,7 @@ Keep storing these in **events** (and swipes for left/right). Ensure **itemId**,
 | Event | When | Why for ML | Suggested metadata |
 |-------|------|------------|--------------------|
 | **session_start** | First deck load for session (or first after onboarding) | Session start; cold start / onboarding | hasOnboardingPreferences (bool), locale |
-| **filter_change** | User applies/clears filters on deck | Explains why deck composition changes; filter-aware models | filters (e.g. sizeClass, colorFamily, newUsed) |
+| **filter_change** | User applies/clears filters on deck | Explains why deck composition changes; filter-aware models | filters (e.g. primaryCategory, sofaTypeShape, sofaFunction, seatCountBucket, environment, roomType, sizeClass, colorFamily, newUsed) |
 | **onboarding_complete** | User finishes onboarding | Explicit preferences for cold start | preferences (map: budget, style tags, etc.) |
 
 ### 2.4 Optional: dwell time
@@ -133,7 +133,7 @@ V1 events are sent by the Flutter tracker to POST /api/events/batch and stored i
 - `gold_v2_summary_confirmed`
 - `gold_v2_summary_adjusted`
 
-**Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion, and for **offline eval and A/B** rank.variant, rank.variantBucket, rank.itemIds (served slate); card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active; outbound_click must include outbound.destinationDomain.
+**Event Requirements Matrix (training-critical):** See [EVENT_SCHEMA_V1.md](EVENT_SCHEMA_V1.md). Key: deck_response must include rank.rankerRunId, rank.algorithmVersion, and for **offline eval and A/B** rank.variant, rank.variantBucket, rank.itemIds (served slate); card_impression_end must match impressionId and include visibleDurationMs, endReason; swipe_left/right must include item.itemId, item.positionInDeck, interaction.gesture, interaction.direction, and ideally rank; filters_apply must include full filters.active (including taxonomy keys such as primaryCategory, sofaTypeShape, sofaFunction, seatCountBucket, environment, roomType; `subCategory` is legacy-compatible); outbound_click must include outbound.destinationDomain.
 
 ---
 

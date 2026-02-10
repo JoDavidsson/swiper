@@ -1,0 +1,16 @@
+[
+  {"id":"atlas_beige","retailer":"ikea","title":"Atlas Sofa Beige","colorFamily":"beige","styleTags":["minimal"],"images":["img1","img2"],"sourceUrl":"https://example.com/atlas-beige"},
+  {"id":"atlas_blue","retailer":"ikea","title":"Atlas Sofa Blue","colorFamily":"blue","styleTags":["minimal"],"images":["img1","img2"],"sourceUrl":"https://example.com/atlas-blue"},
+  {"id":"breeze_beige","retailer":"ikea","title":"Breeze Sofa Beige","colorFamily":"beige","styleTags":["scandinavian"],"images":["img1","img2"],"sourceUrl":"https://example.com/breeze-beige"},
+  {"id":"breeze_green","retailer":"ikea","title":"Breeze Sofa Green","colorFamily":"green","styleTags":["scandinavian"],"images":["img1","img2"],"sourceUrl":"https://example.com/breeze-green"},
+  {"id":"nimbus_white","retailer":"ikea","title":"Nimbus Sofa White","colorFamily":"white","styleTags":["modern"],"images":["img1","img2"],"sourceUrl":"https://example.com/nimbus-white"},
+  {"id":"nimbus_grey","retailer":"ikea","title":"Nimbus Sofa Grey","colorFamily":"grey","styleTags":["modern"],"images":["img1","img2"],"sourceUrl":"https://example.com/nimbus-grey"},
+  {"id":"aurora_black","retailer":"ikea","title":"Aurora Sofa Black","colorFamily":"black","styleTags":["industrial"],"images":["img1","img2"],"sourceUrl":"https://example.com/aurora-black"},
+  {"id":"aurora_red","retailer":"ikea","title":"Aurora Sofa Red","colorFamily":"red","styleTags":["industrial"],"images":["img1","img2"],"sourceUrl":"https://example.com/aurora-red"},
+  {"id":"oslo_sand","retailer":"ikea","title":"Oslo Sofa Sand","colorFamily":"beige","styleTags":["coastal"],"images":["img1","img2"],"sourceUrl":"https://example.com/oslo-sand"},
+  {"id":"oslo_navy","retailer":"ikea","title":"Oslo Sofa Navy","colorFamily":"blue","styleTags":["coastal"],"images":["img1","img2"],"sourceUrl":"https://example.com/oslo-navy"},
+  {"id":"vega_taupe","retailer":"ikea","title":"Vega Sofa Taupe","colorFamily":"brown","styleTags":["rustic"],"images":["img1","img2"],"sourceUrl":"https://example.com/vega-taupe"},
+  {"id":"luna_cream","retailer":"ikea","title":"Luna Sofa Cream","colorFamily":"white","styleTags":["classic"],"images":["img1","img2"],"sourceUrl":"https://example.com/luna-cream"},
+  {"id":"terra_brown","retailer":"ikea","title":"Terra Sofa Brown","colorFamily":"brown","styleTags":["classic"],"images":["img1","img2"],"sourceUrl":"https://example.com/terra-brown"},
+  {"id":"terra_green","retailer":"ikea","title":"Terra Sofa Green","colorFamily":"green","styleTags":["classic"],"images":["img1","img2"],"sourceUrl":"https://example.com/terra-green"}
+]

@@ -186,6 +186,13 @@ class AdminScreen extends ConsumerWidget {
                 onTap: () => context.push('/admin/items'),
               ),
               ListTile(
+                title: const Text('Review Lab'),
+                subtitle:
+                    const Text('Label products for categorization training'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/admin/review'),
+              ),
+              ListTile(
                 title: const Text('Import'),
                 subtitle: const Text('Upload CSV'),
                 trailing: const Icon(Icons.chevron_right),

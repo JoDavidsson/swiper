@@ -28,7 +28,7 @@ Content source for ingestion (feed, API, crawl, manual).
 
 ### 2. items/{itemId}
 
-Normalized furniture item (sofa). Primary collection for deck.
+Normalized furniture item. Primary collection for deck (MVP surface currently sofas).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -43,6 +43,13 @@ Normalized furniture item (sofa). Primary collection for deck.
 | priceAmount | number | |
 | priceCurrency | string | "SEK" |
 | dimensionsCm | map | w, h, d (number) |
+| primaryCategory | string | Primary taxonomy category (e.g. sofa, armchair) |
+| sofaTypeShape | string? | Sofa shape axis: straight, corner, u_shaped, chaise, modular |
+| sofaFunction | string? | Sofa function axis: standard, sleeper |
+| seatCountBucket | string? | Optional seat bucket: 2, 3, 4_plus |
+| environment | string | indoor, outdoor, both, unknown (internal fallback) |
+| subCategory | string? | Legacy sofa descriptor (backward compatibility) |
+| roomTypes | array | string[] placement tags (multi-valued) |
 | extractionMeta | map | `{ method, extractorMethod, completeness, missingFields[], fetchMethod, extractedAt }` |
 | sizeClass | string | "small" \| "medium" \| "large" |
 | material | string | fabric, leather, velvet, boucle, wood, metal, mixed |
@@ -163,7 +170,7 @@ Canonical v1 events (client → POST /api/events/batch). Document ID = eventId (
 | rank | map? | rankerRunId, algorithmVersion, scoreAtRender, … |
 | impression | map? | impressionId, visibleDurationMs, endReason, … |
 | interaction | map? | gesture, direction, velocity, … |
-| filters | map? | active, change |
+| filters | map? | active, change (includes taxonomy keys such as primaryCategory, sofaTypeShape, sofaFunction, seatCountBucket, environment) |
 | onboarding | map? | styleTagsSelected, budgetMinSEK, budgetMaxSEK, ecoOnly, newOnly, smallSpaceOnly, … |
 | compare | map? | compareCount, attribute, direction |
 | share | map? | shortlistId, method, channel, … |
@@ -206,6 +213,86 @@ Individual job within a run.
 | error | string? | |
 | createdAt | timestamp | |
 | updatedAt | timestamp | |
+
+---
+
+### 10. goldItems/{itemId}
+
+Serve-ready subset used by deck retrieval after classification/policy gates.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| itemId | string | Mirrors items doc id |
+| eligibleSurfaces | array | Surface allow-list for serving |
+| primaryCategory | string | Canonical category for routing/filtering |
+| predictedCategory | string | Legacy alias from classifier output |
+| sofaTypeShape | string? | Sofa shape axis |
+| sofaFunction | string? | Sofa function axis |
+| seatCountBucket | string? | Optional seat-count bucket |
+| environment | string? | indoor, outdoor, both, unknown |
+| subCategory | string? | Legacy sofa descriptor |
+| roomTypes | array? | Placement tags |
+| categoryConfidence | number | Confidence for predicted category |
+| decisions | map | Per-surface policy decision details |
+| promotedAt | string | ISO timestamp of promotion |
+| isActive | boolean | Active in deck candidate pool |
+
+---
+
+### 11. reviewQueue/{itemId}
+
+Operational review queue for uncertain classification outcomes.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| itemId | string | Mirrors items doc id |
+| classification | map | Full classifier output snapshot |
+| decisions | map | Policy decisions at enqueue time |
+| status | string | pending or reviewed |
+| reviewAction | string? | accept, reject, reclassify |
+| reviewedBy | string? | Reviewer identifier |
+| createdAt | string | ISO timestamp |
+
+---
+
+### 12. reviewerLabels/{labelId}
+
+Human labels used for training/evaluation loops.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| itemId | string | Reviewed item |
+| action | string | accept, reject, reclassify |
+| trainingOnly | boolean? | True for Training Lab labels (no queue/gold mutation) |
+| labelCategory | string? | Explicit target category for binary task |
+| labelDecision | string? | in_category or not_category |
+| isInCategory | boolean? | Normalized binary target |
+| source | string? | training_lab or operations_review |
+| correctCategory | string? | Populated when reclassified |
+| reviewerId | string | Reviewer identifier |
+| originalClassification | map | Snapshot at label time |
+| createdAt | string | ISO timestamp |
+
+---
+
+### 13. categorizationTrainingConfig/latest
+
+Derived runtime controls generated from reviewer labels.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| version | number | Config schema version |
+| updatedAt | string | ISO timestamp |
+| lastTargetCategory | string? | Last category trained |
+| byCategory | map | Per-category runtime config |
+
+Per-category (`byCategory.{category}`) includes:
+- `runtimeStatus`: `validated` or `shadow_only`
+- `sourceCategoryRejectTokens`: source/category token reject lists
+- `sourceCategoryMinConfidence`: source/category confidence floors
+- `sourceRequireImages`: source image requirements
+- `evaluation`: holdout metrics and gate details
+- `trainingSplit`: train/holdout counts
 
 ---
 

@@ -299,6 +299,16 @@
             "colorFamilies": { "type": "array", "items": { "type": "string" } },
             "brands": { "type": "array", "items": { "type": "string" } },
             "styleTags": { "type": "array", "items": { "type": "string" } },
+            "sizeClass": { "type": "string" },
+            "newUsed": { "type": "string" },
+            "colorFamily": { "type": "string" },
+            "roomType": { "type": "string" },
+            "primaryCategory": { "type": "string" },
+            "sofaTypeShape": { "type": "string" },
+            "sofaFunction": { "type": "string" },
+            "seatCountBucket": { "type": "string" },
+            "environment": { "type": "string" },
+            "subCategory": { "type": "string" },
 
             "sortKey": {
               "type": "string",
@@ -322,6 +332,16 @@
                 "colorFamilies",
                 "brands",
                 "styleTags",
+                "sizeClass",
+                "newUsed",
+                "colorFamily",
+                "roomType",
+                "primaryCategory",
+                "sofaTypeShape",
+                "sofaFunction",
+                "seatCountBucket",
+                "environment",
+                "subCategory",
                 "sortKey"
               ]
             },

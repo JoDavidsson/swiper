@@ -13,6 +13,10 @@ function normalizeToken(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
 export async function swipePost(req: Request, res: Response): Promise<void> {
   const body = req.body as Record<string, unknown> | undefined;
   const sessionId = body?.sessionId as string;
@@ -66,6 +70,7 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
 
     if (itemSnap.exists) {
       const data = itemSnap.data()!;
+      const classification = toRecord(data.classification);
       const sessionRef = db.collection("anonSessions").doc(sessionId);
       const weightsRef = sessionRef.collection("preferenceWeights").doc("weights");
       const delta = direction === "right" ? RIGHT_SWIPE_WEIGHT_DELTA : LEFT_SWIPE_WEIGHT_DELTA;
@@ -106,6 +111,23 @@ export async function swipePost(req: Request, res: Response): Promise<void> {
 
       if (data.smallSpaceFriendly === true) addCount("feature:small_space");
       if (data.modular === true) addCount("feature:modular");
+
+      const primaryCategory = normalizeToken(
+        data.primaryCategory ?? classification?.primaryCategory ?? classification?.predictedCategory
+      );
+      if (primaryCategory) addCount(`primary:${primaryCategory}`);
+
+      const sofaTypeShape = normalizeToken(data.sofaTypeShape ?? classification?.sofaTypeShape);
+      if (sofaTypeShape) addCount(`sofa_shape:${sofaTypeShape}`);
+
+      const sofaFunction = normalizeToken(data.sofaFunction ?? classification?.sofaFunction);
+      if (sofaFunction) addCount(`sofa_function:${sofaFunction}`);
+
+      const seatCountBucket = normalizeToken(data.seatCountBucket ?? classification?.seatCountBucket);
+      if (seatCountBucket) addCount(`seat_bucket:${seatCountBucket}`);
+
+      const environment = normalizeToken(data.environment ?? classification?.environment);
+      if (environment && environment !== "unknown") addCount(`environment:${environment}`);
 
       // Sub-category signal (e.g., "subcat:3_seater", "subcat:corner_sofa")
       const subCategory = normalizeToken(data.subCategory);
