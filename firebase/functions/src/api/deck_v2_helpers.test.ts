@@ -103,6 +103,17 @@ describe("deck v2 helper utilities", () => {
     expect(model).toBe("cloud");
   });
 
+  it("derives stable model keys from canonical URL variants", () => {
+    const blue = __deckTestUtils.itemModelKey({
+      canonicalUrl: "https://shop.example.com/products/cloud-sofa-blue-3-seater/1737345-02",
+    });
+    const beige = __deckTestUtils.itemModelKey({
+      canonicalUrl: "https://shop.example.com/products/cloud-sofa-beige-3-seater/1737345-03",
+    });
+    expect(blue).toBe("cloud");
+    expect(beige).toBe("cloud");
+  });
+
   it("builds retailer-aware family keys for near-duplicate detection", () => {
     const family = __deckTestUtils.itemFamilyKey({
       retailer: "ikea",

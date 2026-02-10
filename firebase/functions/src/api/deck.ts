@@ -69,6 +69,10 @@ const SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE = Math.min(
     parseFloat(String(process.env.SOFT_NEAR_DUPLICATE_MIN_STYLE_DISTANCE || "0.28")) || 0.28
   )
 );
+const SOFT_NEAR_DUPLICATE_MIN_GAP = Math.max(
+  1,
+  parseInt(String(process.env.SOFT_NEAR_DUPLICATE_MIN_GAP || "4"), 10) || 4
+);
 const SOFT_REPEAT_MIN_IMAGE_COUNT = Math.max(
   1,
   parseInt(String(process.env.SOFT_REPEAT_MIN_IMAGE_COUNT || "2"), 10) || 2
@@ -870,6 +874,35 @@ const TITLE_TOKEN_ALIASES: Record<string, string> = {
   knobb: "knob",
 };
 
+const PATH_MODEL_NOISE_TOKENS = new Set([
+  ...TITLE_VARIANT_NOISE_TOKENS,
+  "produkt",
+  "product",
+  "products",
+  "produkter",
+  "vara",
+  "artikel",
+  "item",
+  "model",
+  "p",
+  "html",
+]);
+
+const PATH_CATEGORY_SEGMENT_HINTS = new Set([
+  "category",
+  "kategori",
+  "collections",
+  "collection",
+  "campaign",
+  "kampanj",
+  "inspiration",
+  "guide",
+  "blog",
+  "sale",
+  "erbjudanden",
+  "sortiment",
+]);
+
 function normalizeTitleForFamily(title: unknown): string | null {
   if (typeof title !== "string") return null;
   const normalized = title
@@ -909,6 +942,53 @@ function titleFamilyKey(title: unknown): string | null {
   return canonicalizeFamilyParts(parts);
 }
 
+function canonicalPathModelKey(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  let segments: string[] = [];
+  try {
+    const parsed = new URL(trimmed);
+    segments = parsed.pathname
+      .split("/")
+      .map((segment) => normalizeToken(segment))
+      .filter((segment): segment is string => segment != null && segment.length > 0);
+  } catch {
+    return null;
+  }
+  if (segments.length === 0) return null;
+
+  for (let i = segments.length - 1; i >= 0; i -= 1) {
+    let segment = segments[i];
+    segment = segment.replace(/\.html?$/i, "");
+    if (!segment) continue;
+    if (/^[0-9-]+$/.test(segment)) continue;
+    if (/^c-\d+$/i.test(segment)) continue;
+    if (/^p-[a-z]?\d{4,}/i.test(segment)) continue;
+    if (PATH_CATEGORY_SEGMENT_HINTS.has(segment)) continue;
+
+    const parts = segment
+      .split(/[-_]+/)
+      .map((part) => TITLE_TOKEN_ALIASES[part] || part)
+      .filter((part) => part.length > 1 && !/^\d+$/.test(part));
+    if (parts.length === 0) continue;
+
+    const informative = parts.filter(
+      (part) =>
+        !TITLE_COLOR_HINT_TOKENS.has(part) &&
+        !TITLE_VARIANT_NOISE_TOKENS.has(part) &&
+        !PATH_MODEL_NOISE_TOKENS.has(part)
+    );
+    const informativeKey = canonicalizeFamilyParts(informative);
+    if (informativeKey) return informativeKey;
+
+    const fallback = parts.filter((part) => !PATH_MODEL_NOISE_TOKENS.has(part));
+    const fallbackKey = canonicalizeFamilyParts(fallback);
+    if (fallbackKey) return fallbackKey;
+  }
+  return null;
+}
+
 function canonicalPathKey(url: unknown): string | null {
   if (typeof url !== "string") return null;
   const trimmed = url.trim();
@@ -934,6 +1014,8 @@ function itemModelKey(data: Record<string, unknown>): string | null {
     normalizeToken(data.collectionId) ||
     normalizeToken(data.groupId) ||
     titleFamilyKey(data.title) ||
+    canonicalPathModelKey(data.canonicalUrl) ||
+    canonicalPathModelKey(data.sourceUrl) ||
     canonicalPathKey(data.canonicalUrl)
   );
 }
@@ -1094,6 +1176,8 @@ function applyNearDuplicateExplorationPolicy(
   const deferred: Array<Record<string, unknown>> = [];
   const familyToItems = new Map<string, Array<Record<string, unknown>>>();
   const modelToItems = new Map<string, Array<Record<string, unknown>>>();
+  const familyLastPosition = new Map<string, number>();
+  const modelLastPosition = new Map<string, number>();
   const seenVariantTop8 = new Set<string>();
   let softRepeatsUsed = 0;
   const softWindowTopN = Math.max(
@@ -1149,16 +1233,31 @@ function applyNearDuplicateExplorationPolicy(
         deferred.push(item);
         continue;
       }
+
+      // Keep near-duplicate families spaced out in the first cards so the deck
+      // feels exploratory instead of clustered by color/variant.
+      const familyGap = familyKey ? projectedPosition - (familyLastPosition.get(familyKey) || 0) : Number.MAX_SAFE_INTEGER;
+      const modelGap = modelKey ? projectedPosition - (modelLastPosition.get(modelKey) || 0) : Number.MAX_SAFE_INTEGER;
+      const minGap = Math.min(familyGap, modelGap);
+      if (minGap < SOFT_NEAR_DUPLICATE_MIN_GAP) {
+        stats.droppedSoftNearDuplicate += 1;
+        deferred.push(item);
+        continue;
+      }
+
       softRepeatsUsed += 1;
       stats.allowedSoftNearDuplicate += 1;
     }
 
     shaped.push(item);
+    const acceptedPosition = shaped.length;
     if (familyKey) {
       familyToItems.set(familyKey, [...familyItems, item]);
+      familyLastPosition.set(familyKey, acceptedPosition);
     }
     if (modelKey) {
       modelToItems.set(modelKey, [...modelItems, item]);
+      modelLastPosition.set(modelKey, acceptedPosition);
     }
     if (withinHardWindow && variantKey) {
       seenVariantTop8.add(variantKey);

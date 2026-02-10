@@ -11,6 +11,7 @@ Pipeline:
 from __future__ import annotations
 
 import os
+import random
 import re
 import sys
 import time
@@ -19,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 
 # ============================================================================
@@ -208,6 +210,90 @@ def _filter_urls_by_category(urls: list, category_patterns: list[str], logger=No
         logger.info(f"Category filter [{', '.join(category_patterns[:3])}{'...' if len(category_patterns) > 3 else ''}]: {original_count} -> {len(filtered)} URLs")
     
     return filtered
+
+
+_STRICT_PRODUCT_PATH_RE = re.compile(
+    r"(?i)(/p/[a-z0-9]|/produkt/[^/?#]+|/product/[^/?#]+|/vara/[^/?#]+|/artikel/[^/?#]+|"
+    r"/products/[^/?#]+|/produkter/[^/?#]+|-p\d+(?:-v\d+)?\b|/\d{6,}(?:-\d+)?/?$)"
+)
+_STRICT_CATEGORY_PATH_RE = re.compile(
+    r"(?i)(/category|/kategori|/collections|/kampanj|/campaign|/erbjud|/inspiration|/guide|/blog|/c-\d+/?$)"
+)
+_STRICT_NON_PRODUCT_EXT_RE = re.compile(r"(?i)\.(?:pdf|jpg|jpeg|png|webp|gif|svg|css|js|xml|txt)$")
+_STRICT_FILTER_QUERY_KEYS = {
+    "page", "p", "sort", "order", "filter", "facet", "q", "search", "brand", "campaign", "utm_source",
+    "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid",
+}
+_STRICT_ALLOWED_QUERY_KEYS = {"variant", "sku", "size", "color"}
+
+
+def _candidate_url_key(url: str) -> str:
+    """Generate a dedupe key that ignores query/fragment variant noise."""
+    try:
+        parsed = urlparse(url)
+        scheme = (parsed.scheme or "https").lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path or "/"
+        if len(path) > 1:
+            path = path.rstrip("/")
+        return f"{scheme}://{netloc}{path}"
+    except Exception:
+        return url.strip()
+
+
+def _dedupe_candidate_urls(urls: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for url in urls:
+        key = _candidate_url_key(url)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(url)
+    return deduped
+
+
+def _is_strict_product_candidate_url(url: str, *, confidence: float, url_type_hint: str) -> bool:
+    """
+    Conservative product-candidate gate used before extraction.
+
+    Goal: reduce category/listing/filter pages that create parse failures while still
+    keeping enough recall to avoid empty runs.
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    path = (parsed.path or "").lower()
+    if not path or path == "/":
+        return False
+    if _STRICT_NON_PRODUCT_EXT_RE.search(path):
+        return False
+
+    query_map = parse_qs(parsed.query, keep_blank_values=False)
+    query_keys = {str(k).strip().lower() for k in query_map.keys() if str(k).strip()}
+    if query_keys:
+        # Keep only pure variant selectors; drop list/filter/pagination query URLs.
+        if any(k in _STRICT_FILTER_QUERY_KEYS for k in query_keys):
+            return False
+        if any(k not in _STRICT_ALLOWED_QUERY_KEYS for k in query_keys):
+            return False
+
+    strong_path_signal = bool(_STRICT_PRODUCT_PATH_RE.search(path))
+    category_signal = bool(_STRICT_CATEGORY_PATH_RE.search(path))
+    if category_signal and not strong_path_signal and confidence < 0.82:
+        return False
+
+    if url_type_hint == "product" and confidence >= 0.58:
+        return True
+    if confidence >= 0.82:
+        return True
+    if strong_path_signal:
+        return True
+    return False
 
 
 def _source_rate_limit(source: dict) -> float | None:
@@ -621,9 +707,17 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
     if auto_discover:
         seed_type = "sitemap"  # Force sitemap discovery mode
 
-    max_urls = int(source.get("maxUrlsPerRun") or 200)
+    configured_max_urls = source.get("maxUrlsPerRun")
+    max_urls = int(configured_max_urls or 200)
     max_pages = int(source.get("maxPagesPerRun") or 50)
     max_depth = int(source.get("maxDepth") or 2)
+    # Keep legacy behavior when no explicit cap is configured per source.
+    if configured_max_urls is None:
+        sitemap_min_matching_urls = 2000
+        sitemap_scan_cap = 200_000
+    else:
+        sitemap_min_matching_urls = max(1, max_urls)
+        sitemap_scan_cap = max(5000, max_urls * 25)
 
     # Use a realistic browser user-agent by default.  Many sites (especially
     # those behind Cloudflare) will hard-block requests with a bot-style UA.
@@ -662,9 +756,9 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                     allowlist_policy=allowlist_policy,
                     robots_respect=robots_respect,
                     rate_limit_rps=rate_limit_rps,
-                    max_urls=200_000,  # Increased to allow scanning more sitemaps when filtering
+                    max_urls=sitemap_scan_cap,
                     category_filter=category_filter if category_filter else None,
-                    min_matching_urls=2000,  # Get at least 2000 matching products
+                    min_matching_urls=sitemap_min_matching_urls,
                 )
                 if discovered:
                     # Filter by seed path pattern if present
@@ -760,9 +854,9 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 allowlist_policy=allowlist_policy,
                 robots_respect=robots_respect,
                 rate_limit_rps=rate_limit_rps,
-                max_urls=200_000,  # Increased to allow scanning more sitemaps when filtering
+                max_urls=sitemap_scan_cap,
                 category_filter=category_filter if category_filter else None,
-                min_matching_urls=2000,  # Get at least 2000 matching products
+                min_matching_urls=sitemap_min_matching_urls,
             )
             if discovered:
                 log.success(f"Found {len(discovered)} URLs from sitemap")
@@ -827,6 +921,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         log.info("Filtering for product candidates...")
         product_candidates: list[str] = []
         high_confidence_candidates: list[str] = []
+        strict_product_candidates: list[str] = []
         
         for d in discovered:
             upsert_crawl_url(
@@ -841,22 +936,69 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
             )
             if d.url_type_hint == "product" or d.confidence >= 0.7:
                 high_confidence_candidates.append(d.url)
+            if _is_strict_product_candidate_url(
+                d.url,
+                confidence=float(d.confidence or 0.0),
+                url_type_hint=str(d.url_type_hint or "unknown"),
+            ):
+                strict_product_candidates.append(d.url)
         
-        # If category filter was applied, we already filtered for relevant URLs - use ALL of them
-        # Otherwise fall back to confidence-based filtering
+        # Prefer strict product-like candidates to avoid spending extraction budget
+        # on category/filter pages. Fallbacks keep runs from going empty.
         if category_filter:
-            log.info(f"Category filter active - using all {len(discovered)} discovered URLs as candidates")
-            product_candidates = [d.url for d in discovered]
+            if strict_product_candidates:
+                log.info(
+                    f"Category filter active - strict product gate kept "
+                    f"{len(strict_product_candidates)}/{len(discovered)} URLs"
+                )
+                product_candidates = strict_product_candidates
+            elif high_confidence_candidates:
+                log.warning(
+                    "Category filter active - strict gate found no candidates; "
+                    "falling back to high-confidence URLs"
+                )
+                product_candidates = high_confidence_candidates
+            else:
+                log.warning(
+                    "Category filter active - no strict/high-confidence URLs; "
+                    "falling back to all discovered URLs"
+                )
+                product_candidates = [d.url for d in discovered]
+        elif strict_product_candidates:
+            product_candidates = strict_product_candidates
+            log.info(
+                f"Strict product gate selected {len(strict_product_candidates)}/{len(discovered)} URLs"
+            )
         elif high_confidence_candidates:
             product_candidates = high_confidence_candidates
         else:
             log.info("No high-confidence product URLs, using all discovered URLs")
             product_candidates = [d.url for d in discovered]
 
+        before_candidate_dedupe = len(product_candidates)
+        product_candidates = _dedupe_candidate_urls(product_candidates)
+        if len(product_candidates) < before_candidate_dedupe:
+            log.info(
+                f"Deduplicated candidate URLs by canonical path: "
+                f"{before_candidate_dedupe} -> {len(product_candidates)}"
+            )
+
+        # Respect per-source extraction cap when explicitly configured.
+        if configured_max_urls is not None and len(product_candidates) > max_urls:
+            seeded = random.Random(f"{source_id}:{db_run_id}:{len(product_candidates)}")
+            seeded.shuffle(product_candidates)
+            before = len(product_candidates)
+            product_candidates = product_candidates[:max_urls]
+            log.info(
+                f"Applied maxUrlsPerRun cap: {before} -> {len(product_candidates)} "
+                f"(seeded shuffle for fair rotation)"
+            )
+
         # No artificial limit - process ALL discovered products
         # The sitemap discovery already respects min_matching_urls for efficiency
         stats["urlsDiscovered"] = len(discovered)
         stats["urlsCandidateProducts"] = len(product_candidates)
+        stats["strictProductCandidates"] = len(strict_product_candidates)
         log.success(f"Selected {len(product_candidates)} product candidates")
         update_job(db, job_id, "succeeded")
         

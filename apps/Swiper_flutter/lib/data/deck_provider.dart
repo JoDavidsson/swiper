@@ -182,6 +182,33 @@ class DeckNotifier extends StateNotifier<AsyncValue<List<Item>>> {
             'returnedCount': response.items.length,
           },
         });
+        tracker.track('deck_render_snapshot', {
+          'rank': {
+            ...rankPayload,
+            if (response.rank?.sourceConcentrationTop8 != null)
+              'sourceConcentrationTop8': response.rank!.sourceConcentrationTop8,
+            if (response.rank?.sourceDiversityTop8 != null)
+              'sourceDiversityTop8': response.rank!.sourceDiversityTop8,
+          },
+          if (_filters.isNotEmpty) 'filters': {'active': _filters},
+          'ext': {
+            'requestId': response.rank?.requestId ?? deckRequestId,
+            'returnedCount': response.items.length,
+            'topCards': response.items
+                .take(12)
+                .map((item) => {
+                      'itemId': item.id,
+                      'title': item.title,
+                      if (item.sourceId != null) 'sourceId': item.sourceId,
+                      if (item.subCategory != null)
+                        'subCategory': item.subCategory,
+                      if (item.sofaFunction != null)
+                        'sofaFunction': item.sofaFunction,
+                      'isFeatured': item.isFeatured,
+                    })
+                .toList(),
+          },
+        });
         if (didCreateSession) {
           tracker.track('session_start', {});
         }

@@ -20,6 +20,8 @@ class DeckRankContext {
     this.onboardingProfile,
     this.sameFamilyTop8Rate,
     this.styleDistanceTop4Min,
+    this.sourceConcentrationTop8,
+    this.sourceDiversityTop8,
   });
   final String rankerRunId;
   final String algorithmVersion;
@@ -59,6 +61,12 @@ class DeckRankContext {
 
   /// Minimum style distance within served top 4.
   final double? styleDistanceTop4Min;
+
+  /// Max single-source share in top 8 (0..1).
+  final double? sourceConcentrationTop8;
+
+  /// Number of unique sources in top 8.
+  final int? sourceDiversityTop8;
 }
 
 class OnboardingProfileSummary {
@@ -325,6 +333,14 @@ class ApiClient {
             styleDistanceTop4Min: rankMap['styleDistanceTop4Min'] is num
                 ? (rankMap['styleDistanceTop4Min'] as num).toDouble()
                 : null,
+            sourceConcentrationTop8: rankMap['sourceConcentrationTop8'] is num
+                ? (rankMap['sourceConcentrationTop8'] as num).toDouble()
+                : null,
+            sourceDiversityTop8: rankMap['sourceDiversityTop8'] is int
+                ? rankMap['sourceDiversityTop8'] as int
+                : (rankMap['sourceDiversityTop8'] is num
+                    ? (rankMap['sourceDiversityTop8'] as num).toInt()
+                    : null),
             onboardingProfile: rankMap['onboardingProfile'] is Map
                 ? (() {
                     final profile = Map<String, dynamic>.from(

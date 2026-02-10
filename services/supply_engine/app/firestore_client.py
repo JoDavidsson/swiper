@@ -1,8 +1,10 @@
 """Firestore client for Supply Engine. Uses firebase_admin or emulator."""
 import os
 import uuid
+import math
 import hashlib
-from datetime import datetime, timezone
+from decimal import Decimal
+from datetime import datetime, timezone, date
 from typing import Any
 
 try:
@@ -96,7 +98,24 @@ def update_job(db, job_id: str, status: str, error: str | None = None):
 
 def write_items(db, items: list[dict], source_id: str) -> tuple[int, int, list[str]]:
     """Batch write items to Firestore. Returns (upserted, failed, item_ids)."""
-    from firebase_admin import firestore as fs
+    def sanitize_for_firestore(value):
+        # Firestore rejects non-finite numbers and unknown object types.
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        if isinstance(value, Decimal):
+            dec_value = float(value)
+            return dec_value if math.isfinite(dec_value) else None
+        if isinstance(value, (datetime, date)):
+            return value
+        if isinstance(value, dict):
+            return {str(k): sanitize_for_firestore(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [sanitize_for_firestore(v) for v in value]
+        if isinstance(value, (str, int, bool)) or value is None:
+            return value
+        # Fallback for custom objects from extractor internals.
+        return str(value)
+
     upserted = 0
     failed = 0
     item_ids: list[str] = []
@@ -107,12 +126,19 @@ def write_items(db, items: list[dict], source_id: str) -> tuple[int, int, list[s
             for key in ("lastUpdatedAt", "firstSeenAt", "lastSeenAt"):
                 if key in data and data[key] is None:
                     data[key] = _server_timestamp()
+            data = sanitize_for_firestore(data)
             item_id = data.pop("id", None) or str(uuid.uuid4()).replace("-", "")[:24]
             col.document(item_id).set(data, merge=True)
             upserted += 1
             item_ids.append(item_id)
-        except Exception:
+        except Exception as err:
             failed += 1
+            title = str(item.get("title") or "")[:120]
+            print(
+                f"[write_items] Failed write source={source_id} title={title!r} "
+                f"error={type(err).__name__}: {err}",
+                flush=True,
+            )
             item_ids.append("")  # Placeholder to keep alignment with items list
     return upserted, failed, item_ids
 
