@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { requireUserAuth } from "../middleware/require_user_auth";
 import { getScoreBand } from "./scores";
@@ -431,9 +432,11 @@ async function buildRetailerReport(
     .slice(0, 40)
     .map(([itemId]) => itemId);
 
-  const topProductDocs = await db.getAll(
-    ...topProductIds.map((itemId) => db.collection("items").doc(itemId))
-  );
+  const topProductDocs =
+    topProductIds.length > 0
+      ? await db.getAll(...topProductIds.map((itemId) => db.collection("items").doc(itemId))
+      )
+      : [];
   const titleByProductId = new Map<string, string>();
   for (const doc of topProductDocs) {
     if (!doc.exists) continue;
@@ -593,7 +596,7 @@ export async function retailerCatalogPatch(
       return;
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     const controlId = `${access.retailerId}_${productId}`;
     await db.collection("retailerCatalogControls").doc(controlId).set(
       {
@@ -868,8 +871,8 @@ export async function retailerReportsSharePost(req: Request, res: Response): Pro
       retailerId: access.retailerId,
       report,
       createdBy: user.uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromMillis(expiresAtMs),
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: Timestamp.fromMillis(expiresAtMs),
     });
 
     const host = req.get("host");

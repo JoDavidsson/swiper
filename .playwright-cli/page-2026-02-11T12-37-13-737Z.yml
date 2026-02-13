@@ -1,0 +1,77 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [ref=e45]
+              - heading "Sources" [level=2] [ref=e46]
+              - button "Run All Sources" [ref=e47]
+              - button "Refresh" [ref=e48]
+            - generic:
+              - group:
+                - group "Chilli CRAWL Enabled chilli.se" [ref=e49]:
+                  - button "Run now" [ref=e50]
+                  - button "Show menu" [ref=e51]
+                - group "EM Home CRAWL Enabled emhome.se" [ref=e52]:
+                  - button "Run now" [ref=e53]
+                  - button "Show menu" [ref=e54]
+                - group "Ellos CRAWL Enabled ellos.se" [ref=e55]:
+                  - button "Run now" [ref=e56]
+                  - button "Show menu" [ref=e57]
+                - group "Furniturebox CRAWL Enabled furniturebox.se" [ref=e58]:
+                  - button "Run now" [ref=e59]
+                  - button "Show menu" [ref=e60]
+                - group "Homeroom CRAWL Enabled homeroom.se" [ref=e61]:
+                  - button "Run now" [ref=e62]
+                  - button "Show menu" [ref=e63]
+                - group "IKEA Sverige CRAWL Enabled ikea.com" [ref=e64]:
+                  - button "Run now" [ref=e65]
+                  - button "Show menu" [ref=e66]
+                - group "ILVA CRAWL Enabled ilva.se" [ref=e67]:
+                  - button "Run now" [ref=e68]
+                  - button "Show menu" [ref=e69]
+                - group "Jotex CRAWL Enabled jotex.se" [ref=e70]:
+                  - button "Run now" [ref=e71]
+                  - button "Show menu" [ref=e72]
+                - group "Länna Möbler CRAWL Enabled lannamobler.se" [ref=e73]:
+                  - button "Run now" [ref=e74]
+                  - button "Show menu" [ref=e75]
+                - group "Mio CRAWL Enabled mio.se" [ref=e76]:
+                  - button "Run now" [active] [ref=e77]:
+                    - generic [ref=e110]:
+                      - generic: Run now
+                  - button "Show menu" [ref=e78]
+                - group "Newport CRAWL Enabled newport.se" [ref=e79]:
+                  - button "Run now" [ref=e80]
+                  - button "Show menu" [ref=e81]
+                - group "Nordiska Galleriet CRAWL Enabled nordiskagalleriet.se" [ref=e82]:
+                  - button "Run now" [ref=e83]
+                  - button "Show menu" [ref=e84]
+                - group "RoyalDesign CRAWL Enabled royaldesign.se" [ref=e85]:
+                  - button "Run now" [ref=e86]
+                  - button "Show menu" [ref=e87]
+                - group "Rum21 CRAWL Enabled rum21.se" [ref=e88]:
+                  - button "Run now" [ref=e89]
+                  - button "Show menu" [ref=e90]
+                - group "Sleepo CRAWL Enabled sleepo.se" [ref=e91]:
+                  - button "Run now" [ref=e92]
+                  - button "Show menu" [ref=e93]
+                - group "SoffaDirekt CRAWL Enabled soffadirekt.se" [ref=e94]:
+                  - button "Run now" [ref=e95]
+                  - button "Show menu" [ref=e96]
+                - group "Svenska Hem CRAWL Enabled svenskahem.se" [ref=e97]:
+                  - button "Run now" [ref=e98]
+                  - button "Show menu" [ref=e99]
+                - group "Svenssons CRAWL Enabled svenssons.se" [ref=e100]:
+                  - button "Run now" [ref=e101]
+                  - button "Show menu" [ref=e102]
+                - group "Sweef CRAWL Enabled sweef.se" [ref=e103]:
+                  - button "Run now" [ref=e104]
+                  - button "Show menu" [ref=e105]
+                - group "Trademax CRAWL Enabled trademax.se" [ref=e106]:
+                  - button "Run now" [ref=e107]
+                  - button "Show menu" [ref=e108]
+            - button [ref=e109]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

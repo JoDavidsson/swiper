@@ -1,0 +1,28 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [active] [ref=e26]
+              - heading "Swiper" [level=2] [ref=e27]
+              - button "Filters" [ref=e28]
+            - button [disabled] [ref=e29]
+            - generic [ref=e30]:
+              - generic: Let's find your style direction
+            - button "Skip" [ref=e31]
+            - generic [ref=e32]:
+              - generic: 0%
+            - generic [ref=e33]:
+              - generic: Step 0 of 4
+            - generic [ref=e34]:
+              - generic: Pick a few visuals and we will tune your deck in under 20 seconds.
+            - generic [ref=e35]:
+              - generic: No account needed. You can refine this anytime.
+            - button "Start" [ref=e36]
+            - button "Deck Tab 1 of 4" [ref=e37]
+            - button "Likes Tab 2 of 4" [ref=e38]
+            - button "Share Tab 3 of 4" [ref=e39]
+            - button "Profile Tab 4 of 4" [ref=e40]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

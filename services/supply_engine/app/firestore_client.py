@@ -6,6 +6,7 @@ import hashlib
 from decimal import Decimal
 from datetime import datetime, timezone, date
 from typing import Any
+from urllib.parse import urlparse, parse_qs
 
 try:
     import firebase_admin
@@ -162,6 +163,43 @@ def write_items(db, items: list[dict], source_id: str) -> tuple[int, int, list[s
 def _doc_id_for_url(url: str) -> str:
     """Stable, Firestore-friendly document ID derived from a URL."""
     return hashlib.sha256(url.encode("utf-8", errors="ignore")).hexdigest()[:24]
+
+
+def _normalize_url_signature(url: Any) -> str | None:
+    """Normalize URL into a stable signature for cross-run comparisons."""
+    if not isinstance(url, str):
+        return None
+    raw = url.strip()
+    if not raw:
+        return None
+    try:
+        parsed = urlparse(raw)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return raw.lower()
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path or "/"
+        if len(path) > 1:
+            path = path.rstrip("/")
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        filtered_keys = sorted(
+            k.lower()
+            for k in query.keys()
+            if k and k.lower() in {"sku", "variant", "size", "color"}
+        )
+        query_key_part = f"?{'&'.join(filtered_keys)}" if filtered_keys else ""
+        return f"{scheme}://{netloc}{path}{query_key_part}"
+    except Exception:
+        return raw.lower()
+
+
+def _collect_item_url_signatures(item_data: dict) -> set[str]:
+    signatures: set[str] = set()
+    for field in ("canonicalUrl", "sourceUrl", "outboundUrl"):
+        sig = _normalize_url_signature(item_data.get(field))
+        if sig:
+            signatures.add(sig)
+    return signatures
 
 
 def _utc_now_iso() -> str:
@@ -338,7 +376,7 @@ def get_known_hashes(db, *, source_id: str, urls: list[str]) -> dict[str, str]:
 
     # Use crawlUrls collection which stores htmlHash from previous runs
     known: dict[str, str] = {}
-    for url in urls:
+    for url in dict.fromkeys(urls):
         doc_id = _doc_id_for_url(url)
         doc = db.collection("crawlUrls").document(doc_id).get()
         if doc.exists:
@@ -356,6 +394,69 @@ def update_crawl_url_hash(db, *, url: str, html_hash: str, source_id: str) -> No
         {"htmlHash": html_hash, "lastCrawledAt": _server_timestamp(), "sourceId": source_id},
         merge=True,
     )
+
+
+def deactivate_missing_items_for_source(
+    db,
+    *,
+    source_id: str,
+    seen_urls: list[str] | set[str],
+    run_id: str | None = None,
+) -> int:
+    """
+    Mark previously-active source items as inactive when absent from latest crawl.
+
+    Safety:
+    - Operates only on `sourceId` scoped records.
+    - Requires URL signature match (canonical/source/outbound) to keep an item active.
+    - Skips records without any URL fields to avoid accidental deactivation.
+    """
+    if not source_id:
+        return 0
+
+    seen_signatures = {
+        sig
+        for sig in (_normalize_url_signature(u) for u in seen_urls)
+        if sig
+    }
+    if not seen_signatures:
+        return 0
+
+    deactivated = 0
+    batch = db.batch()
+    writes = 0
+    query = db.collection("items").where("sourceId", "==", source_id)
+    for doc in query.stream():
+        data = doc.to_dict() or {}
+        if data.get("isActive") is not True:
+            continue
+        item_signatures = _collect_item_url_signatures(data)
+        if not item_signatures:
+            continue
+        if item_signatures.intersection(seen_signatures):
+            continue
+
+        payload: dict[str, Any] = {
+            "isActive": False,
+            "deactivatedAt": _server_timestamp(),
+            "deactivatedReason": "missing_in_latest_crawl",
+            "updatedAt": _server_timestamp(),
+        }
+        if run_id:
+            payload["deactivatedByRunId"] = run_id
+        batch.set(doc.reference, payload, merge=True)
+        writes += 1
+        deactivated += 1
+
+        if writes >= 400:
+            batch.commit()
+            batch = db.batch()
+            writes = 0
+
+    if writes > 0:
+        batch.commit()
+
+    return deactivated
 
 
 def deactivate_active_recipes(db, *, source_id: str) -> int:

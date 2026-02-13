@@ -12,7 +12,7 @@ class Money:
     warnings: list[str]
 
 
-_CURRENCY_RE = re.compile(r"(?i)\\b(sek|kr|kronor|eur|usd)\\b")
+_CURRENCY_RE = re.compile(r"(?i)\b(sek|kr|kronor|eur|usd)\b")
 
 
 def parse_money_sv(raw: str | None) -> Money:
@@ -85,5 +85,4 @@ def parse_money_sv(raw: str | None) -> Money:
     if amount > 500_000:
         warnings.append("suspiciously_high")
 
-    return Money(amount=amount, currency=cur or "SEK", raw=s, warnings=warnings)
-
+    return Money(amount=amount, currency=cur, raw=s, warnings=warnings)

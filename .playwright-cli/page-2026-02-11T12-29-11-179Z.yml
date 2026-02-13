@@ -1,0 +1,29 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Close" [active] [ref=e10]
+              - heading "Sign in" [level=2] [ref=e11]
+            - group:
+              - generic:
+                - generic [ref=e12]:
+                  - generic: Welcome to Swiper
+                - generic [ref=e13]:
+                  - generic: Sign in to create Decision Rooms and collaborate with others
+                - button "Continue with Google" [ref=e14]
+                - generic [ref=e15]:
+                  - generic: or
+                - textbox "Email" [ref=e17]
+                - generic [ref=e18]:
+                  - textbox "Password" [ref=e19]
+                  - button [ref=e20]
+                - button "Forgot password?" [ref=e21]
+                - button "Sign in" [ref=e22]
+                - generic [ref=e23]:
+                  - generic: Don't have an account?
+                - button "Sign up" [ref=e24]
+                - button "Continue without signing in" [ref=e25]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

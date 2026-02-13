@@ -1,0 +1,79 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Back" [ref=e276]
+              - heading "Catalog Preview" [level=2] [ref=e277]
+              - radio [checked] [ref=e278]
+              - radio [ref=e279]
+              - button "Validate" [active] [ref=e280]
+            - generic [ref=e281]:
+              - generic: Total
+            - generic [ref=e282]:
+              - generic: "588"
+            - generic [ref=e283]:
+              - generic: Validated
+            - generic [ref=e284]:
+              - generic: 0 / 588
+            - generic [ref=e285]:
+              - generic: "0"
+            - generic [ref=e286]:
+              - generic: Avg Score
+            - generic [ref=e287]:
+              - generic: "0"
+            - generic [ref=e288]:
+              - generic: "0"
+            - generic [ref=e289]:
+              - generic: "0"
+            - generic:
+              - group:
+                - generic:
+                  - group "0 SARBONNE soffa 3-sits 9749 SEK":
+                    - img [ref=e312]
+                    - img [ref=e313]
+                - generic:
+                  - group "0 Bellora 4495 SEK":
+                    - img [ref=e314]
+                    - img [ref=e315]
+                - generic:
+                  - group "0 VILMA 14995 SEK":
+                    - img [ref=e316]
+                    - img [ref=e317]
+                - generic:
+                  - group "0 Amie 3995 SEK":
+                    - img [ref=e318]
+                    - img [ref=e319]
+                - generic:
+                  - 'group "0 CORWIN hörnsoffa 2,5+2,5-sits öppet avslut Hö ljusbeige tyg Rita #1 (k2) 26990 SEK"':
+                    - img [ref=e320]
+                    - img [ref=e321]
+                - generic:
+                  - group "0 ROSSY soffa 3-sits 12949 SEK":
+                    - img [ref=e322]
+                    - img [ref=e323]
+                - generic:
+                  - group "0 Cherrie Klädsel 10995 SEK":
+                    - img [ref=e324]
+                    - img [ref=e325]
+                - generic:
+                  - group "0 OAKDALE soffa 3-sits 8359 SEK":
+                    - img [ref=e326]
+                    - img [ref=e327]
+                - generic:
+                  - group "0 BELLEVILLE loungesoffa 6299 SEK":
+                    - img [ref=e328]
+                    - img [ref=e329]
+                - generic [ref=e330]:
+                  - generic: "EncodingError: The source image cannot be decoded. EncodingError: The source image cannot be decoded. 0 Saturday 26995 SEK"
+                - generic:
+                  - group "0 Camel leather sofa 27990 SEK":
+                    - img [ref=e331]
+                    - img [ref=e332]
+                - generic [ref=e333]:
+                  - generic: "EncodingError: The source image cannot be decoded. EncodingError: The source image cannot be decoded. 0 Zamira 2995 SEK"
+            - generic [ref=e334]:
+              - generic: Validated 0 items
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -835,6 +835,31 @@ class ApiClient {
         .toList();
   }
 
+  Future<Map<String, dynamic>> retailerCreateSegment({
+    required String token,
+    required String retailerId,
+    required String name,
+    String? description,
+    List<String>? styleTags,
+    double? budgetMin,
+    double? budgetMax,
+  }) async {
+    final r = await _dio.post<Map<String, dynamic>>(
+      '/api/segments',
+      data: {
+        'retailerId': retailerId,
+        'name': name,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (styleTags != null && styleTags.isNotEmpty) 'styleTags': styleTags,
+        if (budgetMin != null) 'budgetMin': budgetMin,
+        if (budgetMax != null) 'budgetMax': budgetMax,
+      },
+      options: _authOptions(token),
+    );
+    return r.data ?? {};
+  }
+
   Future<Map<String, dynamic>> retailerGetCatalog({
     required String token,
     required String retailerId,

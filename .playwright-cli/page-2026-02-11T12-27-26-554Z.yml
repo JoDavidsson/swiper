@@ -1,0 +1,17 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "Profile" [active] [level=2] [ref=e7]
+            - generic:
+              - group:
+                - button "Language Swedish / English – English" [ref=e8]
+                - button "Data & Privacy What we collect, opt-out and social login" [ref=e9]
+                - button "Retailer Console Campaigns, catalog controls, insights" [ref=e10]
+            - button "Deck Tab 1 of 4" [ref=e11]
+            - button "Likes Tab 2 of 4" [ref=e12]
+            - button "Share Tab 3 of 4" [ref=e13]
+            - button "Profile Tab 4 of 4" [ref=e14]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -1,0 +1,41 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - button [ref=e10]
+            - generic [ref=e11]:
+              - generic: Set practical boundaries
+            - button "Skip" [ref=e12]
+            - generic [ref=e13]:
+              - generic: 75%
+            - generic [ref=e14]:
+              - generic: Step 3 of 4
+            - group:
+              - generic [ref=e35]:
+                - generic: This helps us avoid options that do not fit your home.
+              - generic [ref=e36]:
+                - generic: Budget
+              - checkbox "< 5k SEK" [ref=e37]
+              - checkbox "5k-15k SEK" [checked] [ref=e38]
+              - checkbox "15k-30k SEK" [ref=e39]
+              - checkbox "30k+ SEK" [ref=e40]
+              - generic [ref=e41]:
+                - generic: Seats
+              - checkbox "2 seats" [ref=e42]
+              - checkbox "3 seats" [checked] [ref=e43]
+              - checkbox "4+ seats" [ref=e44]
+              - switch "Modular only" [ref=e45]
+              - switch "Kids or pets at home" [ref=e46]
+              - switch "Small space" [checked] [active] [ref=e47]
+            - button "See my deck" [ref=e48]
+            - button "Deck Tab 1 of 4" [ref=e18]
+            - button "Likes Tab 2 of 4" [ref=e19]
+            - button "Share Tab 3 of 4" [ref=e20]
+            - button "Profile Tab 4 of 4" [ref=e21]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

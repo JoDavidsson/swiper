@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { requireUserAuth } from "../middleware/require_user_auth";
 import { normalizeSegmentCriteriaInput } from "../targeting/segment_targeting";
 
@@ -176,7 +177,7 @@ export async function segmentsPost(req: Request, res: Response): Promise<void> {
 
   try {
     const segmentRef = db.collection("segments").doc();
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     const segmentData = {
       id: segmentRef.id,
@@ -233,14 +234,23 @@ export async function segmentsGet(req: Request, res: Response): Promise<void> {
       const templatesSnap = await db.collection("segments")
         .where("isTemplate", "==", true)
         .get();
-      
-      templatesSnap.docs.forEach(doc => {
-        segments.push({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null,
+
+      if (templatesSnap.empty) {
+        SEGMENT_TEMPLATES.forEach((template) => {
+          segments.push({
+            ...template,
+            createdAt: null,
+          });
         });
-      });
+      } else {
+        templatesSnap.docs.forEach(doc => {
+          segments.push({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null,
+          });
+        });
+      }
     }
 
     // Get retailer's custom segments if retailerId provided
@@ -299,7 +309,15 @@ export async function segmentsGetById(req: Request, res: Response, segmentId: st
     const doc = await db.collection("segments").doc(segmentId).get();
 
     if (!doc.exists) {
-      res.status(404).json({ error: "Segment not found" });
+      const fallbackTemplate = SEGMENT_TEMPLATES.find((template) => template.id === segmentId);
+      if (!fallbackTemplate) {
+        res.status(404).json({ error: "Segment not found" });
+        return;
+      }
+      res.json({
+        ...fallbackTemplate,
+        createdAt: null,
+      });
       return;
     }
 
@@ -400,7 +418,7 @@ export async function segmentsPatch(req: Request, res: Response, segmentId: stri
     const { normalized, issues } = normalizeSegmentCriteriaInput(body);
 
     const updates: Record<string, unknown> = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (Object.prototype.hasOwnProperty.call(body, "name")) {

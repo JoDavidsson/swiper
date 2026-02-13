@@ -25,11 +25,13 @@ cd "$REPO_ROOT"
 echo "Functions build complete."
 echo ""
 
-# Start only Firestore + Functions so the deck API works. Avoids UI/Auth/Hosting port conflicts.
-# For full emulators (UI, Auth, Hosting) run: firebase emulators:start --only firestore,functions,hosting,auth,ui
-echo "Starting Firebase emulators (Firestore, Functions)..."
+# Start Firestore + Functions + Auth so local login works end-to-end.
+# For full emulators (UI, Hosting included) run:
+# firebase emulators:start --only firestore,functions,hosting,auth,ui
+echo "Starting Firebase emulators (Firestore, Functions, Auth)..."
 echo "Firestore: http://localhost:8180"
 echo "Functions: http://localhost:5002"
+echo "Auth: http://localhost:9099"
 echo ""
 echo "For Supply Engine: export FIRESTORE_EMULATOR_HOST=localhost:8180"
 echo "Supply Engine default port: http://localhost:8081"
@@ -40,7 +42,7 @@ cd "$REPO_ROOT/firebase"
 
 # Import existing data if available, always export on exit to preserve state.
 # Use relative paths to avoid issues with spaces in directory names.
-EMULATOR_ARGS=(emulators:start --only firestore,functions)
+EMULATOR_ARGS=(emulators:start --only firestore,functions,auth)
 if [ -d "$REPO_ROOT/emulator-data" ]; then
   echo "Importing existing Firestore data from emulator-data/..."
   EMULATOR_ARGS+=(--import="../emulator-data")

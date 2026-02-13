@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { requireUserAuth } from "../middleware/require_user_auth";
 
 /**
@@ -30,7 +31,7 @@ export async function adminRetailersPost(req: Request, res: Response): Promise<v
       return;
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     await retailerRef.set({
       id,
       name,
@@ -136,7 +137,7 @@ export async function adminRetailersPatch(req: Request, res: Response, retailerI
     }
 
     const updates: Record<string, unknown> = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (name !== undefined) updates.name = name;
@@ -177,8 +178,14 @@ export async function retailersClaimPost(req: Request, res: Response, retailerId
     return;
   }
 
+  const normalizedRetailerId = retailerId.trim().toLowerCase();
+  if (!normalizedRetailerId) {
+    res.status(400).json({ error: "Retailer id is required" });
+    return;
+  }
+
   try {
-    const retailerRef = db.collection("retailers").doc(retailerId);
+    const retailerRef = db.collection("retailers").doc(normalizedRetailerId);
     const doc = await retailerRef.get();
 
     if (!doc.exists) {
@@ -194,7 +201,7 @@ export async function retailersClaimPost(req: Request, res: Response, retailerId
       res.json({
         success: true,
         message: "You already own this retailer",
-        retailerId,
+        retailerId: normalizedRetailerId,
       });
       return;
     }
@@ -210,15 +217,15 @@ export async function retailersClaimPost(req: Request, res: Response, retailerId
 
     // Add user to owners and update status
     await retailerRef.update({
-      ownerUserIds: admin.firestore.FieldValue.arrayUnion(user.uid),
+      ownerUserIds: FieldValue.arrayUnion(user.uid),
       status: "claimed",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({
       success: true,
       message: "Retailer claimed successfully",
-      retailerId,
+      retailerId: normalizedRetailerId,
     });
   } catch (error) {
     console.error("Error claiming retailer:", error);

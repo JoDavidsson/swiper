@@ -1,6 +1,7 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { requireUserAuth, ensureUserDocument } from "../middleware/require_user_auth";
 
 /**
@@ -53,14 +54,14 @@ export async function authLinkSessionPost(req: Request, res: Response): Promise<
 
     // Link the session to the user
     await userRef.update({
-      linkedSessionIds: admin.firestore.FieldValue.arrayUnion(sessionId),
-      lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      linkedSessionIds: FieldValue.arrayUnion(sessionId),
+      lastActiveAt: FieldValue.serverTimestamp(),
     });
 
     // Update the session to reference the user
     await sessionRef.update({
       userId: user.uid,
-      linkedAt: admin.firestore.FieldValue.serverTimestamp(),
+      linkedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({

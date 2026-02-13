@@ -29,6 +29,8 @@ DEFAULT_MIN_COMPLETENESS = 0.40   # Minimum extraction completeness score
 DEFAULT_REQUIRE_IMAGES = True     # Require at least one image
 
 TRAINING_RULES_MODE = os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE", "shadow")
+POLICY_CONFIG_COLLECTION = "classificationPolicyConfig"
+POLICY_CONFIG_DOC = "latest"
 
 
 @dataclass
@@ -121,6 +123,18 @@ def load_training_config_latest(db: Any) -> dict | None:
         return None
 
 
+def load_policy_config_latest(db: Any) -> dict | None:
+    """Load latest runtime policy-threshold overrides, if present."""
+    try:
+        snap = db.collection(POLICY_CONFIG_COLLECTION).document(POLICY_CONFIG_DOC).get()
+        if not snap.exists:
+            return None
+        data = snap.to_dict() or {}
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
 def _safe_float(value: Any) -> float | None:
     try:
         if isinstance(value, (int, float)):
@@ -128,6 +142,101 @@ def _safe_float(value: Any) -> float | None:
     except Exception:
         return None
     return None
+
+
+def _safe_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _clone_surface_policy(policy: SurfacePolicy) -> SurfacePolicy:
+    return SurfacePolicy(
+        surface_id=policy.surface_id,
+        allowed_categories=list(policy.allowed_categories),
+        accept_threshold=policy.accept_threshold,
+        reject_threshold=policy.reject_threshold,
+        min_margin=policy.min_margin,
+        min_completeness=policy.min_completeness,
+        require_images=policy.require_images,
+        require_price=policy.require_price,
+        max_price=policy.max_price,
+        min_price=policy.min_price,
+    )
+
+
+def build_surface_policies(policy_config: dict | None = None) -> dict[str, SurfacePolicy]:
+    """
+    Build effective surface policies by applying runtime overrides on defaults.
+
+    Supported override keys:
+    - top-level defaults: acceptThreshold, rejectThreshold, minMargin, minCompleteness
+    - per-surface: surfacePolicies.{surfaceId}.{...same keys plus requireImages/requirePrice/...}
+    """
+    effective: dict[str, SurfacePolicy] = {
+        sid: _clone_surface_policy(policy) for sid, policy in SURFACE_POLICIES.items()
+    }
+    if not isinstance(policy_config, dict):
+        return effective
+
+    global_accept = _safe_float(policy_config.get("acceptThreshold"))
+    global_reject = _safe_float(policy_config.get("rejectThreshold"))
+    global_margin = _safe_float(policy_config.get("minMargin"))
+    global_completeness = _safe_float(policy_config.get("minCompleteness"))
+
+    for policy in effective.values():
+        if global_accept is not None:
+            policy.accept_threshold = global_accept
+        if global_reject is not None:
+            policy.reject_threshold = global_reject
+        if global_margin is not None:
+            policy.min_margin = global_margin
+        if global_completeness is not None:
+            policy.min_completeness = global_completeness
+
+    surface_overrides = policy_config.get("surfacePolicies")
+    if not isinstance(surface_overrides, dict):
+        return effective
+
+    for surface_id, raw_override in surface_overrides.items():
+        if surface_id not in effective or not isinstance(raw_override, dict):
+            continue
+        policy = effective[surface_id]
+
+        accept = _safe_float(raw_override.get("acceptThreshold"))
+        reject = _safe_float(raw_override.get("rejectThreshold"))
+        margin = _safe_float(raw_override.get("minMargin"))
+        completeness = _safe_float(raw_override.get("minCompleteness"))
+        min_price = _safe_float(raw_override.get("minPrice"))
+        max_price = _safe_float(raw_override.get("maxPrice"))
+        require_images = _safe_bool(raw_override.get("requireImages"))
+        require_price = _safe_bool(raw_override.get("requirePrice"))
+        allowed_categories = raw_override.get("allowedCategories")
+
+        if accept is not None:
+            policy.accept_threshold = accept
+        if reject is not None:
+            policy.reject_threshold = reject
+        if margin is not None:
+            policy.min_margin = margin
+        if completeness is not None:
+            policy.min_completeness = completeness
+        if min_price is not None:
+            policy.min_price = min_price
+        if max_price is not None:
+            policy.max_price = max_price
+        if require_images is not None:
+            policy.require_images = require_images
+        if require_price is not None:
+            policy.require_price = require_price
+        if isinstance(allowed_categories, list):
+            normalized = [
+                str(x).strip() for x in allowed_categories if str(x).strip()
+            ]
+            if normalized:
+                policy.allowed_categories = normalized
+
+    return effective
 
 
 def _normalize_source_id(value: Any) -> str:
@@ -435,11 +544,24 @@ def promote_to_gold(
     return gold_doc
 
 
+def _extract_completeness_score(item_data: dict) -> float:
+    direct = _safe_float(item_data.get("completenessScore"))
+    if direct is not None:
+        return direct
+    extraction_meta = item_data.get("extractionMeta")
+    if isinstance(extraction_meta, dict):
+        nested = _safe_float(extraction_meta.get("completeness"))
+        if nested is not None:
+            return nested
+    return 0.5
+
+
 def classify_and_decide(
     *,
     item_id: str,
     item_data: dict,
     surface_ids: list[str] | None = None,
+    surface_policies: dict[str, SurfacePolicy] | None = None,
     training_config: dict | None = None,
     training_mode: str | None = None,
 ) -> dict:
@@ -471,8 +593,10 @@ def classify_and_decide(
     )
 
     resolved_training_mode = resolve_training_rules_mode(training_mode)
+    effective_policies = surface_policies or SURFACE_POLICIES
+    completeness_score = _extract_completeness_score(item_data)
 
-    surfaces = surface_ids or list(SURFACE_POLICIES.keys())
+    surfaces = surface_ids or list(effective_policies.keys())
     has_images = bool(item_data.get("images"))
     training_assessment = _assess_training_rules(
         classification=classification,
@@ -489,10 +613,11 @@ def classify_and_decide(
         decisions[sid] = evaluate_eligibility(
             classification=classification,
             surface_id=sid,
-            completeness_score=item_data.get("completenessScore", 0.5),
+            completeness_score=completeness_score,
             has_images=has_images,
             has_price=item_data.get("priceAmount") is not None,
             price_amount=item_data.get("priceAmount"),
+            policy=effective_policies.get(sid),
         )
         if training_assessment.would_reject and resolved_training_mode == "active":
             if decisions[sid].decision != "REJECT":

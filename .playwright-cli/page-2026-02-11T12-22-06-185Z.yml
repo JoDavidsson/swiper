@@ -1,0 +1,34 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - button [ref=e10]
+            - generic [ref=e11]:
+              - generic: Pick 2 sofa vibes
+            - button "Skip" [ref=e12]
+            - generic [ref=e13]:
+              - generic: 50%
+            - generic [ref=e14]:
+              - generic: Step 2 of 4
+            - generic [ref=e29]:
+              - generic: Choose the shapes and textures that feel right.
+            - generic [ref=e30]:
+              - generic: 1/2 - 2 of 2 required
+            - generic:
+              - group:
+                - button "Rounded Boucle Soft curves, cozy look" [active] [ref=e31]
+                - button "Low Linen Relaxed, grounded profile" [ref=e32]
+                - button "Structured Leather Tailored, defined lines" [ref=e33]
+                - button "Modular Cloud Flexible, deep comfort" [ref=e34]
+            - button "Continue" [disabled] [ref=e28]
+            - button "Deck Tab 1 of 4" [ref=e18]
+            - button "Likes Tab 2 of 4" [ref=e19]
+            - button "Share Tab 3 of 4" [ref=e20]
+            - button "Profile Tab 4 of 4" [ref=e21]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

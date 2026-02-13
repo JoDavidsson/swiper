@@ -1,0 +1,45 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Retailer Console - Mio" [level=2] [ref=e98]
+              - button "Refresh" [ref=e99]
+              - button "Sign out" [ref=e100]
+            - generic:
+              - group:
+                - group "Catalog Control Decide which products are eligible for campaigns and monitor taxonomy + creative health.":
+                  - button "Refresh" [ref=e136]
+                - textbox "Search products" [ref=e139]
+                - generic:
+                  - checkbox "All" [checked] [ref=e141]
+                  - checkbox "Included" [ref=e142]
+                  - checkbox "Excluded" [ref=e143]
+                - generic [ref=e145]:
+                  - generic: Showing 120 of 120 products
+                - 'switch "Eden Price: 849 SEK Creative health: - (0)" [checked] [ref=e147]':
+                  - 'checkbox "Category: armchair" [ref=e148]'
+                - 'switch "Friday Price: 15995 SEK Creative health: - (0)" [checked] [ref=e149]':
+                  - 'checkbox "Category: sofa" [ref=e150]'
+                  - 'checkbox "Shape: chaise" [ref=e151]'
+                  - 'checkbox "Function: standard" [ref=e152]'
+                  - 'checkbox "Seats: 3" [ref=e153]'
+                  - 'checkbox "Environment: indoor" [ref=e154]'
+                  - 'checkbox "Legacy subcat: chaise_sofa" [ref=e155]'
+                - 'switch "Friday Price: 28995 SEK Creative health: - (0)" [checked] [ref=e156]':
+                  - 'checkbox "Category: sofa" [ref=e157]'
+                  - 'checkbox "Shape: corner" [ref=e158]'
+                  - 'checkbox "Function: standard" [ref=e159]'
+                  - 'checkbox "Seats: 3" [ref=e160]'
+                  - 'checkbox "Environment: indoor" [ref=e161]'
+                  - 'checkbox "Legacy subcat: corner_sofa" [ref=e162]'
+                - 'switch "Friday Price: 3995 SEK Creative health: - (0)" [checked] [ref=e163]':
+                  - 'checkbox "Category: armchair" [ref=e164]'
+            - button "Home Tab 1 of 5" [ref=e111]
+            - button "Campaigns Tab 2 of 5" [ref=e112]
+            - button "Catalog Tab 3 of 5" [active] [ref=e113]
+            - button "Insights Tab 4 of 5" [ref=e114]
+            - button "Reports Tab 5 of 5" [ref=e115]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

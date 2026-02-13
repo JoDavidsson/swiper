@@ -34,4 +34,9 @@ fi
 
 echo "Flutter web: http://localhost:${WEB_PORT} (leave running for hot reload)"
 echo "If login/deck fail, start emulators in another terminal: ./scripts/run_emulators.sh"
-exec flutter run -d chrome --web-port="${WEB_PORT}"
+exec flutter run \
+  -d chrome \
+  --web-port="${WEB_PORT}" \
+  --dart-define=USE_FIREBASE_AUTH_EMULATOR=true \
+  --dart-define=FIREBASE_AUTH_EMULATOR_HOST=localhost \
+  --dart-define=FIREBASE_AUTH_EMULATOR_PORT=9099

@@ -89,6 +89,14 @@ const SOURCE_DIVERSITY_MAX_PER_SOURCE = Math.max(
   1,
   parseInt(String(process.env.SOURCE_DIVERSITY_MAX_PER_SOURCE || "6"), 10) || 6
 );
+const TOP_MODEL_DEDUPE_TOP_N = Math.max(
+  HARD_NEAR_DUPLICATE_TOP_N,
+  parseInt(String(process.env.TOP_MODEL_DEDUPE_TOP_N || "12"), 10) || 12
+);
+const TOP_MODEL_DEDUPE_MAX_PER_MODEL = Math.max(
+  1,
+  parseInt(String(process.env.TOP_MODEL_DEDUPE_MAX_PER_MODEL || "1"), 10) || 1
+);
 const ENABLE_SCORE_QUALITY_GATE = process.env.ENABLE_SCORE_QUALITY_GATE !== "false";
 const QUALITY_SCORE_LOOKUP_LIMIT = Math.max(
   0,
@@ -179,6 +187,10 @@ type ExplorationDiversityStats = {
 
 type SourceDiversityStats = {
   deferredForSourceCap: number;
+};
+
+type ModelDiversityStats = {
+  deferredForModelCap: number;
 };
 
 const ONBOARDING_V2_SCENE_SIGNAL_MAP: Record<string, string[]> = {
@@ -1309,6 +1321,43 @@ function applySourceDiversityPolicy(
   };
 }
 
+function applyTopModelDedupePolicy(
+  rankedItems: Array<Record<string, unknown>>,
+  limit: number
+): { items: Array<Record<string, unknown>>; stats: ModelDiversityStats } {
+  const shaped: Array<Record<string, unknown>> = [];
+  const deferred: Array<Record<string, unknown>> = [];
+  const modelCounts = new Map<string, number>();
+  const capWindowTopN = Math.max(TOP_MODEL_DEDUPE_TOP_N, Math.min(rankedItems.length, Math.max(limit, 0)));
+
+  const stats: ModelDiversityStats = {
+    deferredForModelCap: 0,
+  };
+
+  for (const item of rankedItems) {
+    const projectedPosition = shaped.length + 1;
+    const withinCapWindow = projectedPosition <= capWindowTopN;
+    const modelKey = itemModelKey(item) || titleFamilyKey(item.title);
+
+    if (withinCapWindow && modelKey) {
+      const currentCount = modelCounts.get(modelKey) || 0;
+      if (currentCount >= TOP_MODEL_DEDUPE_MAX_PER_MODEL) {
+        stats.deferredForModelCap += 1;
+        deferred.push(item);
+        continue;
+      }
+      modelCounts.set(modelKey, currentCount + 1);
+    }
+
+    shaped.push(item);
+  }
+
+  return {
+    items: [...shaped, ...spreadDeferredNearDuplicates(deferred)],
+    stats,
+  };
+}
+
 function computeSameFamilyTop8Rate(items: Array<Record<string, unknown>>): number {
   const top = items.slice(0, 8);
   const seen = new Set<string>();
@@ -2307,7 +2356,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     limit,
     creativeScoreByItemId
   );
-  const items = nearDuplicateShaping.items as ItemCandidate[];
+  const modelDedupeShaping = applyTopModelDedupePolicy(
+    nearDuplicateShaping.items as Array<Record<string, unknown>>,
+    limit
+  );
+  const items = modelDedupeShaping.items as ItemCandidate[];
   const servedItemIds = items.map((item) => String(item.id));
 
   const itemsForMetrics = items.map((item) => item as Record<string, unknown>);
@@ -2398,6 +2451,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         maxPerSource: SOURCE_DIVERSITY_MAX_PER_SOURCE,
       },
       sourceDiversityShaping: sourceDiversityShaping.stats,
+      modelDiversityPolicy: {
+        topN: TOP_MODEL_DEDUPE_TOP_N,
+        maxPerModel: TOP_MODEL_DEDUPE_MAX_PER_MODEL,
+      },
+      modelDiversityShaping: modelDedupeShaping.stats,
       featuredServing,
       fallbackStage,
       ...(onboardingProfileSummary != null ? { onboardingProfile: onboardingProfileSummary } : {}),
@@ -2511,6 +2569,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
     nearDuplicateShaping: nearDuplicateShaping.stats,
     sourceDiversityShaping: sourceDiversityShaping.stats,
+    modelDiversityShaping: modelDedupeShaping.stats,
     qualityScoresFound: creativeScoreByItemId.size,
     onboardingConstraintMode: onboardingConstraintsMode,
     fallbackStage,
@@ -2545,6 +2604,7 @@ export const __deckTestUtils = {
   passesSoftRepeatQualityGate,
   applyNearDuplicateExplorationPolicy,
   applySourceDiversityPolicy,
+  applyTopModelDedupePolicy,
   computeSameFamilyTop8Rate,
   computeSourceConcentrationTop8,
   computeSourceDiversityTop8,

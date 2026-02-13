@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.sorting.policy import classify_and_decide
+from app.sorting.policy import build_surface_policies, classify_and_decide
 
 
 def _base_item(title: str = "Modern sofa collectionxyz") -> dict:
@@ -87,3 +87,38 @@ def test_training_rules_active_mode_ignores_unvalidated_config() -> None:
     assert any(
         decision["decision"] != "REJECT" for decision in result["decisions"].values()
     )
+
+
+def test_completeness_falls_back_to_extraction_meta() -> None:
+    item = _base_item(title="Sofa with extractionMeta completeness")
+    item.pop("completenessScore", None)
+    item["extractionMeta"] = {"completeness": 0.05}
+    result = classify_and_decide(
+        item_id="item_meta_completeness",
+        item_data=item,
+        training_mode="off",
+    )
+    decision = result["decisions"]["swiper_deck_sofas"]
+    assert decision["decision"] == "REJECT"
+    assert any("low_completeness:0.05" in reason for reason in decision["reasonCodes"])
+
+
+def test_runtime_policy_overrides_change_thresholds() -> None:
+    policies = build_surface_policies(
+        {
+            "acceptThreshold": 1.2,
+            "surfacePolicies": {
+                "swiper_deck_sofas": {
+                    "rejectThreshold": 1.1,
+                    "minCompleteness": 0.4,
+                }
+            },
+        }
+    )
+    result = classify_and_decide(
+        item_id="item_policy_override",
+        item_data=_base_item(),
+        surface_policies=policies,
+        training_mode="off",
+    )
+    assert result["decisions"]["swiper_deck_sofas"]["decision"] == "REJECT"

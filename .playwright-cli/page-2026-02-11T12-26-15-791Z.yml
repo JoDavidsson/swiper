@@ -1,0 +1,17 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "Likes" [level=2] [ref=e117]
+            - button "List view" [ref=e118]
+            - generic:
+              - group:
+                - button "TELLY 2-sits soffa med 2 elrecliners tyg grå 11995 SEK Em home" [ref=e119]
+                - button "CADIZ loungesoffa 5999 SEK" [ref=e120]
+            - button "Deck Tab 1 of 4" [active] [ref=e121]
+            - button "Likes Tab 2 of 4" [ref=e122]
+            - button "Share Tab 3 of 4" [ref=e123]
+            - button "Profile Tab 4 of 4" [ref=e124]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

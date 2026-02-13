@@ -1,0 +1,35 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [active] [ref=e147]
+              - heading "Ingestion Runs" [level=2] [ref=e148]
+              - button "Refresh" [ref=e149]
+            - generic:
+              - group:
+                - button "sample_feed sample_feed SUCCESS 60 Upserted" [ref=e150]
+                - button "Trademax trademax.se RUNNING 0 Upserted" [ref=e151]
+                - button "Sweef sweef.se RUNNING 0 Upserted" [ref=e152]
+                - button "Svenssons svenssons.se RUNNING 0 Upserted" [ref=e153]
+                - button "Svenska Hem svenskahem.se SUCCESS 121 Upserted 25 Errors" [ref=e154]
+                - button "SoffaDirekt soffadirekt.se RUNNING 0 Upserted" [ref=e155]
+                - button "Sleepo sleepo.se RUNNING 0 Upserted" [ref=e156]
+                - button "Furniturebox furniturebox.se RUNNING 0 Upserted" [ref=e157]
+                - button "Länna Möbler lannamobler.se RUNNING 0 Upserted 20 Errors" [ref=e158]
+                - button "Jotex jotex.se SUCCESS 114 Upserted 10 Errors" [ref=e159]
+                - button "Homeroom homeroom.se RUNNING 0 Upserted 21 Errors" [ref=e160]
+                - button "Rum21 rum21.se RUNNING 0 Upserted" [ref=e161]
+                - button "RoyalDesign royaldesign.se RUNNING 0 Upserted" [ref=e162]
+                - button "IKEA Sverige ikea.com SUCCESS 0 Upserted 293 Errors" [ref=e163]
+                - button "EM Home emhome.se SUCCESS 144 Upserted 28 Errors" [ref=e164]
+                - button "Newport newport.se SUCCESS 0 Upserted" [ref=e165]
+                - button "Nordiska Galleriet nordiskagalleriet.se SUCCESS 0 Upserted 20 Errors" [ref=e166]
+                - button "ILVA ilva.se RUNNING 0 Upserted 51 Errors" [ref=e167]
+                - button "Ellos ellos.se RUNNING 0 Upserted 14 Errors" [ref=e168]
+                - button "Mio mio.se SUCCESS 149 Upserted 25 Errors" [ref=e169]
+                - button "Chilli chilli.se RUNNING 0 Upserted" [ref=e170]
+                - button "SoffaDirekt soffadirekt.se STOPPED 0 Upserted pre-batch-reset" [ref=e171]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

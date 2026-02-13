@@ -1,0 +1,17 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "Likes" [active] [level=2] [ref=e7]
+            - generic [ref=e8]:
+              - generic: No likes yet
+            - generic [ref=e9]:
+              - generic: Swipe right to save items here.
+            - button "Back to deck" [ref=e10]
+            - button "Deck Tab 1 of 4" [ref=e11]
+            - button "Likes Tab 2 of 4" [ref=e12]
+            - button "Share Tab 3 of 4" [ref=e13]
+            - button "Profile Tab 4 of 4" [ref=e14]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

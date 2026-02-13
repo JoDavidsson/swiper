@@ -1,0 +1,53 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - button "Scrim" [ref=e172]
+          - generic:
+            - group:
+              - generic [ref=e173]:
+                - generic: Mio
+              - generic [ref=e174]:
+                - generic: mio.se
+              - button "Refresh" [ref=e175]
+              - generic [ref=e176]:
+                - generic: Completed
+              - generic [ref=e177]:
+                - generic: 11m 20s
+              - generic [ref=e178]:
+                - generic: Starting
+              - generic [ref=e179]:
+                - generic: Discovery
+              - generic [ref=e180]:
+                - generic: Crawling
+              - generic [ref=e181]:
+                - generic: Saving
+              - generic [ref=e182]:
+                - generic: Complete
+              - generic [ref=e183]:
+                - generic: "253"
+              - generic [ref=e184]:
+                - generic: "253"
+              - generic [ref=e185]:
+                - generic: "174"
+              - generic [ref=e186]:
+                - generic: Discovered
+              - generic [ref=e187]:
+                - generic: Candidates
+              - generic [ref=e188]:
+                - generic: Crawled
+              - generic [ref=e189]:
+                - generic: "149"
+              - generic [ref=e190]:
+                - generic: "25"
+              - generic [ref=e191]:
+                - generic: "149"
+              - generic [ref=e192]:
+                - generic: Success
+              - generic [ref=e193]:
+                - generic: Failed
+              - generic [ref=e194]:
+                - generic: Saved
+              - button "Technical Details" [ref=e195]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

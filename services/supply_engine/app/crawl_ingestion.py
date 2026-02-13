@@ -10,6 +10,7 @@ Pipeline:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import random
 import re
@@ -103,6 +104,7 @@ from app.firestore_client import (
     get_active_recipe,
     get_known_hashes,
     update_crawl_url_hash,
+    deactivate_missing_items_for_source,
 )
 from app.http.fetcher import PoliteFetcher, FetchError
 from app.locator.sitemap import discover_from_sitemaps
@@ -358,6 +360,42 @@ def _coerce_item_price(*candidates: Any) -> float | None:
 
 _NON_SEK_CURRENCY_RE = re.compile(r"(?i)(?:\beur\b|€|\busd\b|\$|\bgbp\b|£|\bdkk\b|\bnok\b|\bchf\b)")
 _SEK_CURRENCY_RE = re.compile(r"(?i)(?:\bsek\b|\bkr\b|\bkron(?:a|or)\b)")
+_TOKEN_RE = re.compile(r"[^a-z0-9åäö]+")
+
+_STYLE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "modern": ("modern", "samtida", "contemporary"),
+    "scandinavian": ("scandinavian", "nordic", "nordisk", "skandinavisk"),
+    "minimal": ("minimal", "minimalist", "avskalad"),
+    "industrial": ("industrial", "industriell", "loft"),
+    "bohemian": ("boho", "bohemian", "bohemisk"),
+    "rustic": ("rustic", "lantlig", "country"),
+    "classic": ("classic", "klassisk", "traditional"),
+    "coastal": ("coastal", "marin", "beach", "strand"),
+}
+_ECO_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "fsc": ("fsc", "fsc-certifierad", "fsc certified"),
+    "recycled": ("recycled", "återvunnen", "återvunnet", "återvun"),
+    "organic": ("organic", "ekologisk", "eko"),
+    "low_impact": ("svanen", "miljömärkt", "climate", "co2", "hållbar"),
+}
+_MODULAR_KEYWORDS = ("modular", "modul", "sectional", "modulsoffa", "sektionssoffa", "byggbar")
+_SMALL_SPACE_KEYWORDS = ("compact", "kompakt", "small space", "liten", "2-sits", "2 sits", "loveseat")
+_DELIVERY_HIGH_KEYWORDS = (
+    "requires assembly",
+    "montering krävs",
+    "2-man",
+    "tvåmannaleverans",
+    "bulky",
+    "heavy",
+    "specialfrakt",
+)
+_DELIVERY_LOW_KEYWORDS = (
+    "flatpack",
+    "self assembly",
+    "lätt",
+    "easy delivery",
+    "click and collect",
+)
 
 
 def _currency_evidence_from_raw(raw: Any) -> str | None:
@@ -406,6 +444,189 @@ def _resolve_item_currency(product: Any) -> tuple[str | None, str]:
     if raw_currency is not None and str(raw_currency).strip():
         return None, "mismatch"
     return None, "unknown"
+
+
+def _as_float(value: Any) -> float | None:
+    try:
+        if isinstance(value, (int, float)):
+            return float(value)
+    except Exception:
+        return None
+    return None
+
+
+def _as_int(value: Any) -> int | None:
+    try:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str) and value.strip().isdigit():
+            return int(value.strip())
+    except Exception:
+        return None
+    return None
+
+
+def _normalize_text_blob(parts: list[Any]) -> str:
+    joined = " ".join(str(p) for p in parts if p is not None)
+    lowered = joined.lower()
+    return _TOKEN_RE.sub(" ", lowered).strip()
+
+
+def _keyword_hit(text: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+def _derive_style_tags_from_item(item: dict) -> list[str]:
+    facets = item.get("facets") if isinstance(item.get("facets"), dict) else {}
+    breadcrumbs = item.get("breadcrumbs") if isinstance(item.get("breadcrumbs"), list) else []
+    text = _normalize_text_blob(
+        [
+            item.get("title"),
+            item.get("descriptionShort"),
+            item.get("productType"),
+            " ".join(str(x) for x in breadcrumbs),
+            " ".join(f"{k}:{v}" for k, v in facets.items()),
+        ]
+    )
+    tags: list[str] = []
+    for tag, keywords in _STYLE_KEYWORDS.items():
+        if _keyword_hit(text, keywords):
+            tags.append(tag)
+    return tags
+
+
+def _derive_eco_tags_from_item(item: dict) -> list[str]:
+    evidence = item.get("enrichmentEvidence")
+    evidence_parts = evidence if isinstance(evidence, list) else []
+    text = _normalize_text_blob(
+        [
+            item.get("title"),
+            item.get("descriptionShort"),
+            item.get("material"),
+            item.get("coverMaterial"),
+            item.get("frameMaterial"),
+            " ".join(str(x) for x in evidence_parts),
+        ]
+    )
+    tags: list[str] = []
+    for eco_tag, keywords in _ECO_KEYWORDS.items():
+        if _keyword_hit(text, keywords):
+            tags.append(eco_tag)
+    return tags
+
+
+def _derive_modular_from_item(item: dict) -> bool:
+    text = _normalize_text_blob(
+        [
+            item.get("title"),
+            item.get("descriptionShort"),
+            item.get("productType"),
+            item.get("retailerCategoryLabel"),
+        ]
+    )
+    return _keyword_hit(text, _MODULAR_KEYWORDS)
+
+
+def _derive_small_space_from_item(item: dict) -> bool:
+    if str(item.get("sizeClass") or "").strip().lower() == "small":
+        return True
+    seat_count = _as_int(item.get("seatCount"))
+    if seat_count is not None and seat_count <= 2:
+        return True
+    dims = item.get("dimensionsCm") if isinstance(item.get("dimensionsCm"), dict) else {}
+    width = _as_float((dims or {}).get("w"))
+    if width is not None and width <= 180:
+        return True
+    text = _normalize_text_blob([item.get("title"), item.get("descriptionShort")])
+    return _keyword_hit(text, _SMALL_SPACE_KEYWORDS)
+
+
+def _derive_delivery_complexity_from_item(item: dict) -> str:
+    size_class = str(item.get("sizeClass") or "").strip().lower()
+    seat_count = _as_int(item.get("seatCount"))
+    weight_kg = _as_float(item.get("weightKg"))
+    shipping_cost = _as_float(item.get("shippingCost"))
+    text = _normalize_text_blob([item.get("title"), item.get("descriptionShort"), item.get("deliveryEta")])
+
+    high_signal = (
+        size_class == "large"
+        or (seat_count is not None and seat_count >= 4)
+        or (weight_kg is not None and weight_kg >= 60)
+        or (shipping_cost is not None and shipping_cost >= 1500)
+        or _keyword_hit(text, _DELIVERY_HIGH_KEYWORDS)
+    )
+    if high_signal:
+        return "high"
+
+    low_signal = (
+        size_class == "small"
+        and (seat_count is None or seat_count <= 2)
+        and (weight_kg is None or weight_kg <= 25)
+    ) or (shipping_cost is not None and 0 <= shipping_cost <= 300) or _keyword_hit(text, _DELIVERY_LOW_KEYWORDS)
+    if low_signal:
+        return "low"
+
+    return "medium"
+
+
+def _stable_item_id(source_id: str, canonical_url: Any, source_url: Any, title: Any) -> str:
+    canonical = str(canonical_url or "").strip().lower()
+    source = str(source_url or "").strip().lower()
+    fallback_title = str(title or "").strip().lower()
+    stable_identity = canonical or source or fallback_title
+    key = f"{source_id}|{stable_identity}"
+    return hashlib.sha256(key.encode("utf-8", errors="ignore")).hexdigest()[:24]
+
+
+def _finalize_item_for_write(item: dict) -> None:
+    if not isinstance(item, dict):
+        return
+
+    existing_tags = item.get("styleTags") if isinstance(item.get("styleTags"), list) else []
+    derived_tags = _derive_style_tags_from_item(item)
+    tag_tokens = [str(x).strip().lower() for x in [*existing_tags, *derived_tags] if str(x).strip()]
+    item["styleTags"] = list(dict.fromkeys(tag_tokens))[:8]
+
+    existing_eco = item.get("ecoTags") if isinstance(item.get("ecoTags"), list) else []
+    derived_eco = _derive_eco_tags_from_item(item)
+    eco_tokens = [str(x).strip().lower() for x in [*existing_eco, *derived_eco] if str(x).strip()]
+    item["ecoTags"] = list(dict.fromkeys(eco_tokens))[:6]
+
+    item["modular"] = bool(item.get("modular")) or _derive_modular_from_item(item)
+    item["smallSpaceFriendly"] = bool(item.get("smallSpaceFriendly")) or _derive_small_space_from_item(item)
+
+    delivery = str(item.get("deliveryComplexity") or "").strip().lower()
+    if delivery not in {"low", "medium", "high"}:
+        delivery = "medium"
+    if delivery == "medium":
+        delivery = _derive_delivery_complexity_from_item(item)
+    item["deliveryComplexity"] = delivery
+
+    item["id"] = _stable_item_id(
+        str(item.get("sourceId") or ""),
+        item.get("canonicalUrl"),
+        item.get("sourceUrl"),
+        item.get("title"),
+    )
+
+
+def _dedupe_items_by_id(items: list[dict]) -> tuple[list[dict], int]:
+    deduped_by_id: dict[str, dict] = {}
+    order: list[str] = []
+    for item in items:
+        item_id = str(item.get("id") or "").strip()
+        if not item_id:
+            continue
+        if item_id not in deduped_by_id:
+            order.append(item_id)
+        deduped_by_id[item_id] = item
+    deduped = [deduped_by_id[item_id] for item_id in order]
+    removed = max(0, len(items) - len(deduped))
+    return deduped, removed
 
 
 def _base_url(source: dict) -> str:
@@ -984,7 +1205,9 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
             )
 
         # Respect per-source extraction cap when explicitly configured.
+        candidate_cap_applied = False
         if configured_max_urls is not None and len(product_candidates) > max_urls:
+            candidate_cap_applied = True
             seeded = random.Random(f"{source_id}:{db_run_id}:{len(product_candidates)}")
             seeded.shuffle(product_candidates)
             before = len(product_candidates)
@@ -1196,6 +1419,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 log.info("No products found via batch extraction, proceeding with per-page extraction")
 
         # 2) Extract (concurrent: multiple pages fetched + extracted in parallel)
+        candidate_urls_for_run = list(product_candidates)
         log.section("PHASE 2: Product Extraction (Concurrent)")
         concurrency = min(int(source.get("concurrency") or DEFAULT_CONCURRENCY), MAX_CONCURRENCY)
         log.info(f"Workers: {concurrency} concurrent threads")
@@ -1236,7 +1460,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         skipped_unchanged = 0
         if incremental:
             try:
-                known_hashes = get_known_hashes(db, source_id=source_id, urls=product_candidates[:500])
+                known_hashes = get_known_hashes(db, source_id=source_id, urls=product_candidates)
                 if known_hashes:
                     log.info(f"Incremental mode: {len(known_hashes)} URLs have known hashes (will skip if unchanged)")
             except Exception:
@@ -1507,6 +1731,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         # Optional quality pass: reprocess stale low-completeness items with browser fallback.
         refetch_successes = 0
         refetch_failed = 0
+        refetch_attempted_urls: set[str] = set()
         if enable_quality_refetch:
             try:
                 from app.refetch_queue import get_refetch_candidates
@@ -1535,6 +1760,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             f"Reprocessing {len(candidate_urls)} low-quality candidate URLs with browser fallback"
                         )
                         for refetch_url in candidate_urls:
+                            refetch_attempted_urls.add(refetch_url)
                             rer = _fetch_and_extract_one(
                                 refetch_url,
                                 fetcher,
@@ -1675,6 +1901,25 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         stats["dimensionsRate"] = (dimensions_count / total_successes) if total_successes else 0.0
         stats["materialRate"] = (material_count / total_successes) if total_successes else 0.0
         stats["browserFetchCount"] = browser_fetch_count
+        stats["pageSuccessRate"] = (successes / stats["urlsExtracted"]) if stats["urlsExtracted"] else 0.0
+        stats["successRate"] = (
+            total_successes / max(1, total_successes + int(stats.get("failed") or 0) + refetch_failed)
+        ) if total_successes else 0.0
+
+        for item in items:
+            _finalize_item_for_write(item)
+        items, removed_dupes = _dedupe_items_by_id(items)
+        if removed_dupes:
+            log.info(f"Deduplicated {removed_dupes} duplicate item writes using deterministic IDs")
+
+        seen_urls_for_run: set[str] = set(candidate_urls_for_run)
+        seen_urls_for_run.update(refetch_attempted_urls)
+        seen_urls_for_run.update(batch_urls_extracted)
+        for item in items:
+            for field in ("canonicalUrl", "sourceUrl", "outboundUrl"):
+                raw_url = item.get(field)
+                if isinstance(raw_url, str) and raw_url.strip():
+                    seen_urls_for_run.add(raw_url)
 
         log.section("PHASE 3: Database Upsert")
         job_id = create_job(db, source_id, db_run_id, "upsert", {"count": len(items)}, "running")
@@ -1685,6 +1930,23 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         stats["normalized"] = len(items)
         update_job(db, job_id, "succeeded")
         log.success(f"Upserted {upserted} items, {failed} failed")
+
+        stale_deactivated = 0
+        if candidate_cap_applied:
+            stats["staleDeactivationSkipped"] = "candidate_cap_applied"
+        elif seen_urls_for_run:
+            try:
+                stale_deactivated = deactivate_missing_items_for_source(
+                    db,
+                    source_id=source_id,
+                    seen_urls=seen_urls_for_run,
+                    run_id=db_run_id,
+                )
+            except Exception as stale_err:
+                log.warning(f"Stale deactivation step failed: {stale_err}")
+            if stale_deactivated:
+                log.info(f"Deactivated {stale_deactivated} stale items missing from current crawl")
+        stats["staleDeactivated"] = stale_deactivated
 
         # 4) Auto-classify + Gold promotion
         log.section("PHASE 4: Classification + Gold Promotion")
@@ -1697,11 +1959,14 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         try:
             from app.sorting.policy import (
                 classify_and_decide,
+                build_surface_policies,
+                load_policy_config_latest,
                 load_training_config_latest,
                 resolve_training_rules_mode,
             )
             training_mode = resolve_training_rules_mode(os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE"))
             training_config = load_training_config_latest(db) if training_mode != "off" else None
+            surface_policies = build_surface_policies(load_policy_config_latest(db))
             log.info(f"Classifying {len(items)} items...")
             for item_id, item_data in zip(item_ids, items):
                 if not item_id:
@@ -1710,6 +1975,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                     result = classify_and_decide(
                         item_id=item_id,
                         item_data=item_data,
+                        surface_policies=surface_policies,
                         training_config=training_config,
                         training_mode=training_mode,
                     )
@@ -1772,6 +2038,10 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
         stats["trainingOverrideApplied"] = training_overrides_applied
         stats["trainingShadowCandidates"] = training_shadow_candidates
 
+        success_rate_for_metrics = (
+            total_successes / max(1, total_successes + int(stats.get("failed") or 0))
+        ) if total_successes else 0.0
+
         # 5) Daily metrics (best-effort)
         upsert_metrics_daily(
             db,
@@ -1780,7 +2050,8 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
             metrics={
                 "urlsDiscovered": stats["urlsDiscovered"],
                 "urlsExtracted": stats["urlsExtracted"],
-                "successRate": (successes / stats["urlsExtracted"]) if stats["urlsExtracted"] else 0.0,
+                "successRate": success_rate_for_metrics,
+                "pageSuccessRate": stats.get("pageSuccessRate", 0.0),
                 "avgCompleteness": stats["avgCompleteness"],
                 "jsonldRate": stats["jsonldRate"],
                 "embeddedJsonRate": stats.get("embeddedJsonRate", 0.0),
@@ -1822,7 +2093,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                 b_comp = None
 
             drift = check_drift(
-                current_success_rate=(successes / stats["urlsExtracted"]) if stats["urlsExtracted"] else 0.0,
+                current_success_rate=success_rate_for_metrics,
                 current_avg_completeness=float(stats["avgCompleteness"] or 0.0),
                 baseline_success_rate=b_success,
                 baseline_avg_completeness=b_comp,
@@ -1840,7 +2111,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                         "reasons": drift.reasons,
                         "baselineSuccessRate": drift.baseline_success_rate,
                         "baselineAvgCompleteness": drift.baseline_avg_completeness,
-                        "currentSuccessRate": (successes / stats["urlsExtracted"]) if stats["urlsExtracted"] else 0.0,
+                        "currentSuccessRate": success_rate_for_metrics,
                         "currentAvgCompleteness": stats["avgCompleteness"],
                     },
                 )

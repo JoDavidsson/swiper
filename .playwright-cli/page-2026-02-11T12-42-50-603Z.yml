@@ -1,0 +1,19 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [ref=e155]
+              - heading "Import" [level=2] [ref=e156]
+            - generic:
+              - group:
+                - generic [ref=e157]:
+                  - generic: Ingest data into Firestore
+                - generic [ref=e159]:
+                  - generic: "To import from a CSV or feed: 1. Add a source in Sources (e.g. mode feed, baseUrl or config in Supply Engine). 2. Use \"Run now\" on that source in the Sources screen. For the sample feed (local or Supply Engine): trigger the run below if you have a source configured."
+                - button "Trigger sample / first source run" [active] [ref=e161]
+            - generic [ref=e162]:
+              - generic: "Error: DioException [bad response]: This exception was thrown because the response has a status code of 503 and RequestOptions.validateStatus was configured to throw for this status code. The status code of 503 has the following meaning: \"Server error - the server failed to fulfil an apparently valid request\" Read more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status In order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code."
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -24,4 +24,10 @@ echo "Discovery:   POST http://localhost:8081/discover"
 echo ""
 
 cd services/supply_engine
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
+
+# Prefer the repository-local virtualenv if present.
+if [ -x "$REPO_ROOT/services/supply_engine/.venv/bin/uvicorn" ]; then
+  "$REPO_ROOT/services/supply_engine/.venv/bin/uvicorn" app.main:app --reload --host 0.0.0.0 --port 8081
+else
+  uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
+fi

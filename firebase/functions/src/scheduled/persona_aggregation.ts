@@ -1,34 +1,117 @@
 import * as functions from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
 /**
  * Persona Aggregation Pipeline
- * 
- * This scheduled function runs periodically to compute persona signals
- * for collaborative filtering. It:
- * 
- * 1. Groups users by their onboarding pick hash (similar picks = similar preferences)
- * 2. For each pick hash group, aggregates liked item IDs from all users in the group
- * 3. Computes item scores based on how many times an item was liked within each persona group
- * 4. Stores the results in personaSignals collection for the ranker to use
- * 
- * The pick hash is created from the sorted list of picked item IDs during visual onboarding.
- * Users who pick the exact same 3 sofas will have the same pick hash.
+ *
+ * This scheduled function computes collaborative persona signals from onboarding
+ * pick-hash cohorts and behavior events. It combines:
+ * - likes (strongest signal),
+ * - right swipes,
+ * - outbound clicks,
+ * with recency decay so stale behavior has less influence.
  */
+
+const MIN_GROUP_USERS = 2;
+const MAX_ITEMS_PER_PERSONA = 50;
+const MAX_TOP_ITEMS = 20;
+const SESSION_CHUNK_SIZE = 10; // Firestore "in" query limit
+
+const LIKE_WEIGHT = 1.0;
+const RIGHT_SWIPE_WEIGHT = 0.35;
+const OUTBOUND_CLICK_WEIGHT = 0.55;
+const SIGNAL_HALF_LIFE_DAYS = 45;
+
+interface ItemSignalAccumulator {
+  score: number;
+  likeCount: number;
+  swipeRightCount: number;
+  outboundClickCount: number;
+  sessions: Set<string>;
+}
 
 interface PickGroupStats {
   sessionIds: string[];
-  likedItemIds: Map<string, number>; // itemId -> like count
+  itemSignals: Map<string, ItemSignalAccumulator>;
+}
+
+function asString(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "";
+}
+
+function toMillis(value: unknown): number | null {
+  if (value instanceof Timestamp) return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+}
+
+function recencyMultiplier(createdAtMs: number | null, nowMs: number): number {
+  if (createdAtMs == null) return 1;
+  const ageMs = Math.max(0, nowMs - createdAtMs);
+  const ageDays = ageMs / (24 * 60 * 60 * 1000);
+  const decay = Math.exp((-Math.log(2) * ageDays) / SIGNAL_HALF_LIFE_DAYS);
+  return Math.max(0.25, Math.min(1, decay));
+}
+
+function round(value: number, decimals = 4): number {
+  const scale = Math.pow(10, decimals);
+  return Math.round(value * scale) / scale;
+}
+
+function chunk<T>(values: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    out.push(values.slice(index, index + size));
+  }
+  return out;
+}
+
+function getOrCreateItemAccumulator(
+  group: PickGroupStats,
+  itemId: string
+): ItemSignalAccumulator {
+  const existing = group.itemSignals.get(itemId);
+  if (existing) return existing;
+  const created: ItemSignalAccumulator = {
+    score: 0,
+    likeCount: 0,
+    swipeRightCount: 0,
+    outboundClickCount: 0,
+    sessions: new Set<string>(),
+  };
+  group.itemSignals.set(itemId, created);
+  return created;
+}
+
+function applySignal(params: {
+  group: PickGroupStats;
+  itemId: string;
+  sessionId: string;
+  baseWeight: number;
+  createdAtMs: number | null;
+  nowMs: number;
+  signalType: "like" | "swipeRight" | "outboundClick";
+}): void {
+  const item = getOrCreateItemAccumulator(params.group, params.itemId);
+  const weighted = params.baseWeight * recencyMultiplier(params.createdAtMs, params.nowMs);
+  item.score += weighted;
+  item.sessions.add(params.sessionId);
+  if (params.signalType === "like") item.likeCount += 1;
+  if (params.signalType === "swipeRight") item.swipeRightCount += 1;
+  if (params.signalType === "outboundClick") item.outboundClickCount += 1;
 }
 
 /**
- * Compute persona signals from onboarding picks and likes.
+ * Compute persona signals from onboarding picks and interactions.
  * Runs every 6 hours.
  */
 export const computePersonaSignals = functions.onSchedule(
   {
-    schedule: "0 */6 * * *", // Every 6 hours
+    schedule: "0 */6 * * *",
     timeZone: "UTC",
     retryCount: 2,
     memory: "512MiB",
@@ -36,98 +119,169 @@ export const computePersonaSignals = functions.onSchedule(
   },
   async () => {
     const db = admin.firestore();
+    const nowMs = Date.now();
     console.log("Starting persona aggregation pipeline...");
 
     try {
-      // Step 1: Get all onboarding picks with pick hashes
       const picksSnap = await db.collection("onboardingPicks").get();
-
       if (picksSnap.empty) {
         console.log("No onboarding picks found. Skipping aggregation.");
         return;
       }
 
-      // Group sessions by pick hash
       const pickGroups = new Map<string, PickGroupStats>();
-
       for (const doc of picksSnap.docs) {
         const data = doc.data();
-        const pickHash = data.pickHash as string | undefined;
+        const pickHash = asString(data.pickHash);
         const sessionId = doc.id;
-
         if (!pickHash) continue;
 
         if (!pickGroups.has(pickHash)) {
           pickGroups.set(pickHash, {
             sessionIds: [],
-            likedItemIds: new Map(),
+            itemSignals: new Map(),
           });
         }
-
         pickGroups.get(pickHash)!.sessionIds.push(sessionId);
       }
 
       console.log(`Found ${pickGroups.size} unique pick hash groups`);
 
-      // Step 2: For each group, aggregate liked items from all sessions
       for (const [_pickHash, group] of pickGroups.entries()) {
-        // Skip groups with only one user (no collaborative signal)
-        if (group.sessionIds.length < 2) continue;
+        if (group.sessionIds.length < MIN_GROUP_USERS) continue;
 
-        // Get likes for all sessions in this group
-        for (const sessionId of group.sessionIds) {
-          const likesSnap = await db
-            .collection("likes")
-            .where("sessionId", "==", sessionId)
-            .get();
+        const seenSwipeRights = new Set<string>();
+        const seenOutboundClicks = new Set<string>();
+        const sessionChunks = chunk(group.sessionIds, SESSION_CHUNK_SIZE);
+
+        for (const sessionChunk of sessionChunks) {
+          const [likesSnap, swipesSnap, eventsSnap] = await Promise.all([
+            db.collection("likes").where("sessionId", "in", sessionChunk).get(),
+            db.collection("swipes").where("sessionId", "in", sessionChunk).get(),
+            db.collection("events").where("sessionId", "in", sessionChunk).get(),
+          ]);
 
           for (const likeDoc of likesSnap.docs) {
-            const itemId = likeDoc.data().itemId as string;
-            if (!itemId) continue;
+            const data = likeDoc.data();
+            const itemId = asString(data.itemId);
+            const sessionId = asString(data.sessionId);
+            if (!itemId || !sessionId) continue;
+            applySignal({
+              group,
+              itemId,
+              sessionId,
+              baseWeight: LIKE_WEIGHT,
+              createdAtMs: toMillis(data.createdAt),
+              nowMs,
+              signalType: "like",
+            });
+          }
 
-            const currentCount = group.likedItemIds.get(itemId) || 0;
-            group.likedItemIds.set(itemId, currentCount + 1);
+          for (const swipeDoc of swipesSnap.docs) {
+            const data = swipeDoc.data();
+            const direction = asString(data.direction);
+            if (direction !== "right") continue;
+            const itemId = asString(data.itemId);
+            const sessionId = asString(data.sessionId);
+            if (!itemId || !sessionId) continue;
+            const dedupeKey = `${sessionId}::${itemId}`;
+            if (seenSwipeRights.has(dedupeKey)) continue;
+            seenSwipeRights.add(dedupeKey);
+            applySignal({
+              group,
+              itemId,
+              sessionId,
+              baseWeight: RIGHT_SWIPE_WEIGHT,
+              createdAtMs: toMillis(data.createdAt),
+              nowMs,
+              signalType: "swipeRight",
+            });
+          }
+
+          for (const eventDoc of eventsSnap.docs) {
+            const data = eventDoc.data();
+            if (asString(data.eventType) !== "outbound_click") continue;
+            const itemId = asString(data.itemId);
+            const sessionId = asString(data.sessionId);
+            if (!itemId || !sessionId) continue;
+            const dedupeKey = `${sessionId}::${itemId}`;
+            if (seenOutboundClicks.has(dedupeKey)) continue;
+            seenOutboundClicks.add(dedupeKey);
+            applySignal({
+              group,
+              itemId,
+              sessionId,
+              baseWeight: OUTBOUND_CLICK_WEIGHT,
+              createdAtMs: toMillis(data.createdAt),
+              nowMs,
+              signalType: "outboundClick",
+            });
           }
         }
       }
 
-      // Step 3: Compute and store persona signals
-      const batch = db.batch();
+      let batch = db.batch();
+      let pendingWrites = 0;
       let signalCount = 0;
 
       for (const [pickHash, group] of pickGroups.entries()) {
-        // Skip if no likes or only one user
-        if (group.likedItemIds.size === 0 || group.sessionIds.length < 2) continue;
+        if (group.sessionIds.length < MIN_GROUP_USERS || group.itemSignals.size === 0) continue;
 
-        // Sort items by like count descending
-        const sortedItems = Array.from(group.likedItemIds.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 50); // Keep top 50 items per persona
+        const sortedSignals = Array.from(group.itemSignals.entries())
+          .sort((a, b) => b[1].score - a[1].score)
+          .slice(0, MAX_ITEMS_PER_PERSONA);
 
-        // Compute scores: normalize by number of users in group
         const totalUsers = group.sessionIds.length;
         const itemScores: Record<string, number> = {};
+        const topItemSignals = sortedSignals.slice(0, MAX_TOP_ITEMS).map(([itemId, signal]) => {
+          const normalizedScore = signal.score / totalUsers;
+          itemScores[itemId] = round(normalizedScore);
+          return {
+            itemId,
+            normalizedScore: round(normalizedScore),
+            rawScore: round(signal.score),
+            likeCount: signal.likeCount,
+            swipeRightCount: signal.swipeRightCount,
+            outboundClickCount: signal.outboundClickCount,
+            supportingSessions: signal.sessions.size,
+          };
+        });
 
-        for (const [itemId, likeCount] of sortedItems) {
-          // Score = percentage of users in this persona who liked the item
-          itemScores[itemId] = likeCount / totalUsers;
+        for (const [itemId, signal] of sortedSignals.slice(MAX_TOP_ITEMS)) {
+          itemScores[itemId] = round(signal.score / totalUsers);
         }
 
-        // Store the persona signal
         const signalRef = db.collection("personaSignals").doc(pickHash);
         batch.set(signalRef, {
           pickHash,
           userCount: totalUsers,
           itemScores,
-          topItems: sortedItems.slice(0, 20).map(([id]) => id),
+          itemScoresFromSimilarSessions: itemScores,
+          topItems: sortedSignals.slice(0, MAX_TOP_ITEMS).map(([id]) => id),
+          topItemSignals,
+          signalWeights: {
+            like: LIKE_WEIGHT,
+            swipeRight: RIGHT_SWIPE_WEIGHT,
+            outboundClick: OUTBOUND_CLICK_WEIGHT,
+            halfLifeDays: SIGNAL_HALF_LIFE_DAYS,
+          },
           updatedAt: FieldValue.serverTimestamp(),
         });
 
-        signalCount++;
+        pendingWrites += 1;
+        signalCount += 1;
+        if (pendingWrites >= 400) {
+          await batch.commit();
+          batch = db.batch();
+          pendingWrites = 0;
+        }
+      }
+
+      if (pendingWrites > 0) {
+        await batch.commit();
       }
 
       if (signalCount > 0) {
-        await batch.commit();
         console.log(`Updated ${signalCount} persona signals`);
       } else {
         console.log("No persona signals to update (insufficient collaborative data)");
@@ -151,13 +305,15 @@ export async function getPersonaSignals(
   const db = admin.firestore();
   try {
     const signalDoc = await db.collection("personaSignals").doc(pickHash).get();
-
-    if (!signalDoc.exists) {
-      return null;
-    }
+    if (!signalDoc.exists) return null;
 
     const data = signalDoc.data();
-    return (data?.itemScores as Record<string, number>) || null;
+    if (!data) return null;
+    const itemScores = data.itemScores as Record<string, number> | undefined;
+    if (itemScores && Object.keys(itemScores).length > 0) return itemScores;
+    const compatScores = data.itemScoresFromSimilarSessions as Record<string, number> | undefined;
+    if (compatScores && Object.keys(compatScores).length > 0) return compatScores;
+    return null;
   } catch {
     return null;
   }

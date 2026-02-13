@@ -1,0 +1,60 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Admin" [level=2] [ref=e11]
+              - button [ref=e12]
+            - generic:
+              - group:
+                - generic [ref=e13]:
+                  - generic: Daily sessions 5
+                - generic [ref=e14]:
+                  - generic: Total swipes 174
+                - generic [ref=e15]:
+                  - generic: Total likes 57
+                - generic [ref=e16]:
+                  - generic: Outbound clicks 1
+                - generic [ref=e17]:
+                  - generic: Like rate % 32.8%
+                - generic [ref=e19]:
+                  - generic: Golden Card v2 observability (24h)
+                - generic [ref=e20]:
+                  - generic: Funnel completion % 50.0%
+                - generic [ref=e21]:
+                  - generic: Funnel skip % 0.0%
+                - generic [ref=e22]:
+                  - generic: Funnel intros 2
+                - generic [ref=e23]:
+                  - generic: Summary confirmed 1
+                - generic [ref=e24]:
+                  - generic: Submit failure % 0.0%
+                - generic [ref=e25]:
+                  - generic: Deck p95 latency (ms) 3396
+                - generic [ref=e26]:
+                  - generic: Latency regression % 0.0%
+                - generic [ref=e27]:
+                  - generic: Avg same-family top8 rate 0.00
+                - generic [ref=e28]:
+                  - generic: Avg style-distance top4 min 0.25
+                - generic [ref=e29]:
+                  - generic: "Onboarding submit failure alert Threshold: >2% with at least 20 sessions OK"
+                - generic [ref=e30]:
+                  - generic: "Deck latency regression alert Threshold: >15% with at least 30 samples OK"
+                - generic [ref=e32]:
+                  - generic: Weekly experiment cohorts (7d)
+                - generic [ref=e33]:
+                  - generic: Cohorts in sample 1
+                - generic [ref=e34]:
+                  - generic: "personal_only_multi_queue_personal_exploration_8 Sessions: 3 Complete %: 50.0% Skip %: 0.0% Swipe right %: 32.8% Deck responses: 26 Same-family top8: 0.00 Style-distance top4 min: 0.25"
+                - button "Sources CRUD + Run now" [ref=e36]
+                - button "Runs Ingestion run history" [ref=e37]
+                - button "Items Search, edit, toggle active" [ref=e38]
+                - button "Review Lab Label products for categorization training" [ref=e39]
+                - button "Import Upload CSV" [ref=e40]
+                - button "QA Completeness checker" [ref=e41]
+                - button "Curated Onboarding Sofas Manage gold card items" [ref=e43]
+                - button "Catalog Preview Image quality & Creative Health" [ref=e44]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

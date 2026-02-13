@@ -1,0 +1,34 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - button [ref=e10]
+            - generic [ref=e11]:
+              - generic: Your style direction is ready
+            - button "Skip" [ref=e12]
+            - generic [ref=e13]:
+              - generic: 100%
+            - generic [ref=e14]:
+              - generic: Step 4 of 4
+            - generic [ref=e49]:
+              - generic: We got you
+            - generic [ref=e50]:
+              - generic: You lean Calm Minimal + Warm Organic with a Rounded Boucle + Low Linen sofa vibe.
+            - generic [ref=e51]:
+              - generic: "We will prioritize: 5k-15k SEK, 3 seats, Small space."
+            - generic [ref=e52]:
+              - generic: "Style confidence: High confidence"
+            - button "Looks right" [active] [ref=e53]
+            - button "Adjust picks" [ref=e54]
+            - button "Start fresh" [ref=e55]
+            - button "Deck Tab 1 of 4" [ref=e18]
+            - button "Likes Tab 2 of 4" [ref=e19]
+            - button "Share Tab 3 of 4" [ref=e20]
+            - button "Profile Tab 4 of 4" [ref=e21]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

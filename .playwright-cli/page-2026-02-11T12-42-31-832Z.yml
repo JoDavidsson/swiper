@@ -1,0 +1,17 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [active] [ref=e155]
+              - heading "Import" [level=2] [ref=e156]
+            - generic:
+              - group:
+                - generic [ref=e157]:
+                  - generic: Ingest data into Firestore
+                - generic [ref=e159]:
+                  - generic: "To import from a CSV or feed: 1. Add a source in Sources (e.g. mode feed, baseUrl or config in Supply Engine). 2. Use \"Run now\" on that source in the Sources screen. For the sample feed (local or Supply Engine): trigger the run below if you have a source configured."
+                - button "Trigger sample / first source run" [ref=e161]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

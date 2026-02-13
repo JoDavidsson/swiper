@@ -1,0 +1,22 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - button "Scrim" [ref=e80]
+          - generic:
+            - group:
+              - generic [ref=e81]:
+                - generic: Create campaign
+              - generic [ref=e82]:
+                - generic: Set a segment, product mode, and budget. Start with auto mode to bootstrap quickly.
+              - textbox "Campaign name" [ref=e84]
+              - button "Segment Budget-conscious modern (template)" [ref=e85]
+              - button "Product mode Auto recommended" [ref=e86]
+              - textbox "Total budget (SEK)" [ref=e88]
+              - textbox "Daily budget (SEK)" [ref=e90]
+              - textbox "Start date" [ref=e92]
+              - textbox "End date" [ref=e94]
+              - textbox "Frequency cap (1 in N cards)" [ref=e96]
+              - button "Create campaign" [ref=e97]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

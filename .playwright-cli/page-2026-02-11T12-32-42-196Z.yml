@@ -1,0 +1,47 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Retailer Console - Mio" [level=2] [ref=e98]
+              - button "Refresh" [ref=e99]
+              - button "Sign out" [ref=e100]
+            - generic:
+              - group:
+                - group "Catalog Control Decide which products are eligible for campaigns and monitor taxonomy + creative health.":
+                  - button "Refresh" [ref=e165]
+                - textbox "Search products" [ref=e168]
+                - generic:
+                  - checkbox "All" [checked] [ref=e170]
+                  - checkbox "Included" [ref=e171]
+                  - checkbox "Excluded" [ref=e172]
+                - generic [ref=e174]:
+                  - generic: Showing 120 of 120 products
+                - 'switch "Eden Price: 849 SEK Creative health: - (0)" [ref=e176]':
+                  - 'checkbox "Category: armchair" [ref=e177]'
+                - 'switch "Friday Price: 15995 SEK Creative health: - (0)" [checked] [ref=e178]':
+                  - 'checkbox "Category: sofa" [ref=e179]'
+                  - 'checkbox "Shape: chaise" [ref=e180]'
+                  - 'checkbox "Function: standard" [ref=e181]'
+                  - 'checkbox "Seats: 3" [ref=e182]'
+                  - 'checkbox "Environment: indoor" [ref=e183]'
+                  - 'checkbox "Legacy subcat: chaise_sofa" [ref=e184]'
+                - 'switch "Friday Price: 28995 SEK Creative health: - (0)" [checked] [ref=e185]':
+                  - 'checkbox "Category: sofa" [ref=e186]'
+                  - 'checkbox "Shape: corner" [ref=e187]'
+                  - 'checkbox "Function: standard" [ref=e188]'
+                  - 'checkbox "Seats: 3" [ref=e189]'
+                  - 'checkbox "Environment: indoor" [ref=e190]'
+                  - 'checkbox "Legacy subcat: corner_sofa" [ref=e191]'
+                - 'switch "Friday Price: 3995 SEK Creative health: - (0)" [checked] [ref=e192]':
+                  - 'checkbox "Category: armchair" [ref=e193]'
+            - generic [ref=e194]:
+              - generic: Eden excluded
+            - button "Home Tab 1 of 5" [ref=e111]
+            - button "Campaigns Tab 2 of 5" [ref=e112]
+            - button "Catalog Tab 3 of 5" [active] [ref=e113]
+            - button "Insights Tab 4 of 5" [ref=e114]
+            - button "Reports Tab 5 of 5" [ref=e115]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

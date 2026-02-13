@@ -99,4 +99,46 @@ Return as JSON array: ["soffor", "hornsoffor", "divansoffor"]
 
 ---
 
+## 3. Recommendation Quality Approval Gate (Non-Code)
+
+**Status:** Idea  
+**Added:** 2026-02-10
+
+### Problem
+Ranking changes can feel better in isolated sessions but still regress user trust over time. We need a repeatable, product-level approval process that does not depend on hardcoded one-off logic.
+
+### Concept
+Introduce a formal quality gate for recommendation changes, approved by product and engineering leadership using live observability metrics over a fixed window.
+
+### Proposed Flow
+1. Enable a ranking or policy change behind config/env toggles.
+2. Run a 2-3 day observation window on real traffic.
+3. Review quality gate metrics in a shared dashboard.
+4. Approve rollout only if all guardrails pass.
+5. If guardrails fail, roll back config and document failure reason.
+
+### Approval Guardrails (v1)
+- Median `sourceDiversityTop8 >= 3`
+- `p90 sourceConcentrationTop8 <= 0.625`
+- Repeated model in top 12 appears in <10% of decks
+- No regression in `swipe_right` rate and outbound click-through
+
+### Operating Model
+- Decision owners: CPO + CTO
+- Cadence: Weekly recommendation quality review
+- Change control: Config-first rollout, code changes only when repeatedly justified by data
+- Output artifact: One short approval note per rollout decision
+
+### Benefits
+- Keeps polish mode disciplined without panic changes
+- Separates experimentation from permanent product behavior
+- Creates shared product + engineering accountability for recommendation quality
+
+### Success Metrics
+- Fewer recommendation regressions after rollout
+- Faster approval cycle for safe ranking improvements
+- Higher consistency in exploration quality across sessions
+
+---
+
 *Add new ideas below using the same format*

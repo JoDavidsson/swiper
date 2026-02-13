@@ -1,0 +1,84 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [ref=e45]
+              - heading "Review Lab" [level=2] [ref=e46]
+              - button "Refresh" [ref=e47]
+            - 'group "Question: Operational decision for queue item (accept/reject/reclassify). 43 items ready for labeling Hotkeys: A accept, D reject, R reclassify, S skip, J/K or ↑/↓ move, T train" [active]':
+              - radio "Review queue" [checked] [ref=e48]
+              - radio "Sampling" [ref=e49]
+              - radio "Operations" [checked] [ref=e50]
+              - radio "Training" [ref=e51]
+              - button "Target category sofa" [ref=e52]
+              - button "Seed queue" [ref=e53]
+              - button "Train" [ref=e54]
+              - generic:
+                - group:
+                  - generic [ref=e55]:
+                    - 'img "Friday KWyDBNIXK724iSgrPESn 3995 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e110]'
+                    - button "Accept" [ref=e57]
+                    - button "Reject" [ref=e58]
+                    - button "Reclassify" [ref=e59]
+                    - button "Skip" [ref=e60]
+                  - generic [ref=e61]:
+                    - 'img "Madison KWyDBNIXK724iSgrPESn 1495 SEK Predicted: armchair Confidence: 44% Operational review armchair:44% sofa:41% textile:15%" [ref=e111]'
+                    - button "Accept" [ref=e63]
+                    - button "Reject" [ref=e64]
+                    - button "Reclassify" [ref=e65]
+                    - button "Skip" [ref=e66]
+                  - generic [ref=e67]:
+                    - 'img "Harper KWyDBNIXK724iSgrPESn 899 SEK Predicted: armchair Confidence: 44% Operational review armchair:44% sofa:41% textile:15%" [ref=e112]'
+                    - button "Accept" [ref=e69]
+                    - button "Reject" [ref=e70]
+                    - button "Reclassify" [ref=e71]
+                    - button "Skip" [ref=e72]
+                  - generic:
+                    - 'group "Elof XL KWyDBNIXK724iSgrPESn 11995 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%"':
+                      - button "Accept" [ref=e75]
+                      - button "Reject" [ref=e76]
+                      - button "Reclassify" [ref=e77]
+                      - button "Skip" [ref=e78]
+                  - generic [ref=e113]:
+                    - 'img "Mila KWyDBNIXK724iSgrPESn 3495 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e114]'
+                    - button "Accept" [ref=e79]
+                    - button "Reject" [ref=e80]
+                    - button "Reclassify" [ref=e81]
+                    - button "Skip" [ref=e82]
+                  - generic [ref=e83]:
+                    - 'img "Afterwork KWyDBNIXK724iSgrPESn 5495 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e115]'
+                    - button "Accept" [ref=e85]
+                    - button "Reject" [ref=e86]
+                    - button "Reclassify" [ref=e87]
+                    - button "Skip" [ref=e88]
+                  - generic [ref=e89]:
+                    - 'img "Willow KWyDBNIXK724iSgrPESn 3195 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e116]'
+                    - button "Accept" [ref=e91]
+                    - button "Reject" [ref=e92]
+                    - button "Reclassify" [ref=e93]
+                    - button "Skip" [ref=e94]
+                  - generic:
+                    - 'group "Elof XL KWyDBNIXK724iSgrPESn 13995 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%"':
+                      - button "Accept" [ref=e97]
+                      - button "Reject" [ref=e98]
+                      - button "Reclassify" [ref=e99]
+                      - button "Skip" [ref=e100]
+                  - generic:
+                    - 'group "Lazy KWyDBNIXK724iSgrPESn 499 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%"':
+                      - button "Accept" [ref=e101]
+                      - button "Reject" [ref=e102]
+                      - button "Reclassify" [ref=e103]
+                      - button "Skip" [ref=e104]
+                  - generic [ref=e117]:
+                    - 'img "Cherrie KWyDBNIXK724iSgrPESn 4195 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e118]'
+                    - button "Accept" [ref=e105]
+                    - button "Reject" [ref=e106]
+                    - button "Reclassify" [ref=e107]
+                    - button "Skip" [ref=e108]
+                  - 'img "Cherrie KWyDBNIXK724iSgrPESn 4495 SEK Predicted: armchair Confidence: 52% Operational review armchair:52% sofa:48%" [ref=e119]'
+            - generic [ref=e120]:
+              - generic: Saved accept for 00da34e888bb43cabf79b553.
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

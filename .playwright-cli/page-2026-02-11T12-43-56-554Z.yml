@@ -1,0 +1,15 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [active] [ref=e234]
+              - heading "Curated Onboarding Sofas" [level=2] [ref=e235]
+              - button [ref=e236]
+            - generic [ref=e237]:
+              - generic: "Error: TypeError: Instance of '_JsonMap': type '_JsonMap' is not a subtype of type 'List<dynamic>'"
+            - button "Retry" [ref=e238]
+            - button [ref=e239]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

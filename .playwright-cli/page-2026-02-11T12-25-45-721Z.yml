@@ -1,0 +1,75 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - button "Scrim" [ref=e33]
+          - generic:
+            - group:
+              - generic [ref=e34]:
+                - generic: Filters
+              - generic [ref=e35]:
+                - generic: Narrow the deck by type, size, color, and more.
+              - generic [ref=e36]:
+                - generic: Sofa Type
+              - checkbox "Any" [checked] [ref=e37]
+              - checkbox "Straight" [ref=e38]
+              - checkbox "Corner" [ref=e39]
+              - checkbox "U-shaped" [ref=e40]
+              - checkbox "Chaise" [ref=e41]
+              - checkbox "Modular" [ref=e42]
+              - generic [ref=e43]:
+                - generic: Function
+              - checkbox "Any" [checked] [ref=e44]
+              - checkbox "Standard" [ref=e45]
+              - checkbox "Sleeper" [ref=e46]
+              - generic [ref=e47]:
+                - generic: Seat count
+              - checkbox "Any" [checked] [ref=e48]
+              - checkbox "2 seats" [ref=e49]
+              - checkbox "3 seats" [ref=e50]
+              - checkbox "4+ seats" [ref=e51]
+              - generic [ref=e52]:
+                - generic: Environment
+              - checkbox "Any" [checked] [ref=e53]
+              - checkbox "Indoor" [ref=e54]
+              - checkbox "Outdoor" [ref=e55]
+              - checkbox "Indoor + Outdoor" [ref=e56]
+              - generic [ref=e57]:
+                - generic: Room
+              - checkbox "Any" [checked] [ref=e58]
+              - checkbox "Living Room" [ref=e59]
+              - checkbox "Bedroom" [ref=e60]
+              - checkbox "Outdoor" [ref=e61]
+              - checkbox "Office" [ref=e62]
+              - checkbox "Hallway" [ref=e63]
+              - checkbox "Kids Room" [ref=e64]
+              - generic [ref=e65]:
+                - generic: Size
+              - checkbox "Any" [checked] [ref=e66]
+              - checkbox "Small" [ref=e67]
+              - checkbox "Medium" [ref=e68]
+              - checkbox "Large" [ref=e69]
+              - generic [ref=e70]:
+                - generic: Color
+              - checkbox "Any" [checked] [ref=e71]
+              - checkbox "White" [ref=e72]
+              - checkbox "Beige" [ref=e73]
+              - checkbox "Brown" [ref=e74]
+              - checkbox "Gray" [ref=e75]
+              - checkbox "Black" [ref=e76]
+              - checkbox "Green" [ref=e77]
+              - checkbox "Blue" [ref=e78]
+              - checkbox "Red" [ref=e79]
+              - checkbox "Yellow" [ref=e80]
+              - checkbox "Orange" [ref=e81]
+              - checkbox "Pink" [ref=e82]
+              - checkbox "Multi" [ref=e83]
+              - generic [ref=e84]:
+                - generic: Condition
+              - checkbox "Any" [checked] [ref=e85]
+              - checkbox "New" [ref=e86]
+              - checkbox "Used" [ref=e87]
+              - button "Clear all" [ref=e88]
+              - button "Apply" [ref=e89]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

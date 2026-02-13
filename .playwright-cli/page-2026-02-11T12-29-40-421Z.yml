@@ -1,0 +1,32 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Close" [active] [ref=e26]
+              - heading "Create account" [level=2] [ref=e27]
+            - group:
+              - generic:
+                - generic [ref=e28]:
+                  - generic: Join Swiper
+                - generic [ref=e29]:
+                  - generic: Create an account to save your preferences and collaborate with others
+                - button "Continue with Google" [ref=e30]
+                - generic [ref=e31]:
+                  - generic: or
+                - textbox "Email" [ref=e33]
+                - generic [ref=e34]:
+                  - textbox "Password" [ref=e35]
+                  - button [ref=e36]
+                - generic [ref=e37]:
+                  - textbox "Confirm password" [ref=e38]
+                  - button [ref=e39]
+                - button "Create account" [ref=e40]
+                - generic [ref=e41]:
+                  - generic: By creating an account, you agree to our Terms of Service and Privacy Policy.
+                - generic [ref=e42]:
+                  - generic: Already have an account?
+                - button "Sign in" [ref=e43]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

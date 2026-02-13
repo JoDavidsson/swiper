@@ -1,0 +1,57 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - button "Scrim" [ref=e287]
+          - generic:
+            - group:
+              - generic [ref=e288]:
+                - generic: SARBONNE soffa 3-sits
+              - generic [ref=e289]:
+                - generic: 9749 SEK
+              - generic [ref=e290]:
+                - generic: Item Details
+              - generic [ref=e291]:
+                - generic: ID
+              - textbox [disabled] [ref=e293]
+              - generic [ref=e294]:
+                - generic: Source
+              - textbox [disabled] [ref=e296]
+              - generic [ref=e297]:
+                - generic: Brand
+              - textbox [disabled] [ref=e299]
+              - generic [ref=e300]:
+                - generic: Status
+              - textbox [disabled] [ref=e302]
+              - generic [ref=e303]:
+                - generic: New/Used
+              - textbox [disabled] [ref=e305]
+              - generic [ref=e306]:
+                - generic: Size Class
+              - textbox [disabled] [ref=e308]
+              - generic [ref=e309]:
+                - generic: Material
+              - textbox [disabled] [ref=e311]
+              - generic [ref=e312]:
+                - generic: Color
+              - textbox [disabled] [ref=e314]
+              - generic [ref=e315]:
+                - generic: Outbound URL
+              - textbox [disabled] [ref=e317]
+              - generic [ref=e318]:
+                - generic: Last Updated
+              - textbox [disabled] [ref=e320]
+              - generic [ref=e321]:
+                - generic: Images (8)
+              - generic:
+                - group:
+                  - img [ref=e322]
+                  - img [ref=e323]
+                  - img [ref=e324]
+                  - img [ref=e325]
+                  - img [ref=e326]
+                  - img [ref=e327]
+                  - img [ref=e328]
+              - button "Raw Data" [ref=e329]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -1,0 +1,14 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [active] [ref=e197]
+              - heading "QA completeness" [level=2] [ref=e198]
+            - generic:
+              - group:
+                - generic [ref=e199]:
+                  - generic: "Completeness report (active items) Total items: 588 Missing price 0 (0.0%) Missing dimensions 528 (89.8%) Missing images 5 (0.9%) Missing outbound URL 0 (0.0%) Missing style tags 588 (100.0%)"
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -1,0 +1,38 @@
+- generic [ref=e1]:
+  - generic [active] [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Retailer Console - Mio" [level=2] [ref=e51]
+              - button "Refresh" [ref=e52]
+              - button "Sign out" [ref=e53]
+            - generic:
+              - group:
+                - group "Performance overview Track spend, delivery, and outcomes at a glance. Use campaigns for control and catalog for guardrails.":
+                  - button "Open campaigns" [ref=e54]
+                - generic:
+                  - generic [ref=e56]:
+                    - generic: Spend 0 SEK
+                  - generic [ref=e57]:
+                    - generic: Featured impressions 0
+                  - generic [ref=e58]:
+                    - generic: Confidence outcomes 0
+                  - generic [ref=e59]:
+                    - generic: CPScore 0.00
+                  - generic [ref=e60]:
+                    - generic: Active campaigns 0
+                - generic:
+                  - group "No active campaign yet Create and activate your first campaign to start collecting delivery and outcome data.":
+                    - button "Create first campaign" [ref=e62]
+                - generic [ref=e64]:
+                  - generic: Top insights
+            - generic [ref=e66]:
+              - generic: Retailer claimed. Reloading your console...
+            - button "Home Tab 1 of 5" [ref=e67]
+            - button "Campaigns Tab 2 of 5" [ref=e68]
+            - button "Catalog Tab 3 of 5" [ref=e69]
+            - button "Insights Tab 4 of 5" [ref=e70]
+            - button "Reports Tab 5 of 5" [ref=e71]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

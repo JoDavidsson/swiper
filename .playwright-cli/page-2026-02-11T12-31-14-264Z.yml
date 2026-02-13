@@ -1,0 +1,27 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Retailer Console - Mio" [level=2] [ref=e51]
+              - button "Refresh" [ref=e52]
+              - button "Sign out" [ref=e53]
+            - generic:
+              - group:
+                - group "Campaign Builder Create objective-driven campaigns, activate/pause quickly, and refresh recommendations.":
+                  - button "New campaign" [ref=e72]
+                - generic:
+                  - checkbox "All" [checked] [ref=e74]
+                  - checkbox "active" [ref=e75]
+                  - checkbox "draft" [ref=e76]
+                  - checkbox "paused" [ref=e77]
+                - generic [ref=e79]:
+                  - generic: No campaigns yet. Create your first featured campaign.
+            - button "Home Tab 1 of 5" [ref=e67]
+            - button "Campaigns Tab 2 of 5" [active] [ref=e68]
+            - button "Catalog Tab 3 of 5" [ref=e69]
+            - button "Insights Tab 4 of 5" [ref=e70]
+            - button "Reports Tab 5 of 5" [ref=e71]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

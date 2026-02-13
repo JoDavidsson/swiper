@@ -1,0 +1,10 @@
+- generic [ref=e1]:
+  - group "Dismiss" [ref=e213]:
+    - generic:
+      - alertdialog:
+        - generic [ref=e214]:
+          - generic [active]: Share report link
+        - generic [ref=e215]:
+          - generic: "Copied to clipboard: http://localhost:5002/api/retailer/reports/share/de7c5890e4074d55ad5e1dd66de640ff"
+        - button "Close" [ref=e216]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

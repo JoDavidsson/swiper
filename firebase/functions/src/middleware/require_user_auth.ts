@@ -1,5 +1,6 @@
 import { Request } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export interface AuthenticatedUser {
   uid: string;
@@ -40,7 +41,7 @@ export async function ensureUserDocument(user: AuthenticatedUser): Promise<void>
   const userRef = db.collection("users").doc(user.uid);
   const userDoc = await userRef.get();
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
 
   if (!userDoc.exists) {
     // Create new user document

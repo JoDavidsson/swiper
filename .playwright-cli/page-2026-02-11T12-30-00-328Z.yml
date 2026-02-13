@@ -1,0 +1,14 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "Retailer Console" [active] [level=2] [ref=e44]
+            - generic [ref=e45]:
+              - generic: No retailer is linked to your account yet.
+            - generic [ref=e46]:
+              - generic: Enter your retailer id (slug) to claim access and start building campaigns.
+            - textbox "Retailer id" [ref=e48]
+            - button "Claim retailer" [ref=e49]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -1,0 +1,10 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading "Admin login" [active] [level=2] [ref=e7]
+            - textbox "Password" [ref=e9]
+            - button "Login" [ref=e10]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

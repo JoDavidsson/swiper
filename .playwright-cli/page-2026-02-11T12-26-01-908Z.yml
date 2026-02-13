@@ -1,0 +1,22 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e90]
+              - heading "Swiper" [level=2] [ref=e91]
+              - button "Filters" [active] [ref=e92]
+            - generic [ref=e93]:
+              - group "Em home TELLY 2-sits soffa med 2 elrecliners tyg grå small • fabric 11995 SEK":
+                - img [ref=e94]
+                - img [ref=e95]
+            - button "Pass" [ref=e97]
+            - button "Details" [ref=e99]
+            - button "Save" [ref=e101]
+            - button "Deck Tab 1 of 4" [ref=e102]
+            - button "Likes Tab 2 of 4" [ref=e103]
+            - button "Share Tab 3 of 4" [ref=e104]
+            - button "Profile Tab 4 of 4" [ref=e105]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

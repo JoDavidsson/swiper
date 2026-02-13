@@ -1,0 +1,25 @@
+- generic [active] [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e90]
+              - heading "Swiper" [level=2] [ref=e91]
+              - button "Filters" [ref=e92]
+            - generic [ref=e106]:
+              - group "Em home TRENTON 2-sits soffa tyg Rocco grå 281/ek ben small • fabric 7295 SEK":
+                - img [ref=e107]
+                - img [ref=e108]
+            - button "Undo" [ref=e109]
+            - button "Pass" [ref=e111]
+            - button "Details" [ref=e113]
+            - button "Save" [ref=e115]:
+              - generic [ref=e116]:
+                - generic: Save
+            - button "Deck Tab 1 of 4" [ref=e102]
+            - button "Likes Tab 2 of 4" [ref=e103]
+            - button "Share Tab 3 of 4" [ref=e104]
+            - button "Profile Tab 4 of 4" [ref=e105]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

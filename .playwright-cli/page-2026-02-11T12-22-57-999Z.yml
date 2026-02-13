@@ -1,0 +1,38 @@
+- generic [active] [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - generic [ref=e77]:
+              - group "GARDANNE soffa 3-sits medium • fabric 14249 SEK":
+                - img [ref=e78]
+                - img [ref=e79]
+            - group "Rowico Home WILLARD 3-sits soffa beige tyg (K1) 13995 SEK":
+              - img [ref=e60]
+              - img [ref=e61]
+            - group "Em home BOOM 3-sits soffa 3LC 249cm tyg Shaff 1109 taupe, ben 131 svart metall 12495 SEK":
+              - img [ref=e62]
+              - img [ref=e63]
+            - group "BRÖDERNA ANDERSSONS AGNES Soffa 3-sits Tyg Center Ljusgrön 27380 SEK":
+              - img [ref=e65]
+              - img [ref=e64]
+            - group "SANTOS kökssoffa hörnmodul 6999 SEK":
+              - img [ref=e67]
+              - img [ref=e66]
+            - group "MEDFORD soffa 3-sits 11249 SEK":
+              - img [ref=e80]
+              - img [ref=e81]
+            - button "Undo" [ref=e82]
+            - button "Pass" [ref=e70]
+            - button "Details" [ref=e72]
+            - button "Save" [ref=e74]
+            - button "Deck Tab 1 of 4" [ref=e18]
+            - button "Likes Tab 2 of 4" [ref=e19]
+            - button "Share Tab 3 of 4" [ref=e20]
+            - button "Profile Tab 4 of 4" [ref=e21]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

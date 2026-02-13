@@ -119,6 +119,7 @@ function printEvent(doc) {
   const createdMs = toMs(data.createdAtServer || data.createdAtClient);
   const rank = data.rank && typeof data.rank === 'object' ? data.rank : {};
   const ext = data.ext && typeof data.ext === 'object' ? data.ext : {};
+  const item = data.item && typeof data.item === 'object' ? data.item : {};
   const pieces = [
     `[EVT ${fmt(createdMs)}]`,
     `event=${eventName}`,
@@ -134,7 +135,8 @@ function printEvent(doc) {
   }
 
   if (eventName === 'swipe_right' || eventName === 'swipe_left') {
-    pieces.push(`item=${data.itemId || ext.itemId || '-'}`);
+    pieces.push(`item=${data.itemId || item.itemId || ext.itemId || ext.item_id || '-'}`);
+    pieces.push(`pos=${item.positionInDeck ?? data.positionInDeck ?? ext.positionInDeck ?? '-'}`);
   }
 
   console.log(pieces.join(' | '));

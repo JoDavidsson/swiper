@@ -1,0 +1,31 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Retailer Console - Mio" [level=2] [ref=e98]
+              - button "Refresh" [ref=e99]
+              - button "Sign out" [ref=e100]
+            - generic:
+              - group:
+                - group "Campaign Builder Create objective-driven campaigns, activate/pause quickly, and refresh recommendations.":
+                  - button "New campaign" [ref=e101]
+                - generic:
+                  - checkbox "All" [checked] [ref=e103]
+                  - checkbox "active" [ref=e104]
+                  - checkbox "draft" [ref=e105]
+                  - checkbox "paused" [ref=e106]
+                - generic:
+                  - 'group "Mio Spring Push draft Segment: budget-modern | Mode: auto Budget: 0 / 10000 SEK Featured impressions: 0 Recommended products: 24"':
+                    - button "Activate" [ref=e108]
+                    - button "Refresh recommendations" [ref=e109]
+            - generic [ref=e110]:
+              - generic: Campaign created
+            - button "Home Tab 1 of 5" [ref=e111]
+            - button "Campaigns Tab 2 of 5" [active] [ref=e112]
+            - button "Catalog Tab 3 of 5" [ref=e113]
+            - button "Insights Tab 4 of 5" [ref=e114]
+            - button "Reports Tab 5 of 5" [ref=e115]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -8,6 +8,9 @@ const WEEK_WINDOW_DAYS = 7;
 const WEEK_MS = WEEK_WINDOW_DAYS * DAY_MS;
 const BASELINE_WINDOW_DAYS = 8;
 const MAX_EVENTS_V1_SCAN = 30000;
+const MAX_SWIPES_SCAN = 5000;
+const MAX_LIKES_SCAN = 5000;
+const MAX_OUTBOUND_SCAN = 5000;
 
 const SUBMIT_FAILURE_ALERT_THRESHOLD = 0.02;
 const SUBMIT_FAILURE_ALERT_MIN_SAMPLES = 20;
@@ -91,6 +94,12 @@ export function buildGoldenV2ObservabilitySummary(params: {
   deckObservations: DeckObservation[];
   sampledEventCount: number;
   sampleCap: number;
+  sampledSwipesCount?: number;
+  swipesSampleCap?: number;
+  sampledLikesCount?: number;
+  likesSampleCap?: number;
+  sampledOutboundClicksCount?: number;
+  outboundClicksSampleCap?: number;
 }): Record<string, unknown> {
   const currentWindowStart = params.nowMs - DAY_MS;
   const baselineWindowStart = params.nowMs - BASELINE_WINDOW_DAYS * DAY_MS;
@@ -194,6 +203,23 @@ export function buildGoldenV2ObservabilitySummary(params: {
     (fallbackStageCounts.catalogExhausted > 0 ||
       recycledRate > FALLBACK_RECYCLED_RATE_ALERT_THRESHOLD);
 
+  const sampledSwipesCount = params.sampledSwipesCount ?? 0;
+  const sampledLikesCount = params.sampledLikesCount ?? 0;
+  const sampledOutboundClicksCount = params.sampledOutboundClicksCount ?? 0;
+  const swipesSampleCap = params.swipesSampleCap ?? 0;
+  const likesSampleCap = params.likesSampleCap ?? 0;
+  const outboundClicksSampleCap = params.outboundClicksSampleCap ?? 0;
+  const eventsTruncated = params.sampledEventCount >= params.sampleCap;
+  const swipesTruncated = swipesSampleCap > 0 && sampledSwipesCount >= swipesSampleCap;
+  const likesTruncated = likesSampleCap > 0 && sampledLikesCount >= likesSampleCap;
+  const outboundTruncated =
+    outboundClicksSampleCap > 0 && sampledOutboundClicksCount >= outboundClicksSampleCap;
+  const truncationWarnings: string[] = [];
+  if (eventsTruncated) truncationWarnings.push("events_v1_scan_truncated");
+  if (swipesTruncated) truncationWarnings.push("swipes_scan_truncated");
+  if (likesTruncated) truncationWarnings.push("likes_scan_truncated");
+  if (outboundTruncated) truncationWarnings.push("outbound_click_scan_truncated");
+
   return {
     funnel24h: {
       introShown: params.introShownCount,
@@ -266,7 +292,30 @@ export function buildGoldenV2ObservabilitySummary(params: {
     sampling: {
       eventsV1SampledCount: params.sampledEventCount,
       sampleCap: params.sampleCap,
-      isTruncated: params.sampledEventCount >= params.sampleCap,
+      isTruncated: eventsTruncated,
+      scans: {
+        eventsV1: {
+          sampledCount: params.sampledEventCount,
+          sampleCap: params.sampleCap,
+          isTruncated: eventsTruncated,
+        },
+        swipes: {
+          sampledCount: sampledSwipesCount,
+          sampleCap: swipesSampleCap,
+          isTruncated: swipesTruncated,
+        },
+        likes: {
+          sampledCount: sampledLikesCount,
+          sampleCap: likesSampleCap,
+          isTruncated: likesTruncated,
+        },
+        outboundClicks: {
+          sampledCount: sampledOutboundClicksCount,
+          sampleCap: outboundClicksSampleCap,
+          isTruncated: outboundTruncated,
+        },
+      },
+      truncationWarnings,
     },
   };
 }
@@ -415,6 +464,12 @@ function emptyGoldenV2Summary(nowMs: number): Record<string, unknown> {
     deckObservations: [],
     sampledEventCount: 0,
     sampleCap: MAX_EVENTS_V1_SCAN,
+    sampledSwipesCount: 0,
+    swipesSampleCap: MAX_SWIPES_SCAN,
+    sampledLikesCount: 0,
+    likesSampleCap: MAX_LIKES_SCAN,
+    sampledOutboundClicksCount: 0,
+    outboundClicksSampleCap: MAX_OUTBOUND_SCAN,
   });
   return {
     ...summary,
@@ -437,9 +492,9 @@ export async function adminStatsGet(req: Request, res: Response): Promise<void> 
     const [sessionsSnap, swipesSnap, likesSnap, outboundClicksSnap, eventsV1Snap, completedProfilesSnap] =
       await Promise.all([
         db.collection("anonSessions").where("lastSeenAt", ">=", oneDayAgo).get(),
-        db.collection("swipes").limit(5000).get(),
-        db.collection("likes").limit(5000).get(),
-        db.collection("events").where("eventType", "==", "outbound_click").limit(5000).get(),
+        db.collection("swipes").limit(MAX_SWIPES_SCAN).get(),
+        db.collection("likes").limit(MAX_LIKES_SCAN).get(),
+        db.collection("events").where("eventType", "==", "outbound_click").limit(MAX_OUTBOUND_SCAN).get(),
         db
           .collection("events_v1")
           .where("createdAtServer", ">=", baselineStart)
@@ -551,6 +606,12 @@ export async function adminStatsGet(req: Request, res: Response): Promise<void> 
         deckObservations,
         sampledEventCount: eventsV1Snap.size,
         sampleCap: MAX_EVENTS_V1_SCAN,
+        sampledSwipesCount: swipesSnap.size,
+        swipesSampleCap: MAX_SWIPES_SCAN,
+        sampledLikesCount: likesSnap.size,
+        likesSampleCap: MAX_LIKES_SCAN,
+        sampledOutboundClicksCount: outboundClicksSnap.size,
+        outboundClicksSampleCap: MAX_OUTBOUND_SCAN,
       }),
       experimentWeeklyByCohort: buildWeeklyExperimentCohortSummary({
         nowMs,

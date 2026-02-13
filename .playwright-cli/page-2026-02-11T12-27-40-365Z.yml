@@ -1,0 +1,28 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Back" [active] [ref=e15]
+              - heading "Data & Privacy" [level=2] [ref=e16]
+            - generic:
+              - group:
+                - generic [ref=e17]:
+                  - generic: What we collect
+                - generic [ref=e19]:
+                  - generic: We capture anonymous usage data to improve recommendations and build better experiences. No sign-in or personal accounts are required.
+                - generic [ref=e21]:
+                  - generic: Session & device • Anonymous session ID (stored locally and on our servers) • Platform (e.g. web, iOS, Android) • Locale and timezone offset • Screen size bucket (small / medium / large) • Browser or app version (e.g. Chrome/120)
+                - generic [ref=e23]:
+                  - generic: How you use the app • Swipes (left/right), likes, and outbound clicks • Opening item details and time spent viewing • Compare screen usage and filter usage • Onboarding preferences (style, budget, options) • Deck empty and session start events
+                - generic [ref=e25]:
+                  - generic: This data is used for recommendation models and product analytics. You can opt out of non-essential collection below.
+                - generic [ref=e29]:
+                  - generic: Controls
+                - switch "Opt out of analytics Stop sending non-essential events (detail views, filters, compare, onboarding, etc.). Swipes and likes still work." [ref=e31]
+                - generic [ref=e33]:
+                  - generic: Coming later
+                - button "Connect social accounts Instagram, Facebook – optional, for personalised feed Planned" [ref=e35]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

@@ -1,0 +1,42 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button [active] [ref=e255]
+              - heading "Items" [level=2] [ref=e256]
+              - button "Refresh" [ref=e257]
+            - textbox "Search by title or brand..." [ref=e259]
+            - button "Source All sources" [ref=e260]
+            - button "Status All" [ref=e261]
+            - generic [ref=e262]:
+              - generic: 200 of 200 items
+            - generic:
+              - group:
+                - button "SARBONNE soffa 3-sits 9749 SEK bO2swy4fba0FTwyMBklC" [ref=e263]
+                - button "Bellora 4495 SEK KWyDBNIXK724iSgrPESn" [ref=e264]
+                - button "VILMA 14995 SEK SVENSKA HEM • 2quY2mFTrKmPC9GdbrUf" [ref=e265]
+                - button "Amie 3995 SEK KWyDBNIXK724iSgrPESn" [ref=e266]
+                - 'button "CORWIN hörnsoffa 2,5+2,5-sits öppet avslut Hö ljusbeige tyg Rita #1 (k2) 26990 SEK Rowico Home • OWhBvXHbB6gxp9RBZ2F7" [ref=e267]'
+                - button "ROSSY soffa 3-sits 12949 SEK bO2swy4fba0FTwyMBklC" [ref=e268]
+                - button "Cherrie Klädsel 10995 SEK KWyDBNIXK724iSgrPESn" [ref=e269]
+                - button "OAKDALE soffa 3-sits 8359 SEK bO2swy4fba0FTwyMBklC" [ref=e270]
+                - button "BELLEVILLE loungesoffa 6299 SEK bO2swy4fba0FTwyMBklC" [ref=e271]
+                - button "Saturday 26995 SEK KWyDBNIXK724iSgrPESn" [ref=e272]
+                - button "Camel leather sofa 27990 SEK Example Brand • sample_feed" [ref=e273]
+                - button "Zamira 2995 SEK KWyDBNIXK724iSgrPESn" [ref=e274]
+                - button "Nowa 22655 SEK 2quY2mFTrKmPC9GdbrUf" [ref=e275]
+                - button "Madison 37985 SEK KWyDBNIXK724iSgrPESn" [ref=e276]
+                - button "Alice 13995 SEK SVENSKA HEM • 2quY2mFTrKmPC9GdbrUf" [ref=e277]
+                - button "CADIZ loungesoffa 5999 SEK bO2swy4fba0FTwyMBklC" [ref=e278]
+                - button "Mika soffa bouclé 15999 SEK bO2swy4fba0FTwyMBklC" [ref=e279]
+                - button "CLEVELAND hörnsoffa m öppet avsl vä tyg Brego 3591 light brown, oljade ekben 19990 SEK Em home • OWhBvXHbB6gxp9RBZ2F7" [ref=e280]
+                - button "SAVOY Hörnsoffa (LS) m öppet avslut hö tyg Raven 22 white, wengeben 17995 SEK Em home • OWhBvXHbB6gxp9RBZ2F7" [ref=e281]
+                - button "CREAM Soffa 2-sits Tyg Ascot Natur 21380 SEK SVENSKA HEM • 2quY2mFTrKmPC9GdbrUf" [ref=e282]
+                - button "Lazy 11995 SEK KWyDBNIXK724iSgrPESn" [ref=e283]
+                - button "DARLING Bäddsoffa 3-sits BM160cm tyg Sense 4156 forest BM160 17995 SEK Em home • OWhBvXHbB6gxp9RBZ2F7" [ref=e284]
+                - button "JUSTIN Hörnsoffa m öppet avsl vä tyg Oasis Ashgrey 40, svarta ben 16995 SEK Em home • OWhBvXHbB6gxp9RBZ2F7" [ref=e285]
+                - button "OLBIA 4-sits soffa 284cm tyg Urban 3404 light taupe 18995 SEK Em home • OWhBvXHbB6gxp9RBZ2F7" [ref=e286]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

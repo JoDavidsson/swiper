@@ -226,6 +226,36 @@ describe("admin_stats golden v2 observability summary", () => {
     expect(fallbackAlert.triggered).toBe(true);
   });
 
+  it("reports truncation warnings when capped scans are hit", () => {
+    const summary = __adminStatsTestUtils.buildGoldenV2ObservabilitySummary({
+      nowMs: Date.now(),
+      introShownCount: 0,
+      stepViewedCount: 0,
+      stepCompletedCount: 0,
+      summaryConfirmedCount: 0,
+      skippedCount: 0,
+      attemptedSessionCount: 0,
+      completedProfileCount: 0,
+      deckObservations: [],
+      sampledEventCount: 30000,
+      sampleCap: 30000,
+      sampledSwipesCount: 5000,
+      swipesSampleCap: 5000,
+      sampledLikesCount: 5000,
+      likesSampleCap: 5000,
+      sampledOutboundClicksCount: 5000,
+      outboundClicksSampleCap: 5000,
+    });
+
+    const sampling = summary.sampling as Record<string, unknown>;
+    const warnings = sampling.truncationWarnings as string[];
+    expect(sampling.isTruncated).toBe(true);
+    expect(warnings).toContain("events_v1_scan_truncated");
+    expect(warnings).toContain("swipes_scan_truncated");
+    expect(warnings).toContain("likes_scan_truncated");
+    expect(warnings).toContain("outbound_click_scan_truncated");
+  });
+
   it("builds weekly cohort slices with completion, swipe-rate, and quality metrics", () => {
     const summary = __adminStatsTestUtils.buildWeeklyExperimentCohortSummary({
       nowMs: Date.now(),

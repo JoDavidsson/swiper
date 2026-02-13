@@ -70,7 +70,7 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = _humanizeError(e);
         _loading = false;
       });
     }
@@ -78,7 +78,11 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
 
   Future<void> _claimRetailer() async {
     final token = _token;
-    final retailerId = _claimRetailerController.text.trim();
+    final retailerId = _claimRetailerController.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
     if (token == null || retailerId.isEmpty) return;
     try {
       await ref
@@ -93,7 +97,8 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to claim retailer: $e')),
+        SnackBar(
+            content: Text('Failed to claim retailer: ${_humanizeError(e)}')),
       );
     }
   }
@@ -220,6 +225,7 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
         key: ValueKey('home_$_reloadKey'),
         token: _token!,
         retailerId: retailerId,
+        onOpenCampaigns: () => setState(() => _tabIndex = 1),
       ),
       _RetailerCampaignsTab(
         key: ValueKey('campaigns_$_reloadKey'),
@@ -291,10 +297,12 @@ class _RetailerHomeTab extends ConsumerWidget {
     super.key,
     required this.token,
     required this.retailerId,
+    required this.onOpenCampaigns,
   });
 
   final String token;
   final String retailerId;
+  final VoidCallback onOpenCampaigns;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -310,8 +318,10 @@ class _RetailerHomeTab extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-              child: Text('Failed to load dashboard: ${snapshot.error}'));
+          return _InlineErrorCard(
+            title: 'Failed to load dashboard',
+            message: _humanizeError(snapshot.error),
+          );
         }
         final report = snapshot.data?[0] as Map<String, dynamic>? ?? {};
         final campaigns =
@@ -331,6 +341,17 @@ class _RetailerHomeTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
           children: [
+            _SectionHeader(
+              title: 'Performance overview',
+              subtitle:
+                  'Track spend, delivery, and outcomes at a glance. Use campaigns for control and catalog for guardrails.',
+              action: TextButton.icon(
+                onPressed: onOpenCampaigns,
+                icon: const Icon(Icons.campaign_outlined),
+                label: const Text('Open campaigns'),
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingUnit * 0.75),
             Wrap(
               spacing: AppTheme.spacingUnit,
               runSpacing: AppTheme.spacingUnit,
@@ -357,6 +378,32 @@ class _RetailerHomeTab extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: AppTheme.spacingUnit),
+            if (activeCampaigns == 0)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppTheme.spacingUnit),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'No active campaign yet',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Create and activate your first campaign to start collecting delivery and outcome data.',
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: onOpenCampaigns,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('Create first campaign'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const SizedBox(height: AppTheme.spacingUnit * 1.5),
             Text(
               'Top insights',
@@ -400,6 +447,8 @@ class _RetailerCampaignsTab extends ConsumerStatefulWidget {
 
 class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
   late Future<List<dynamic>> _future;
+  bool _actionInFlight = false;
+  String _statusFilter = 'all';
 
   @override
   void initState() {
@@ -429,8 +478,55 @@ class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
     });
   }
 
+  Future<void> _runAction(Future<void> Function() action) async {
+    if (_actionInFlight) return;
+    setState(() => _actionInFlight = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() => _actionInFlight = false);
+      }
+    }
+  }
+
+  Future<void> _createStarterSegment() async {
+    await _runAction(() async {
+      try {
+        final nowIso = DateTime.now().toIso8601String().substring(0, 10);
+        await ref.read(apiClientProvider).retailerCreateSegment(
+              token: widget.token,
+              retailerId: widget.retailerId,
+              name: 'Starter segment $nowIso',
+              description:
+                  'Broad starter segment for first campaign launch and baseline learning.',
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Starter segment created')),
+        );
+        await _refresh();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to create segment: ${_humanizeError(e)}')),
+        );
+      }
+    });
+  }
+
   Future<void> _openCreateCampaignSheet(
       List<Map<String, dynamic>> segments) async {
+    if (segments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('No segments available. Create a starter segment first.'),
+        ),
+      );
+      return;
+    }
     final payload = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -440,83 +536,97 @@ class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
       ),
     );
     if (payload == null) return;
-    try {
-      await ref.read(apiClientProvider).retailerCreateCampaign(
-            token: widget.token,
-            body: payload,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Campaign created')),
-      );
-      await _refresh();
-      widget.onChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create campaign: $e')),
-      );
-    }
+    await _runAction(() async {
+      try {
+        await ref.read(apiClientProvider).retailerCreateCampaign(
+              token: widget.token,
+              body: payload,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Campaign created')),
+        );
+        await _refresh();
+        widget.onChanged();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to create campaign: ${_humanizeError(e)}')),
+        );
+      }
+    });
   }
 
   Future<void> _activateCampaign(String campaignId) async {
-    try {
-      await ref.read(apiClientProvider).retailerActivateCampaign(
-            token: widget.token,
-            campaignId: campaignId,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Campaign activated')),
-      );
-      await _refresh();
-      widget.onChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to activate campaign: $e')),
-      );
-    }
+    await _runAction(() async {
+      try {
+        await ref.read(apiClientProvider).retailerActivateCampaign(
+              token: widget.token,
+              campaignId: campaignId,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Campaign activated')),
+        );
+        await _refresh();
+        widget.onChanged();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Failed to activate campaign: ${_humanizeError(e)}')),
+        );
+      }
+    });
   }
 
   Future<void> _pauseCampaign(String campaignId) async {
-    try {
-      await ref.read(apiClientProvider).retailerPauseCampaign(
-            token: widget.token,
-            campaignId: campaignId,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Campaign paused')),
-      );
-      await _refresh();
-      widget.onChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pause campaign: $e')),
-      );
-    }
+    await _runAction(() async {
+      try {
+        await ref.read(apiClientProvider).retailerPauseCampaign(
+              token: widget.token,
+              campaignId: campaignId,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Campaign paused')),
+        );
+        await _refresh();
+        widget.onChanged();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to pause campaign: ${_humanizeError(e)}')),
+        );
+      }
+    });
   }
 
   Future<void> _recommendCampaign(String campaignId) async {
-    try {
-      await ref.read(apiClientProvider).retailerRecommendCampaign(
-            token: widget.token,
-            campaignId: campaignId,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recommendations refreshed')),
-      );
-      await _refresh();
-      widget.onChanged();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to refresh recommendations: $e')),
-      );
-    }
+    await _runAction(() async {
+      try {
+        await ref.read(apiClientProvider).retailerRecommendCampaign(
+              token: widget.token,
+              campaignId: campaignId,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recommendations refreshed')),
+        );
+        await _refresh();
+        widget.onChanged();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Failed to refresh recommendations: ${_humanizeError(e)}')),
+        );
+      }
+    });
   }
 
   @override
@@ -528,33 +638,76 @@ class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-              child: Text('Failed to load campaigns: ${snapshot.error}'));
+          return _InlineErrorCard(
+            title: 'Failed to load campaigns',
+            message: _humanizeError(snapshot.error),
+            actionLabel: 'Retry',
+            onAction: _refresh,
+          );
         }
         final campaigns =
             snapshot.data?[0] as List<Map<String, dynamic>>? ?? const [];
         final segments =
             snapshot.data?[1] as List<Map<String, dynamic>>? ?? const [];
+        final visibleCampaigns = _statusFilter == 'all'
+            ? campaigns
+            : campaigns
+                .where((entry) =>
+                    (entry['status']?.toString() ?? '') == _statusFilter)
+                .toList();
 
         return ListView(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Campaign Builder',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openCreateCampaignSheet(segments),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New campaign'),
-                ),
-              ],
+            _SectionHeader(
+              title: 'Campaign Builder',
+              subtitle:
+                  'Create objective-driven campaigns, activate/pause quickly, and refresh recommendations.',
+              action: ElevatedButton.icon(
+                onPressed: _actionInFlight
+                    ? null
+                    : () => _openCreateCampaignSheet(segments),
+                icon: _actionInFlight
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add),
+                label: const Text('New campaign'),
+              ),
             ),
             const SizedBox(height: AppTheme.spacingUnit),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final filter in const ['all', 'active', 'draft', 'paused'])
+                  ChoiceChip(
+                    label: Text(filter == 'all' ? 'All' : filter),
+                    selected: _statusFilter == filter,
+                    onSelected: (selected) {
+                      if (!selected) return;
+                      setState(() => _statusFilter = filter);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppTheme.spacingUnit * 0.75),
+            if (segments.isEmpty)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.segment_outlined),
+                  title: const Text('No segments configured'),
+                  subtitle: const Text(
+                    'Campaigns require at least one segment. Create a starter segment to begin.',
+                  ),
+                  trailing: TextButton(
+                    onPressed: _actionInFlight ? null : _createStarterSegment,
+                    child: const Text('Create starter'),
+                  ),
+                ),
+              ),
             if (campaigns.isEmpty)
               const Card(
                 child: Padding(
@@ -564,7 +717,7 @@ class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
                   ),
                 ),
               ),
-            ...campaigns.map((campaign) {
+            ...visibleCampaigns.map((campaign) {
               final campaignId = campaign['id']?.toString() ?? '';
               final status = campaign['status']?.toString() ?? 'unknown';
               final budgetTotal = _num(campaign['budgetTotal']);
@@ -610,20 +763,20 @@ class _RetailerCampaignsTabState extends ConsumerState<_RetailerCampaignsTab> {
                         children: [
                           if (status == 'draft' || status == 'paused')
                             OutlinedButton(
-                              onPressed: campaignId.isEmpty
+                              onPressed: _actionInFlight || campaignId.isEmpty
                                   ? null
                                   : () => _activateCampaign(campaignId),
                               child: const Text('Activate'),
                             ),
                           if (status == 'active')
                             OutlinedButton(
-                              onPressed: campaignId.isEmpty
+                              onPressed: _actionInFlight || campaignId.isEmpty
                                   ? null
                                   : () => _pauseCampaign(campaignId),
                               child: const Text('Pause'),
                             ),
                           OutlinedButton(
-                            onPressed: campaignId.isEmpty
+                            onPressed: _actionInFlight || campaignId.isEmpty
                                 ? null
                                 : () => _recommendCampaign(campaignId),
                             child: const Text('Refresh recommendations'),
@@ -659,11 +812,19 @@ class _RetailerCatalogTab extends ConsumerStatefulWidget {
 
 class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
   late Future<Map<String, dynamic>> _future;
+  final TextEditingController _searchController = TextEditingController();
+  String _inclusionFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<Map<String, dynamic>> _load() {
@@ -700,7 +861,8 @@ class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update product: $e')),
+        SnackBar(
+            content: Text('Failed to update product: ${_humanizeError(e)}')),
       );
     }
   }
@@ -714,25 +876,75 @@ class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-              child: Text('Failed to load catalog: ${snapshot.error}'));
+          return _InlineErrorCard(
+            title: 'Failed to load catalog',
+            message: _humanizeError(snapshot.error),
+            actionLabel: 'Retry',
+            onAction: _refresh,
+          );
         }
         final data = snapshot.data ?? {};
         final products = data['products'] as List? ?? const [];
+        final query = _searchController.text.trim().toLowerCase();
+        final filteredProducts = products.where((entry) {
+          final row = entry is Map
+              ? entry.map((k, v) => MapEntry(k.toString(), v))
+              : <String, dynamic>{};
+          final title = row['title']?.toString().toLowerCase() ?? '';
+          final included = row['included'] != false;
+          final queryMatch = query.isEmpty || title.contains(query);
+          final inclusionMatch = _inclusionFilter == 'all' ||
+              (_inclusionFilter == 'included' && included) ||
+              (_inclusionFilter == 'excluded' && !included);
+          return queryMatch && inclusionMatch;
+        }).toList();
 
         return ListView(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
           children: [
-            Text(
-              'Catalog Control',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: AppTheme.spacingUnit * 0.5),
-            const Text(
-              'Use include/exclude to control which products can appear in featured campaigns.',
+            _SectionHeader(
+              title: 'Catalog Control',
+              subtitle:
+                  'Decide which products are eligible for campaigns and monitor taxonomy + creative health.',
+              action: TextButton.icon(
+                onPressed: _refresh,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
             ),
             const SizedBox(height: AppTheme.spacingUnit),
-            ...products.map((entry) {
+            TextField(
+              controller: _searchController,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                labelText: 'Search products',
+                hintText: 'Type product name',
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final filter in const ['all', 'included', 'excluded'])
+                  ChoiceChip(
+                    label: Text(filter[0].toUpperCase() + filter.substring(1)),
+                    selected: _inclusionFilter == filter,
+                    onSelected: (selected) {
+                      if (!selected) return;
+                      setState(() => _inclusionFilter = filter);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Showing ${filteredProducts.length} of ${products.length} products',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            ...filteredProducts.map((entry) {
               final row = entry is Map
                   ? entry.map((k, v) => MapEntry(k.toString(), v))
                   : <String, dynamic>{};
@@ -874,12 +1086,18 @@ class _RetailerInsightsTab extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-              child: Text('Failed to load insights: ${snapshot.error}'));
+          return _InlineErrorCard(
+            title: 'Failed to load insights',
+            message: _humanizeError(snapshot.error),
+          );
         }
         final insights = snapshot.data?['insights'] as List? ?? const [];
         if (insights.isEmpty) {
-          return const Center(child: Text('No insights available yet.'));
+          return const _InlineErrorCard(
+            title: 'No insights yet',
+            message:
+                'Insights appear after campaigns start serving impressions.',
+          );
         }
         return ListView(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
@@ -940,7 +1158,7 @@ class _RetailerReportsTab extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to export CSV: $e')),
+        SnackBar(content: Text('Failed to export CSV: ${_humanizeError(e)}')),
       );
     }
   }
@@ -976,7 +1194,8 @@ class _RetailerReportsTab extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create share link: $e')),
+        SnackBar(
+            content: Text('Failed to create share link: ${_humanizeError(e)}')),
       );
     }
   }
@@ -992,8 +1211,10 @@ class _RetailerReportsTab extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-              child: Text('Failed to load report: ${snapshot.error}'));
+          return _InlineErrorCard(
+            title: 'Failed to load report',
+            message: _humanizeError(snapshot.error),
+          );
         }
         final report = snapshot.data ?? {};
         final byCampaign = report['byCampaign'] as List? ?? const [];
@@ -1002,24 +1223,23 @@ class _RetailerReportsTab extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.all(AppTheme.spacingUnit),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Reporting',
-                    style: Theme.of(context).textTheme.titleMedium,
+            _SectionHeader(
+              title: 'Reporting',
+              subtitle:
+                  'Export CSV for analysts, share links with stakeholders, and track campaign contribution by segment.',
+              action: Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => _exportCsv(context, ref),
+                    child: const Text('Export CSV'),
                   ),
-                ),
-                OutlinedButton(
-                  onPressed: () => _exportCsv(context, ref),
-                  child: const Text('Export CSV'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () => _shareReport(context, ref),
-                  child: const Text('Share'),
-                ),
-              ],
+                  OutlinedButton(
+                    onPressed: () => _shareReport(context, ref),
+                    child: const Text('Share'),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: AppTheme.spacingUnit),
             Wrap(
@@ -1197,6 +1417,14 @@ class _CampaignComposerSheetState extends State<_CampaignComposerSheet> {
                 'Create campaign',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              const SizedBox(height: 6),
+              Text(
+                'Set a segment, product mode, and budget. Start with auto mode to bootstrap quickly.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppTheme.textSecondary),
+              ),
               const SizedBox(height: AppTheme.spacingUnit),
               TextField(
                 controller: _nameController,
@@ -1307,11 +1535,108 @@ class _CampaignComposerSheetState extends State<_CampaignComposerSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _submit,
+                  onPressed: widget.segments.isEmpty ? null : _submit,
                   child: const Text('Create campaign'),
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.subtitle,
+    this.action,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        if (action != null) ...[
+          const SizedBox(width: 8),
+          action!,
+        ],
+      ],
+    );
+  }
+}
+
+class _InlineErrorCard extends StatelessWidget {
+  const _InlineErrorCard({
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacingUnit),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: AppTheme.textSecondary),
+                ),
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: onAction,
+                    child: Text(actionLabel!),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1399,6 +1724,23 @@ double _num(dynamic value) {
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value) ?? 0;
   return 0;
+}
+
+String _humanizeError(Object? error) {
+  if (error is DioException) {
+    final statusCode = error.response?.statusCode;
+    final payload = error.response?.data;
+    if (payload is Map && payload['error'] != null) {
+      final message = payload['error'].toString();
+      return statusCode != null ? '[$statusCode] $message' : message;
+    }
+    if (statusCode != null) return 'Request failed with status $statusCode';
+    return error.message ?? 'Network request failed';
+  }
+  if (error == null) return 'Unknown error';
+  final text = error.toString();
+  if (text.startsWith('DioException')) return 'Network request failed';
+  return text;
 }
 
 IconData _iconForInsightType(String type) {

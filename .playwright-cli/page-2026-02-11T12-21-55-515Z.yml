@@ -1,0 +1,34 @@
+- generic [ref=e1] [cursor=pointer]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - button [ref=e10]
+            - generic [ref=e11]:
+              - generic: Pick 2 rooms you would love to live in
+            - button "Skip" [ref=e12]
+            - generic [ref=e13]:
+              - generic: 25%
+            - generic [ref=e14]:
+              - generic: Step 1 of 4
+            - generic [ref=e22]:
+              - generic: Trust your gut. There is no wrong answer.
+            - generic [ref=e23]:
+              - generic: 2/2 - 2 of 2 required
+            - generic:
+              - group:
+                - button "Calm Minimal Light, airy, quiet" [ref=e24]
+                - button "Warm Organic Natural tones, soft textures" [active] [ref=e25]
+                - button "Bold Eclectic Expressive, curated contrast" [ref=e26]
+                - button "Urban Industrial Raw edges, structured forms" [ref=e27]
+            - button "Continue" [ref=e28]
+            - button "Deck Tab 1 of 4" [ref=e18]
+            - button "Likes Tab 2 of 4" [ref=e19]
+            - button "Share Tab 3 of 4" [ref=e20]
+            - button "Profile Tab 4 of 4" [ref=e21]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

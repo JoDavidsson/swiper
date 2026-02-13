@@ -1,0 +1,36 @@
+- generic [ref=e5] [cursor=pointer]:
+  - generic:
+    - generic:
+      - generic:
+        - generic [ref=e106]:
+          - generic: Scrim
+        - generic:
+          - group:
+            - generic:
+              - group:
+                - generic:
+                  - img [ref=e87]
+                  - img [ref=e88]
+                - generic:
+                  - img [ref=e89]
+                  - img [ref=e90]
+            - generic [ref=e91]:
+              - generic: GARDANNE soffa 3-sits
+            - generic [ref=e92]:
+              - generic: 14249 SEK
+            - generic [ref=e93]:
+              - generic: GARDANNE 3-sits soffa erbjuder komfort och stil med sitt linneöverdrag och sju mjuka kuddar. Det avtagbara överdraget gör soffan lätt att underhålla och gör den till ett praktiskt tillskott i vardagsrummet. Den neutrala färgen smälter sömlöst in i olika inredningsdesigner och skapar en varm och inbjudande atmosfär. Denna soffa är perfekt för avkoppling och läsning och är ett utmärkt val för att öka trivseln och estetiken i ditt hem. Vill du känna på klädselns kvalitet och se om färgen passar per...
+            - button "Show more" [ref=e94]
+            - generic [ref=e95]:
+              - generic: "Material: fabric"
+            - generic [ref=e96]:
+              - generic: "Delivery: medium"
+            - checkbox "Sofa" [ref=e97]
+            - checkbox "Straight" [ref=e98]
+            - checkbox "Standard" [ref=e99]
+            - checkbox "3 seats" [ref=e100]
+            - checkbox "Indoor" [ref=e101]
+            - checkbox "3-sitssoffa" [ref=e102]
+            - checkbox "Vardagsrum" [ref=e103]
+            - button "Share" [ref=e104]
+            - button "View on site" [active] [ref=e105]

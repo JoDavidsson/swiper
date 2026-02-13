@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
 import * as admin from "firebase-admin";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { requireUserAuth } from "../middleware/require_user_auth";
 import { buildSegmentSnapshot } from "../targeting/segment_targeting";
+import { SEGMENT_TEMPLATES } from "./segments";
 
 type CampaignStatus = "draft" | "active" | "paused" | "ended";
 type ProductMode = "all" | "selected" | "auto";
@@ -49,12 +51,12 @@ function normalizeRetailerSlug(value: unknown): string | null {
   return token ? token.toLowerCase() : null;
 }
 
-function parseDateToTimestamp(value: unknown): admin.firestore.Timestamp | null {
+function parseDateToTimestamp(value: unknown): Timestamp | null {
   if (value == null) return null;
   if (typeof value !== "string" && !(value instanceof Date)) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return admin.firestore.Timestamp.fromDate(date);
+  return Timestamp.fromDate(date);
 }
 
 function formatTimestamp(value: unknown): string | null {
@@ -79,8 +81,8 @@ function toCampaignResponse(id: string, data: Record<string, unknown>): Record<s
 function validateBudgetAndSchedule(input: {
   budgetTotal: number | null;
   budgetDaily: number | null;
-  startDate: admin.firestore.Timestamp | null;
-  endDate: admin.firestore.Timestamp | null;
+  startDate: Timestamp | null;
+  endDate: Timestamp | null;
   frequencyCap: number | null;
 }): Array<{ field: string; message: string }> {
   const issues: Array<{ field: string; message: string }> = [];
@@ -264,7 +266,14 @@ async function loadCampaignSegmentSnapshot(
 > {
   const segmentDoc = await db.collection("segments").doc(segmentId).get();
   if (!segmentDoc.exists) {
-    return { ok: false, status: 404, error: "Segment not found" };
+    const fallbackTemplate = SEGMENT_TEMPLATES.find((template) => template.id === segmentId);
+    if (!fallbackTemplate) {
+      return { ok: false, status: 404, error: "Segment not found" };
+    }
+    return {
+      ok: true,
+      segmentSnapshot: buildSegmentSnapshot(fallbackTemplate.id, fallbackTemplate as Record<string, unknown>),
+    };
   }
 
   const segmentData = (segmentDoc.data() || {}) as Record<string, unknown>;
@@ -361,7 +370,7 @@ export async function retailerCampaignsPost(req: Request, res: Response): Promis
     }
 
     const campaignRef = db.collection("campaigns").doc();
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     // If productMode is "selected", productIds must be provided
     if (mode === "selected" && productIds.length === 0) {
@@ -560,7 +569,7 @@ export async function retailerCampaignsPatch(req: Request, res: Response, campai
     const refreshRecommendations = body.refreshRecommendations === true;
 
     const updates: Record<string, unknown> = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (Object.prototype.hasOwnProperty.call(body, "name")) {
@@ -651,10 +660,10 @@ export async function retailerCampaignsPatch(req: Request, res: Response, campai
 
     const nextStartDate = Object.prototype.hasOwnProperty.call(body, "startDate")
       ? parseDateToTimestamp(body.startDate)
-      : ((data.startDate as admin.firestore.Timestamp | undefined) || null);
+      : ((data.startDate as Timestamp | undefined) || null);
     const nextEndDate = Object.prototype.hasOwnProperty.call(body, "endDate")
       ? parseDateToTimestamp(body.endDate)
-      : ((data.endDate as admin.firestore.Timestamp | undefined) || null);
+      : ((data.endDate as Timestamp | undefined) || null);
 
     if (Object.prototype.hasOwnProperty.call(body, "startDate")) {
       if (body.startDate != null && nextStartDate == null) {
@@ -710,7 +719,7 @@ export async function retailerCampaignsPatch(req: Request, res: Response, campai
           DEFAULT_RECOMMENDATION_LIMIT
         );
         updates.recommendedProductIds = recommendedProductIds;
-        updates.recommendedAt = admin.firestore.FieldValue.serverTimestamp();
+        updates.recommendedAt = FieldValue.serverTimestamp();
       }
     } else if (
       Object.prototype.hasOwnProperty.call(body, "productMode") ||
@@ -769,7 +778,7 @@ export async function retailerCampaignsPause(req: Request, res: Response, campai
 
     await campaignRef.update({
       status: "paused",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({ success: true, message: "Campaign paused", campaignId });
@@ -829,8 +838,8 @@ export async function retailerCampaignsActivate(req: Request, res: Response, cam
     const validationIssues = validateBudgetAndSchedule({
       budgetTotal: toNullableNumber(data.budgetTotal),
       budgetDaily: toNullableNumber(data.budgetDaily),
-      startDate: (data.startDate as admin.firestore.Timestamp | undefined) || null,
-      endDate: (data.endDate as admin.firestore.Timestamp | undefined) || null,
+      startDate: (data.startDate as Timestamp | undefined) || null,
+      endDate: (data.endDate as Timestamp | undefined) || null,
       frequencyCap: toNullableNumber(data.frequencyCap),
     });
     if (validationIssues.length > 0) {
@@ -843,7 +852,7 @@ export async function retailerCampaignsActivate(req: Request, res: Response, cam
 
     const updates: Record<string, unknown> = {
       status: "active",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (productMode === "auto" && recommendedProductIds.length === 0 && productIds.length === 0) {
@@ -863,7 +872,7 @@ export async function retailerCampaignsActivate(req: Request, res: Response, cam
           return;
         }
         updates.recommendedProductIds = generated;
-        updates.recommendedAt = admin.firestore.FieldValue.serverTimestamp();
+        updates.recommendedAt = FieldValue.serverTimestamp();
       } else {
         res.status(400).json({ error: "Cannot activate auto campaign without retailer/segment" });
         return;
@@ -933,8 +942,8 @@ export async function retailerCampaignsRecommendPost(
     if (apply) {
       await campaignRef.update({
         recommendedProductIds,
-        recommendedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        recommendedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
 

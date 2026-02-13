@@ -574,11 +574,18 @@ def classify_items(request: ClassifyRequest):
     and promotes accepted items to goldItems collection.
     """
     from app.firestore_client import get_firestore_client
-    from app.sorting.policy import classify_and_decide, load_training_config_latest, resolve_training_rules_mode
+    from app.sorting.policy import (
+        build_surface_policies,
+        classify_and_decide,
+        load_policy_config_latest,
+        load_training_config_latest,
+        resolve_training_rules_mode,
+    )
 
     db = get_firestore_client()
     training_mode = resolve_training_rules_mode(os.environ.get("CATEGORIZATION_TRAINING_RULES_MODE"))
     training_config = load_training_config_latest(db) if training_mode != "off" else None
+    surface_policies = build_surface_policies(load_policy_config_latest(db))
     results = {
         "processed": 0,
         "accepted": 0,
@@ -611,6 +618,7 @@ def classify_items(request: ClassifyRequest):
                 item_id=item_id,
                 item_data=item_data,
                 surface_ids=request.surface_ids,
+                surface_policies=surface_policies,
                 training_config=training_config,
                 training_mode=training_mode,
             )
@@ -979,6 +987,23 @@ def calibrate():
         "calibratedAt": result.calibrated_at,
     })
 
+    # Activate calibrated thresholds for runtime policy decisions.
+    db.collection("classificationPolicyConfig").document("latest").set(
+        {
+            "acceptThreshold": result.recommended_accept_threshold,
+            "rejectThreshold": result.recommended_reject_threshold,
+            "thresholdSource": "calibration",
+            "calibration": {
+                "totalLabels": result.total_labels,
+                "accuracyBefore": result.accuracy_before,
+                "accuracyAfter": result.accuracy_after,
+                "calibratedAt": result.calibrated_at,
+            },
+            "updatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        },
+        merge=True,
+    )
+
     return {
         "totalLabels": result.total_labels,
         "accuracyBefore": result.accuracy_before,
@@ -988,6 +1013,7 @@ def calibrate():
             "acceptThreshold": result.recommended_accept_threshold,
             "rejectThreshold": result.recommended_reject_threshold,
         },
+        "policyConfigUpdated": True,
     }
 
 

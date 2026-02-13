@@ -1,0 +1,38 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - heading "Admin" [active] [level=2] [ref=e11]
+              - button [ref=e12]
+            - generic:
+              - group:
+                - generic [ref=e13]:
+                  - generic: Daily sessions 5
+                - generic [ref=e14]:
+                  - generic: Total swipes 171
+                - generic [ref=e15]:
+                  - generic: Total likes 57
+                - generic [ref=e16]:
+                  - generic: Outbound clicks 1
+                - generic [ref=e17]:
+                  - generic: Like rate % 33.3%
+                - generic [ref=e19]:
+                  - generic: Golden Card v2 observability (24h)
+                - generic [ref=e20]:
+                  - generic: Funnel completion % 50.0%
+                - generic [ref=e21]:
+                  - generic: Funnel skip % 0.0%
+                - generic [ref=e22]:
+                  - generic: Funnel intros 2
+                - generic [ref=e23]:
+                  - generic: Summary confirmed 1
+                - generic [ref=e24]:
+                  - generic: Submit failure % 0.0%
+                - generic [ref=e25]:
+                  - generic: Deck p95 latency (ms) 3396
+                - generic [ref=e26]:
+                  - generic: Latency regression % 0.0%
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

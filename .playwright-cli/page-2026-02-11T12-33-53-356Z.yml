@@ -1,0 +1,37 @@
+- generic [ref=e1]:
+  - generic [ref=e217]:
+    - generic:
+      - generic:
+        - heading "Retailer Console - Mio" [level=2] [ref=e218]
+        - button "Refresh" [ref=e219]
+        - button "Sign out" [ref=e220]
+      - generic:
+        - group:
+          - group "Reporting Export CSV for analysts, share links with stakeholders, and track campaign contribution by segment.":
+            - button "Export CSV" [ref=e221]
+            - button "Share" [active] [ref=e222]
+          - generic:
+            - generic [ref=e224]:
+              - generic: Spend 0 SEK
+            - generic [ref=e225]:
+              - generic: Impressions 0
+            - generic [ref=e226]:
+              - generic: Featured impressions 0
+            - generic [ref=e227]:
+              - generic: Confidence outcomes 0
+            - generic [ref=e228]:
+              - generic: CPScore 0.00
+          - generic [ref=e230]:
+            - generic: By segment
+          - generic [ref=e232]:
+            - generic: budget-modern Impressions 0 | Outcomes 0 CP 0.00
+          - generic [ref=e234]:
+            - generic: By campaign
+          - generic [ref=e236]:
+            - generic: Mio Spring Push Spend 0 SEK | Featured 0 CP 0.00
+      - button "Home Tab 1 of 5" [ref=e237]
+      - button "Campaigns Tab 2 of 5" [ref=e238]
+      - button "Catalog Tab 3 of 5" [ref=e239]
+      - button "Insights Tab 4 of 5" [ref=e240]
+      - button "Reports Tab 5 of 5" [ref=e241]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.

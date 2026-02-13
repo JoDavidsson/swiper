@@ -275,6 +275,32 @@ describe("deck v2 helper utilities", () => {
     expect(result.stats.deferredForSourceCap).toBeGreaterThan(0);
   });
 
+  it("caps repeated model names in early deck positions", () => {
+    const ranked = [
+      { id: "m-1", retailer: "mio", title: "Madison" },
+      { id: "m-2", retailer: "mio", title: "Madison" },
+      { id: "m-3", retailer: "mio", title: "Madison" },
+      { id: "e-1", retailer: "mio", title: "Eden" },
+      { id: "e-2", retailer: "mio", title: "Eden" },
+      { id: "w-1", retailer: "mio", title: "Willow" },
+      { id: "a-1", retailer: "ellos", title: "Alpha" },
+      { id: "b-1", retailer: "homeroom", title: "Beta" },
+      { id: "c-1", retailer: "chilli", title: "Gamma" },
+      { id: "d-1", retailer: "ikea", title: "Delta" },
+      { id: "o-1", retailer: "soffadirekt", title: "Omega" },
+    ];
+
+    const result = __deckTestUtils.applyTopModelDedupePolicy(ranked, 12);
+    const top8Models = result.items
+      .slice(0, 8)
+      .map((item) => __deckTestUtils.itemModelKey(item))
+      .filter((value): value is string => value != null);
+
+    expect(top8Models.filter((model) => model === "madison")).toHaveLength(1);
+    expect(top8Models.filter((model) => model === "eden")).toHaveLength(1);
+    expect(result.stats.deferredForModelCap).toBeGreaterThan(0);
+  });
+
   it("computes top-8 source concentration and diversity", () => {
     const concentration = __deckTestUtils.computeSourceConcentrationTop8([
       { sourceId: "ikea" },

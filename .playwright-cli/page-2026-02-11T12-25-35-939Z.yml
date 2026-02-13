@@ -1,0 +1,37 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Menu" [active] [ref=e7]
+              - heading "Swiper" [level=2] [ref=e8]
+              - button "Filters" [ref=e9]
+            - generic [ref=e10]:
+              - group "Mika soffa bouclé medium • boucle 15999 SEK":
+                - img [ref=e11]
+                - img [ref=e12]
+            - group "CADIZ loungesoffa 5999 SEK":
+              - img [ref=e13]
+              - img [ref=e14]
+            - group "BELLEVILLE loungesoffa 6299 SEK":
+              - img [ref=e15]
+              - img [ref=e16]
+            - group "KELSO soffa 3-sits - Manchester 9099 SEK":
+              - img [ref=e17]
+              - img [ref=e18]
+            - group "ROSSY soffa 3-sits 12949 SEK":
+              - img [ref=e19]
+              - img [ref=e20]
+            - group "MOLTON MINI barnsoffa 3499 SEK":
+              - img [ref=e21]
+              - img [ref=e22]
+            - button "Pass" [ref=e24]
+            - button "Details" [ref=e26]
+            - button "Save" [ref=e28]
+            - button "Deck Tab 1 of 4" [ref=e29]
+            - button "Likes Tab 2 of 4" [ref=e30]
+            - button "Share Tab 3 of 4" [ref=e31]
+            - button "Profile Tab 4 of 4" [ref=e32]
+  - paragraph [ref=e6]: Running in emulator mode. Do not use with production credentials.
