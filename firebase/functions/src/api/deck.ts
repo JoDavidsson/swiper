@@ -2266,7 +2266,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
   const sessionContext: SessionContext = { preferenceWeights };
 
-  const rankWindow = Math.min(candidates.length, Math.max(limit * 12, MIN_RANK_WINDOW));
+  const rankWindow = Math.min(candidates.length, Math.max(limit * 24, MIN_RANK_WINDOW));
   const rankResult = usePersonaRanker
     ? PersonalPlusPersonaRanker.rank(sessionContext, candidates, { limit: rankWindow }, personaSignals)
     : PreferenceWeightsRanker.rank(sessionContext, candidates, { limit: rankWindow });
