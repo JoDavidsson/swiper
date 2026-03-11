@@ -113,6 +113,7 @@ from app.extractor.cascade import extract_product_from_html, extract_products_ba
 from app.extractor.signals import extract_page_signals
 from app.normalization import (
     canonical_url as canonicalize_url,
+    clean_title_text,
     clean_description_text,
     infer_color_from_title,
     infer_size_from_title,
@@ -1302,7 +1303,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             batch_material_count += 1
                         # Normalise into items schema (same as Phase 2)
                         canon = canonicalize_url(product.canonical_url)
-                        title = product.title.strip()[:500] if product.title else "Untitled"
+                        title = (clean_title_text(product.title) or "Untitled")[:500]
                         img_objs = [
                             {"url": u, "alt": title[:200]}
                             for u in (product.images or [])
@@ -1345,7 +1346,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                             "dimensionsCm": product.dimensions_raw,
                             "sizeClass": normalize_size_class(None, None, title=title),
                             "material": normalize_material(product.material_raw) or "mixed",
-                            "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(product.title) or "multi",
+                            "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(title) or "multi",
                             "styleTags": [],
                             "newUsed": "new",
                             "deliveryComplexity": "medium",
@@ -1611,7 +1612,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
 
                 # Map into existing `items` schema
                 canon = canonicalize_url(product.canonical_url)
-                title = product.title.strip()[:500] if product.title else "Untitled"
+                title = (clean_title_text(product.title) or "Untitled")[:500]
                 img_objs = [{"url": u, "alt": title[:200]} for u in (product.images or []) if isinstance(u, str) and u]
                 price_amount = _coerce_item_price(
                     product.price_amount, product.price_original, product.price_raw
@@ -1652,7 +1653,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                         "dimensionsCm": dims,
                         "sizeClass": normalize_size_class(None, width_cm, title=title),
                         "material": normalize_material(product.material_raw) or "mixed",
-                        "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(product.title) or "multi",
+                        "colorFamily": normalize_color_family(product.color_raw) or infer_color_from_title(title) or "multi",
                         "styleTags": [],
                         "newUsed": "new",
                         "deliveryComplexity": "medium",
@@ -1790,7 +1791,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                                 material_count += 1
 
                             canon = canonicalize_url(rp.canonical_url)
-                            title = rp.title.strip()[:500] if rp.title else "Untitled"
+                            title = (clean_title_text(rp.title) or "Untitled")[:500]
                             img_objs = [
                                 {"url": u, "alt": title[:200]}
                                 for u in (rp.images or [])
@@ -1836,7 +1837,7 @@ def run_crawl_ingestion(source_id: str, source: dict, *, run_id: str | None = No
                                     "sizeClass": normalize_size_class(None, width_cm, title=title),
                                     "material": normalize_material(rp.material_raw) or "mixed",
                                     "colorFamily": normalize_color_family(rp.color_raw)
-                                    or infer_color_from_title(rp.title)
+                                    or infer_color_from_title(title)
                                     or "multi",
                                     "styleTags": [],
                                     "newUsed": "new",

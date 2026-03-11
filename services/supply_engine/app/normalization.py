@@ -391,6 +391,35 @@ def canonical_url(url: str) -> str:
         return url
 
 
+def _unescape_html_entities(text: str, *, max_passes: int = 3) -> str:
+    """Decode HTML entities repeatedly until stable (or max passes reached)."""
+    out = text
+    for _ in range(max_passes):
+        unescaped = html.unescape(out)
+        if unescaped == out:
+            break
+        out = unescaped
+    return out
+
+
+def clean_title_text(raw: Any) -> str | None:
+    """Decode HTML entities/tags and normalize whitespace for product titles."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+
+    # Multi-pass unescape to handle double/triple-encoded entities.
+    text = _unescape_html_entities(text, max_passes=3)
+    # Defensive tag stripping (titles should not contain HTML).
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    # Final unescape catches entities that were inside tags.
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or None
+
+
 def normalize_price_amount(raw: Any) -> float | None:
     """Parse price into a positive finite float.
 
@@ -460,11 +489,7 @@ def clean_description_text(raw: Any) -> str | None:
 
     # Multi-pass unescape to handle double/triple-encoded entities
     # e.g. "&amp;lt;p&amp;gt;" -> "&lt;p&gt;" -> "<p>"
-    for _ in range(3):
-        unescaped = html.unescape(text)
-        if unescaped == text:
-            break
-        text = unescaped
+    text = _unescape_html_entities(text, max_passes=3)
 
     # Convert line-break tags to actual line breaks.
     text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)

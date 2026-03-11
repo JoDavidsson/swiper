@@ -3,8 +3,34 @@ import { Response } from "express";
 import * as admin from "firebase-admin";
 import { nanoid } from "nanoid";
 import { requireUserAuth, ensureUserDocument } from "../middleware/require_user_auth";
+import { FieldValue } from "../firestore";
 
 const db = () => admin.firestore();
+const MAX_DECISION_ROOM_ITEMS = 100;
+const MAX_DECISION_ROOM_TITLE_LENGTH = 120;
+
+function normalizeDecisionRoomItemIds(rawItemIds: unknown): string[] | null {
+  if (!Array.isArray(rawItemIds)) return null;
+  const uniqueIds: string[] = [];
+  const seen = new Set<string>();
+  for (const rawId of rawItemIds) {
+    if (typeof rawId !== "string") continue;
+    const itemId = rawId.trim();
+    // Firestore document IDs cannot contain "/".
+    if (!itemId || itemId.includes("/")) continue;
+    if (seen.has(itemId)) continue;
+    seen.add(itemId);
+    uniqueIds.push(itemId);
+  }
+  return uniqueIds;
+}
+
+function normalizeDecisionRoomTitle(rawTitle: unknown): string | null {
+  if (typeof rawTitle !== "string") return null;
+  const trimmed = rawTitle.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, MAX_DECISION_ROOM_TITLE_LENGTH);
+}
 
 /**
  * POST /api/decision-rooms
@@ -17,21 +43,37 @@ export async function decisionRoomsPost(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const { itemIds, title } = req.body;
-  if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const requestedItemIds = normalizeDecisionRoomItemIds(body.itemIds);
+  if (!requestedItemIds || requestedItemIds.length === 0) {
     res.status(400).json({ error: "itemIds array is required" });
     return;
   }
+  if (requestedItemIds.length > MAX_DECISION_ROOM_ITEMS) {
+    res.status(400).json({ error: `Maximum ${MAX_DECISION_ROOM_ITEMS} items allowed per decision room` });
+    return;
+  }
+
+  const title = normalizeDecisionRoomTitle(body.title);
+  let failureStage = "init";
 
   try {
-    // Ensure user document exists
-    await ensureUserDocument(user);
+    failureStage = "ensure-user-document";
+    // Best-effort user profile upsert. Room creation should not fail if this side-write fails.
+    try {
+      await ensureUserDocument(user);
+    } catch (userDocError) {
+      console.warn("Non-blocking user document upsert failed during decision room creation:", {
+        userId: user.uid,
+        error: userDocError,
+      });
+    }
 
+    failureStage = "verify-items";
     // Verify items exist
     const itemsRef = db().collection("items");
-    const itemDocs = await Promise.all(
-      itemIds.map((id: string) => itemsRef.doc(id).get())
-    );
+    const itemRefs = requestedItemIds.map((id) => itemsRef.doc(id));
+    const itemDocs = await db().getAll(...itemRefs);
     const validItemIds = itemDocs.filter(doc => doc.exists).map(doc => doc.id);
 
     if (validItemIds.length === 0) {
@@ -41,7 +83,7 @@ export async function decisionRoomsPost(req: Request, res: Response): Promise<vo
 
     // Create the decision room
     const roomId = nanoid(10);
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     const roomData = {
       id: roomId,
@@ -55,9 +97,11 @@ export async function decisionRoomsPost(req: Request, res: Response): Promise<vo
       updatedAt: now,
     };
 
+    failureStage = "write-room";
     await db().collection("decisionRooms").doc(roomId).set(roomData);
 
     // Create items subcollection with initial vote counts
+    failureStage = "write-room-items";
     const itemsSubcollection = db().collection("decisionRooms").doc(roomId).collection("items");
     const batch = db().batch();
 
@@ -86,8 +130,22 @@ export async function decisionRoomsPost(req: Request, res: Response): Promise<vo
       shareUrl,
     });
   } catch (error) {
-    console.error("Error creating decision room:", error);
-    res.status(500).json({ error: "Failed to create decision room" });
+    const errorLike = error as { code?: string; message?: string };
+    const errorCode = typeof errorLike.code === "string" ? errorLike.code : null;
+    const errorMessage = typeof errorLike.message === "string" ? errorLike.message : null;
+    const diagnostics = [
+      `stage=${failureStage}`,
+      errorCode ? `code=${errorCode}` : null,
+      errorMessage ? `message=${errorMessage}` : null,
+    ].filter(Boolean).join(" ");
+
+    console.error("Error creating decision room:", {
+      userId: user.uid,
+      requestedItemCount: requestedItemIds.length,
+      diagnostics,
+      error,
+    });
+    res.status(500).json({ error: `Failed to create decision room (${diagnostics})` });
   }
 }
 
@@ -200,11 +258,12 @@ export async function decisionRoomsVotePost(req: Request, res: Response, roomId:
       .get();
 
     const existingVote = existingVoteQuery.docs[0];
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     // Transaction to update vote counts atomically
     await db().runTransaction(async (transaction) => {
       const currentItemDoc = await transaction.get(itemRef);
+      const roomData = (await transaction.get(roomRef)).data() || {};
       const currentData = currentItemDoc.data() || {};
       let voteCountUp = currentData.voteCountUp || 0;
       let voteCountDown = currentData.voteCountDown || 0;
@@ -242,8 +301,12 @@ export async function decisionRoomsVotePost(req: Request, res: Response, roomId:
         });
 
         // Update participant count (first-time voter)
-        const roomData = (await transaction.get(roomRef)).data() || {};
-        const currentParticipants = new Set(roomData.participants || [roomData.creatorUserId]);
+        const participantSeed = Array.isArray(roomData.participants)
+          ? roomData.participants
+          : [roomData.creatorUserId];
+        const currentParticipants = new Set(
+          participantSeed.filter((id: unknown) => typeof id === "string" && id.trim().length > 0)
+        );
         if (!currentParticipants.has(user.uid)) {
           currentParticipants.add(user.uid);
           transaction.update(roomRef, {
@@ -302,7 +365,7 @@ export async function decisionRoomsCommentPost(req: Request, res: Response, room
       return;
     }
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     const commentId = nanoid();
 
     await db().collection("comments").doc(commentId).set({
@@ -411,7 +474,7 @@ export async function decisionRoomsSuggestPost(req: Request, res: Response, room
     // For now, create a placeholder item - in a real implementation,
     // we'd extract product data from the URL
     const suggestedItemId = nanoid(10);
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     // Add to room's items subcollection
     await roomRef.collection("items").doc(suggestedItemId).set({
@@ -443,7 +506,7 @@ export async function decisionRoomsSuggestPost(req: Request, res: Response, room
 
     // Update room
     await roomRef.update({
-      itemIds: admin.firestore.FieldValue.arrayUnion(suggestedItemId),
+      itemIds: FieldValue.arrayUnion(suggestedItemId),
       updatedAt: now,
     });
 
@@ -502,7 +565,7 @@ export async function decisionRoomsFinalistsPost(req: Request, res: Response, ro
     await roomRef.update({
       finalistIds,
       status: "finalists",
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     res.json({

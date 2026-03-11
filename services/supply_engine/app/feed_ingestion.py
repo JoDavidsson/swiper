@@ -11,6 +11,7 @@ from typing import Any
 from app.firestore_client import get_firestore_client, write_items, create_run, update_run, create_job, update_job
 from app.normalization import (
     canonical_url,
+    clean_title_text,
     clean_description_text,
     normalize_material,
     normalize_color_family,
@@ -181,21 +182,21 @@ def _normalize_item(raw: dict, source_id: str) -> dict | None:
         if not url:
             return None
         canonical = canonical_url(url)
+        title = (clean_title_text(raw.get("title")) or "Untitled")[:500]
         w = _num(raw.get("width"))
         h = _num(raw.get("height"))
         d = _num(raw.get("depth"))
         dimensions = None
         if w is not None or h is not None or d is not None:
             dimensions = {"w": w or 0, "h": h or 0, "d": d or 0}
-        size_class = normalize_size_class(raw.get("size_class"), w, title=raw.get("title"))
+        size_class = normalize_size_class(raw.get("size_class"), w, title=title)
         material = normalize_material(raw.get("material"))
         color_family = normalize_color_family(raw.get("color"))
         new_used = normalize_new_used(raw.get("new_used"))
         images = []
         img_url = (raw.get("image_url") or "").strip()
         if img_url:
-            images.append({"url": img_url, "alt": (raw.get("title") or "")[:200]})
-        title = (raw.get("title") or "Untitled").strip()[:500]
+            images.append({"url": img_url, "alt": title[:200]})
         desc_short = clean_description_text(raw.get("description"))
         import hashlib
         item_id = hashlib.sha256(canonical.encode()).hexdigest()[:24]
@@ -239,4 +240,3 @@ def _num(v: Any) -> float | None:
         return float(v)
     except (TypeError, ValueError):
         return None
-

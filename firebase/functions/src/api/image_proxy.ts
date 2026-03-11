@@ -4,7 +4,11 @@ import sharp from "sharp";
 const ALLOWED_WIDTHS = [400, 800, 1200];
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_PROXY_MAX_BYTES = 12 * 1024 * 1024; // 12MB
-const DEFAULT_META_MAX_BYTES = 1024 * 1024; // 1MB prefix for metadata
+const DEFAULT_META_MAX_BYTES = 5 * 1024 * 1024; // 5MB full image for quality analysis
+const MIN_RESOLUTION = 400;
+const MAX_IMAGE_PIXELS = 40_000_000;
+const SCENE_SAMPLE_SIZE = 192;
+const BORDER_RATIO = 0.12;
 const DEFAULT_ALLOWED_DOMAINS = [
   // --- CDN / media domains ---
   "images.unsplash.com",
@@ -12,13 +16,19 @@ const DEFAULT_ALLOWED_DOMAINS = [
   "cdn.bolia.com",
   "images.prismic.io",           // Prismic CMS (used by Rum21/RoyalDesign)
   "noga.cdn-norce.tech",         // Norce commerce CDN (Nordic retailers)
+  "*.cdn-norce.tech",            // sleepo.cdn-norce.tech, stalands.cdn-norce.tech, etc.
   "picsum.photos",               // Placeholder images (sample data)
   "*.cloudinary.com",            // Cloudinary CDN (used by many retailers)
   "*.imgix.net",                 // imgix CDN
+  "*.storyblok.com",             // Storyblok CDN (e.g. img2.storyblok.com)
+  "*.crystallize.com",           // Sweef media host
   "*.scene7.com",                // Adobe Scene7 CDN
   "*.akamaized.net",             // Akamai CDN
   "*.cloudfront.net",            // AWS CloudFront CDN
+  "*.jysk.com",                  // cdn1-4.jysk.com
+  "*.pictureserver.net",         // Beliani/Folkhemmet image host
   // --- Brand domains (products sold via multiple retailers) ---
+  "*.bloomingville.com",         // Bloomingville official media
   "*.gubi.com",                  // Gubi (sold via Rum21, Nordiskagalleriet, etc.)
   "*.haydesign.com",             // HAY Design
   "*.muuto.com",                 // Muuto
@@ -45,6 +55,11 @@ const DEFAULT_ALLOWED_DOMAINS = [
   "*.nordiskagalleriet.se",
   "*.svenssons.se",
   "*.ilva.se",
+  "*.granit.com",
+  "*.folkhemmet.com",
+  "*.soffkoncept.se",
+  "*.tibergsmobler.se",
+  "*.affariofsweden.com",
   "*.mcdn.net",                  // mcdn.net, www.mcdn.net
 ];
 
@@ -53,6 +68,227 @@ class ProxyError extends Error {
     super(message);
     this.name = "ProxyError";
   }
+}
+
+export type ImageSceneType = "contextual" | "studio_cutout" | "unknown";
+
+export type ImageMetaResult = {
+  valid: boolean;
+  url: string;
+  domain: string;
+  width: number;
+  height: number;
+  aspectRatio: number;
+  aspectCategory: string;
+  format: string | undefined;
+  size: number;
+  sceneType: ImageSceneType;
+  displaySuitabilityScore: number;
+  sceneMetrics: {
+    backgroundRatio: number;
+    borderBackgroundRatio: number;
+    nearWhiteRatio: number;
+    transparentRatio: number;
+    subjectCoverage: number;
+    textureScore: number;
+  };
+  issues: string[];
+};
+
+type SceneMetrics = ImageMetaResult["sceneMetrics"];
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value: number, decimals: number = 3): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function classifyAspectRatio(ratio: number): string {
+  if (ratio < 0.6) return "tall-portrait";
+  if (ratio < 0.9) return "portrait";
+  if (ratio < 1.1) return "square";
+  if (ratio < 1.5) return "landscape";
+  return "wide-landscape";
+}
+
+function classifySceneFromMetrics(metrics: SceneMetrics): {
+  sceneType: ImageSceneType;
+  sceneIssues: string[];
+} {
+  const isTransparentCutout =
+    metrics.transparentRatio >= 0.08 &&
+    metrics.backgroundRatio >= 0.66 &&
+    metrics.borderBackgroundRatio >= 0.72;
+  const isWhiteStudioBg =
+    metrics.nearWhiteRatio >= 0.62 &&
+    metrics.borderBackgroundRatio >= 0.78 &&
+    metrics.backgroundRatio >= 0.68;
+  const lowTexture = metrics.textureScore < 0.07;
+
+  let sceneType: ImageSceneType = "unknown";
+  if (isTransparentCutout || (isWhiteStudioBg && lowTexture)) {
+    sceneType = "studio_cutout";
+  } else if (
+    metrics.backgroundRatio <= 0.58 &&
+    metrics.borderBackgroundRatio <= 0.62 &&
+    metrics.textureScore >= 0.09 &&
+    metrics.subjectCoverage >= 0.35
+  ) {
+    sceneType = "contextual";
+  }
+
+  const sceneIssues: string[] = [];
+  if (metrics.transparentRatio >= 0.12) sceneIssues.push("transparent-background");
+  if (isWhiteStudioBg) sceneIssues.push("white-background");
+  if (sceneType === "studio_cutout") sceneIssues.push("studio-cutout");
+  if (sceneType !== "contextual" && metrics.backgroundRatio >= 0.72) {
+    sceneIssues.push("low-context-scene");
+  }
+  return { sceneType, sceneIssues };
+}
+
+function scoreDisplaySuitability(input: {
+  width: number;
+  height: number;
+  valid: boolean;
+  sceneType: ImageSceneType;
+  metrics: SceneMetrics;
+}): number {
+  const { width, height, valid, sceneType, metrics } = input;
+  if (!valid) return 0;
+
+  let score = 70;
+  const minDim = Math.min(width, height);
+  if (minDim < MIN_RESOLUTION) score -= 45;
+  else if (minDim < 800) score -= 15;
+  else if (minDim >= 1200) score += 8;
+
+  if (sceneType === "contextual") score += 18;
+  if (sceneType === "studio_cutout") score -= 25;
+
+  if (metrics.transparentRatio >= 0.12) score -= 12;
+  if (metrics.nearWhiteRatio >= 0.7 && metrics.borderBackgroundRatio >= 0.78) score -= 8;
+
+  // Texture reward: scene-rich images usually have moderate-to-high gradients.
+  score += Math.round((metrics.textureScore - 0.08) * 120);
+
+  // Coverage sweet spot around 0.55 avoids tiny product in frame or over-cropped shots.
+  score -= Math.round(Math.abs(metrics.subjectCoverage - 0.55) * 20);
+
+  return clamp(Math.round(score), 0, 100);
+}
+
+async function analyzeSceneMetrics(buffer: Buffer): Promise<SceneMetrics> {
+  const sample = await sharp(buffer, { limitInputPixels: MAX_IMAGE_PIXELS })
+    .ensureAlpha()
+    .resize(SCENE_SAMPLE_SIZE, SCENE_SAMPLE_SIZE, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const width = sample.info.width;
+  const height = sample.info.height;
+  const channels = sample.info.channels;
+  const data = sample.data;
+  if (width <= 1 || height <= 1 || channels < 4) {
+    return {
+      backgroundRatio: 0,
+      borderBackgroundRatio: 0,
+      nearWhiteRatio: 0,
+      transparentRatio: 0,
+      subjectCoverage: 0,
+      textureScore: 0,
+    };
+  }
+
+  const total = width * height;
+  const borderWidth = Math.max(1, Math.round(Math.min(width, height) * BORDER_RATIO));
+
+  let transparentPixels = 0;
+  let nearWhitePixels = 0;
+  let backgroundPixels = 0;
+  let borderPixels = 0;
+  let borderBackgroundPixels = 0;
+  let gradientSum = 0;
+  let gradientCount = 0;
+  let foregroundCount = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  const pxIndex = (x: number, y: number) => (y * width + x) * channels;
+  const luminanceAt = (x: number, y: number): number => {
+    const idx = pxIndex(x, y);
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = pxIndex(x, y);
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const alpha = data[idx + 3];
+      const alphaNorm = alpha / 255;
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      const transparent = alphaNorm < 0.08;
+      const nearWhite = alphaNorm >= 0.9 && lum >= 245 && saturation <= 0.12;
+      const backgroundLike = transparent || nearWhite;
+
+      if (transparent) transparentPixels += 1;
+      if (nearWhite) nearWhitePixels += 1;
+      if (backgroundLike) backgroundPixels += 1;
+
+      const isBorder =
+        x < borderWidth || x >= width - borderWidth || y < borderWidth || y >= height - borderWidth;
+      if (isBorder) {
+        borderPixels += 1;
+        if (backgroundLike) borderBackgroundPixels += 1;
+      }
+
+      if (!backgroundLike) {
+        foregroundCount += 1;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+
+      if (x + 1 < width && y + 1 < height) {
+        const lumX = luminanceAt(x + 1, y);
+        const lumY = luminanceAt(x, y + 1);
+        gradientSum += Math.abs(lumX - lum) + Math.abs(lumY - lum);
+        gradientCount += 2;
+      }
+    }
+  }
+
+  let subjectCoverage = 0;
+  if (foregroundCount > 0 && maxX >= minX && maxY >= minY) {
+    const bboxArea = (maxX - minX + 1) * (maxY - minY + 1);
+    subjectCoverage = bboxArea / total;
+  }
+
+  return {
+    backgroundRatio: round(backgroundPixels / total),
+    borderBackgroundRatio: round(borderPixels > 0 ? borderBackgroundPixels / borderPixels : 0),
+    nearWhiteRatio: round(nearWhitePixels / total),
+    transparentRatio: round(transparentPixels / total),
+    subjectCoverage: round(subjectCoverage),
+    textureScore: round(gradientCount > 0 ? gradientSum / (gradientCount * 255) : 0),
+  };
 }
 
 function envInt(name: string, fallback: number): number {
@@ -111,6 +347,12 @@ function hostMatchesPattern(hostname: string, pattern: string): boolean {
   return host === p || host.endsWith(`.${p}`);
 }
 
+function isHostAllowed(hostname: string): boolean {
+  const allowedDomains = parseAllowedDomains();
+  if (allowedDomains.length === 0) return true;
+  return allowedDomains.some((pattern) => hostMatchesPattern(hostname, pattern));
+}
+
 function assertAllowedTarget(parsedUrl: URL): void {
   if (!["http:", "https:"].includes(parsedUrl.protocol)) {
     throw new ProxyError(400, "Only HTTP/HTTPS URLs are allowed");
@@ -131,13 +373,9 @@ function assertAllowedTarget(parsedUrl: URL): void {
     throw new ProxyError(400, "Only HTTPS is allowed");
   }
 
-  const allowedDomains = parseAllowedDomains();
-  if (allowedDomains.length > 0) {
-    const ok = allowedDomains.some((pattern) => hostMatchesPattern(hostname, pattern));
-    if (!ok) {
-      console.warn(`[image-proxy] BLOCKED domain: ${hostname} (url: ${parsedUrl.href.slice(0, 200)})`);
-      throw new ProxyError(403, `Target domain is not allowed: ${hostname}`);
-    }
+  if (!isHostAllowed(hostname)) {
+    console.warn(`[image-proxy] BLOCKED domain: ${hostname} (url: ${parsedUrl.href.slice(0, 200)})`);
+    throw new ProxyError(403, `Target domain is not allowed: ${hostname}`);
   }
 }
 
@@ -201,35 +439,6 @@ async function readResponseBufferStrict(response: globalThis.Response, maxBytes:
     }
     chunks.push(Buffer.from(value));
   }
-  return Buffer.concat(chunks);
-}
-
-async function readResponsePrefix(response: globalThis.Response, maxBytes: number): Promise<Buffer> {
-  if (!response.body) {
-    throw new ProxyError(502, "Missing upstream response body");
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Buffer[] = [];
-  let total = 0;
-
-  while (total < maxBytes) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value || value.byteLength === 0) continue;
-
-    const remaining = maxBytes - total;
-    if (value.byteLength > remaining) {
-      chunks.push(Buffer.from(value.subarray(0, remaining)));
-      total = maxBytes;
-      break;
-    }
-
-    chunks.push(Buffer.from(value));
-    total += value.byteLength;
-  }
-
-  await reader.cancel().catch(() => undefined);
   return Buffer.concat(chunks);
 }
 
@@ -376,8 +585,61 @@ export async function imageProxyGet(req: Request, res: Response): Promise<void> 
 }
 
 /**
- * Get image metadata by downloading an image prefix.
- * Used for image validation (resolution check, aspect ratio).
+ * Analyze image metadata and visual suitability from a URL.
+ * Used for image validation (resolution + scene quality checks).
+ */
+export async function analyzeImageUrl(url: string): Promise<ImageMetaResult> {
+  const parsedUrl = new URL(url);
+  assertAllowedTarget(parsedUrl);
+
+  const response = await fetchWithTimeout(url, "image/*");
+  assertImageResponse(response);
+  const maxBytes = envInt("IMAGE_META_MAX_BYTES", DEFAULT_META_MAX_BYTES);
+  const buffer = await readResponseBufferStrict(response, maxBytes);
+
+  const metadata = await sharp(buffer, { limitInputPixels: MAX_IMAGE_PIXELS }).metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+  const aspectRatio = height > 0 ? width / height : 0;
+  const aspectCategory = classifyAspectRatio(aspectRatio);
+  const isBroken = width === 0 || height === 0;
+  const valid = width >= MIN_RESOLUTION && height >= MIN_RESOLUTION && !isBroken;
+
+  const sceneMetrics = await analyzeSceneMetrics(buffer);
+  const { sceneType, sceneIssues } = classifySceneFromMetrics(sceneMetrics);
+  const issues = [
+    ...(isBroken ? ["broken"] : []),
+    ...(width < MIN_RESOLUTION && !isBroken ? ["low-resolution"] : []),
+    ...(aspectRatio > 2.5 ? ["extreme-aspect-ratio"] : []),
+    ...sceneIssues,
+  ];
+  const displaySuitabilityScore = scoreDisplaySuitability({
+    width,
+    height,
+    valid,
+    sceneType,
+    metrics: sceneMetrics,
+  });
+
+  return {
+    valid,
+    url,
+    domain: parsedUrl.hostname,
+    width,
+    height,
+    aspectRatio: round(aspectRatio, 2),
+    aspectCategory,
+    format: metadata.format,
+    size: buffer.length,
+    sceneType,
+    displaySuitabilityScore,
+    sceneMetrics,
+    issues: Array.from(new Set(issues)),
+  };
+}
+
+/**
+ * Get image metadata by downloading an image.
  * 
  * GET /api/image-meta?url=<encoded-url>
  */
@@ -389,74 +651,10 @@ export async function imageMetaGet(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  let parsedUrl: URL;
   try {
-    parsedUrl = new URL(url);
-  } catch {
-    res.status(400).json({ error: "Invalid URL" });
+    const result = await analyzeImageUrl(url);
+    res.json(result);
     return;
-  }
-
-  try {
-    assertAllowedTarget(parsedUrl);
-  } catch (error) {
-    const e = error as Error;
-    if (e instanceof ProxyError) {
-      res.status(e.status).json({ error: e.message });
-      return;
-    }
-    res.status(400).json({ error: "Invalid URL" });
-    return;
-  }
-
-  try {
-    const response = await fetchWithTimeout(url, "image/*");
-    assertImageResponse(response);
-    const maxBytes = envInt("IMAGE_META_MAX_BYTES", DEFAULT_META_MAX_BYTES);
-    const buffer = await readResponsePrefix(response, maxBytes);
-    
-    // Get metadata with sharp
-    const metadata = await sharp(buffer).metadata();
-    
-    const width = metadata.width || 0;
-    const height = metadata.height || 0;
-    const aspectRatio = height > 0 ? width / height : 0;
-    
-    // Validation rules
-    const minResolution = 400;
-    const isValid = width >= minResolution && height >= minResolution;
-    const isBroken = width === 0 || height === 0;
-    
-    // Aspect ratio classification
-    let aspectCategory: string;
-    if (aspectRatio < 0.6) {
-      aspectCategory = "tall-portrait";
-    } else if (aspectRatio < 0.9) {
-      aspectCategory = "portrait";
-    } else if (aspectRatio < 1.1) {
-      aspectCategory = "square";
-    } else if (aspectRatio < 1.5) {
-      aspectCategory = "landscape";
-    } else {
-      aspectCategory = "wide-landscape";
-    }
-
-    res.json({
-      valid: isValid && !isBroken,
-      url: url,
-      domain: parsedUrl.hostname,
-      width: width,
-      height: height,
-      aspectRatio: Math.round(aspectRatio * 100) / 100,
-      aspectCategory: aspectCategory,
-      format: metadata.format,
-      size: buffer.length,
-      issues: [
-        ...(isBroken ? ["broken"] : []),
-        ...(width < minResolution && !isBroken ? ["low-resolution"] : []),
-        ...(aspectRatio > 2.5 ? ["extreme-aspect-ratio"] : []),
-      ],
-    });
   } catch (error) {
     console.error("Image meta error:", error);
     if (error instanceof ProxyError) {
@@ -474,3 +672,10 @@ export async function imageMetaGet(req: Request, res: Response): Promise<void> {
     });
   }
 }
+
+export const __imageProxyTestUtils = {
+  classifySceneFromMetrics,
+  scoreDisplaySuitability,
+  hostMatchesPattern,
+  isHostAllowed,
+};

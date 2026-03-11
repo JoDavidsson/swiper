@@ -9,6 +9,7 @@ from app.extractor.money import parse_money_sv
 from app.extractor.signals import extract_page_signals, PageSignals
 from app.extractor.enrichment import enrich_product, EnrichedMetadata
 from app.extractor.embedded_state import extract_products_from_state
+from app.normalization import clean_title_text
 
 
 # ============================================================================
@@ -836,7 +837,7 @@ def _extract_images_from_dom(html: str, *, base_url: str) -> list[str]:
 
 
 def _extract_from_jsonld(product: dict) -> dict:
-    title = (product.get("name") or "").strip()
+    title = clean_title_text(product.get("name")) or ""
     canonical = (product.get("url") or product.get("id") or "").strip()
     img = product.get("image")
     images: list[str] = []
@@ -1108,7 +1109,9 @@ def _extract_from_embedded_json(signals: PageSignals, *, base_url: str) -> dict 
             if not any(k in keys for k in ("price", "priceamount", "offers", "currentprice", "saleprice")):
                 continue
 
-            title = str(node.get("name") or node.get("title") or node.get("productName") or "").strip()
+            title = clean_title_text(
+                node.get("name") or node.get("title") or node.get("productName")
+            ) or ""
             if len(title) < 3:
                 continue
 
@@ -1140,7 +1143,9 @@ def _extract_from_embedded_json(signals: PageSignals, *, base_url: str) -> dict 
     if best_node is None:
         return None
 
-    title = str(best_node.get("name") or best_node.get("title") or best_node.get("productName") or "").strip()
+    title = clean_title_text(
+        best_node.get("name") or best_node.get("title") or best_node.get("productName")
+    ) or ""
     canonical = best_node.get("canonicalUrl") or best_node.get("url") or None
     canonical = str(canonical).strip() if canonical is not None else ""
 
@@ -1374,7 +1379,7 @@ def extract_product_from_html(
     if isinstance(jsonld_obj, dict):
         raw = _extract_from_jsonld(jsonld_obj)
         canonical2 = (_absolute(raw.get("canonicalUrl"), final_url) or canonical).strip()
-        title = (raw.get("title") or "").strip()
+        title = clean_title_text(raw.get("title")) or ""
         images = [u for u in (raw.get("images") or []) if isinstance(u, str) and u.strip()]
         images = _normalize_images(images, base_url=final_url)
 
@@ -1446,7 +1451,7 @@ def extract_product_from_html(
     embedded = _extract_from_embedded_json(signals, base_url=final_url)
     if embedded:
         canonical2 = (_absolute(embedded.get("canonicalUrl"), final_url) or canonical).strip()
-        title = (embedded.get("title") or "").strip()
+        title = clean_title_text(embedded.get("title")) or ""
         images = _normalize_images([u for u in (embedded.get("images") or []) if isinstance(u, str)], base_url=final_url)
 
         # Fallback chain when embedded JSON images fail validation
@@ -1521,7 +1526,7 @@ def extract_product_from_html(
             rr = run_recipe_on_html(recipe=recipe, html=html, final_url=final_url)
             if rr.ok:
                 canonical2 = (_absolute(rr.output.get("canonicalUrl"), final_url) or canonical).strip()
-                title = str(rr.output.get("title") or "").strip()
+                title = clean_title_text(rr.output.get("title")) or ""
                 images = rr.output.get("images")
                 if not isinstance(images, list):
                     images = []
@@ -1602,10 +1607,10 @@ def extract_product_from_html(
 
         soup = BeautifulSoup(html, "lxml")
         h1 = soup.find("h1")
-        title = (h1.get_text(strip=True) if h1 else "").strip()
+        title = clean_title_text(h1.get_text(strip=True) if h1 else "") or ""
         if not title:
             mt = soup.find("meta", property="og:title")
-            title = (mt.get("content") if mt else "").strip()
+            title = clean_title_text(mt.get("content") if mt else "") or ""
 
         # Try og:image first, then DOM image extraction
         imgs = _normalize_images(list(signals.og_images), base_url=final_url)
@@ -1778,7 +1783,7 @@ def extract_products_batch_from_html(
         )
 
         for raw in raw_products:
-            title = (raw.get("title") or "").strip()
+            title = clean_title_text(raw.get("title")) or ""
             if not title:
                 continue
 

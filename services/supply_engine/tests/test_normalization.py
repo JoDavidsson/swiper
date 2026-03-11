@@ -9,6 +9,7 @@ from app.normalization import (
     size_class_from_width_cm,
     infer_color_from_title,
     infer_size_from_title,
+    clean_title_text,
     canonical_domain,
     domains_equivalent,
 )
@@ -85,6 +86,14 @@ def test_infer_color_from_title():
     assert infer_color_from_title("Red Edition Fifties Sofa 210") == "red"
     assert infer_color_from_title("") is None
     assert infer_color_from_title(None) is None
+
+
+def test_clean_title_text_decodes_entities_and_normalizes_whitespace():
+    assert clean_title_text("&#xC5;re 2-sits Soffa Beige 177cm") == "Åre 2-sits Soffa Beige 177cm"
+    assert clean_title_text("&amp;#xC5;re   Soffa") == "Åre Soffa"
+    assert clean_title_text("  <b>&Aring;re</b> \n  Soffa  ") == "Åre Soffa"
+    assert clean_title_text("   ") is None
+    assert clean_title_text(None) is None
 
 
 # =============================================================================

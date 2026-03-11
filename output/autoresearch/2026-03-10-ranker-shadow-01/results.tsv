@@ -1,0 +1,2 @@
+commit	primary_metric	primary_delta	guardrail_status	status	description
+be3e51a	0.0000	0.0000	pass	insufficient_data	baseline eval passed (run_eval.sh), but primary offline metric not emitted

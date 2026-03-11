@@ -3,10 +3,11 @@
 One-time catalog hygiene backfill for `items`.
 
 What it does:
-1. Cleans `descriptionShort` by decoding entities, stripping tags, and normalizing whitespace.
-2. Repairs invalid `priceAmount` values using fallback fields when possible.
-3. Normalizes non-numeric but recoverable prices into numeric `priceAmount`.
-4. Ensures `priceCurrency` defaults to `SEK` when price is valid but currency is missing.
+1. Cleans `title` by decoding entities and normalizing whitespace.
+2. Cleans `descriptionShort` by decoding entities, stripping tags, and normalizing whitespace.
+3. Repairs invalid `priceAmount` values using fallback fields when possible.
+4. Normalizes non-numeric but recoverable prices into numeric `priceAmount`.
+5. Ensures `priceCurrency` defaults to `SEK` when price is valid but currency is missing.
 
 Default mode is dry-run. Use `--apply` to write changes.
 
@@ -38,7 +39,7 @@ if SUPPLY_ENGINE_ROOT not in sys.path:
     sys.path.insert(0, SUPPLY_ENGINE_ROOT)
 
 from app.firestore_client import get_firestore_client
-from app.normalization import clean_description_text, normalize_price_amount
+from app.normalization import clean_description_text, clean_title_text, normalize_price_amount
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,14 @@ def _resolve_price(item: dict[str, Any]) -> PriceResolution:
 def _should_update_description(old: Any, new: str | None) -> bool:
     if old is None and new is None:
         return False
+    if isinstance(old, str):
+        old_norm = old.strip()
+    else:
+        old_norm = old
+    return old_norm != new
+
+
+def _should_update_title(old: Any, new: str) -> bool:
     if isinstance(old, str):
         old_norm = old.strip()
     else:
@@ -121,6 +130,7 @@ def run_backfill(args: argparse.Namespace) -> dict[str, Any]:
         "scanned": 0,
         "updated_docs": 0,
         "write_commits": 0,
+        "title_cleaned": 0,
         "description_cleaned": 0,
         "price_repaired": 0,
         "price_normalized": 0,
@@ -135,6 +145,13 @@ def run_backfill(args: argparse.Namespace) -> dict[str, Any]:
         item = doc.to_dict() or {}
         update: dict[str, Any] = {}
         reasons: list[str] = []
+
+        old_title = item.get("title")
+        cleaned_title = clean_title_text(old_title) or "Untitled"
+        if _should_update_title(old_title, cleaned_title):
+            update["title"] = cleaned_title
+            stats["title_cleaned"] += 1
+            reasons.append("title")
 
         old_desc = item.get("descriptionShort")
         cleaned_desc = clean_description_text(old_desc)

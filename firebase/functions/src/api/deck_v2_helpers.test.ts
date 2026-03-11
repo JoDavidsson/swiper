@@ -327,6 +327,44 @@ describe("deck v2 helper utilities", () => {
     expect(diversity).toBe(4);
   });
 
+  it("rejects items with no displayable image URLs", () => {
+    expect(__deckTestUtils.passesImageDisplayGate({ id: "no-image", images: [] })).toBe(false);
+    expect(
+      __deckTestUtils.passesImageDisplayGate({
+        id: "empty-url",
+        images: [{ url: "   " }],
+      })
+    ).toBe(false);
+  });
+
+  it("rejects items marked with critical image validation issues", () => {
+    expect(
+      __deckTestUtils.passesImageDisplayGate({
+        id: "broken-item",
+        images: [{ url: "https://cdn.example.com/a.jpg" }],
+        imageValidation: {
+          validated: true,
+          validImageCount: 0,
+          issues: ["validation-error"],
+        },
+      })
+    ).toBe(false);
+  });
+
+  it("keeps studio cutout items if they are still valid images", () => {
+    expect(
+      __deckTestUtils.passesImageDisplayGate({
+        id: "cutout-ok",
+        images: [{ url: "https://cdn.example.com/cutout.png" }],
+        imageValidation: {
+          validated: true,
+          validImageCount: 1,
+          issues: ["studio-cutout"],
+        },
+      })
+    ).toBe(true);
+  });
+
   it("blocks soft-window repeats that fail quality gates", () => {
     const ranked = [
       {

@@ -81,6 +81,8 @@ const SOFT_REPEAT_MIN_CREATIVE_SCORE = Math.max(
   0,
   parseFloat(String(process.env.SOFT_REPEAT_MIN_CREATIVE_SCORE || "60")) || 60
 );
+const PREFER_CONTEXTUAL_SCENE_CANDIDATES =
+  process.env.PREFER_CONTEXTUAL_SCENE_CANDIDATES !== "false";
 const SOURCE_DIVERSITY_TOP_N = Math.max(
   HARD_NEAR_DUPLICATE_TOP_N,
   parseInt(String(process.env.SOURCE_DIVERSITY_TOP_N || "12"), 10) || 12
@@ -1074,6 +1076,67 @@ function itemSourceKey(data: Record<string, unknown>): string | null {
   );
 }
 
+function extractItemImageUrls(data: Record<string, unknown>): string[] {
+  const rawImages = Array.isArray(data.images) ? data.images : [];
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of rawImages) {
+    let url: string | null = null;
+    if (typeof entry === "string") {
+      url = asTrimmedString(entry);
+    } else {
+      const record = toRecord(entry);
+      if (record) url = asTrimmedString(record.url);
+    }
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
+function selectedImageSceneType(data: Record<string, unknown>): string | null {
+  const imageValidation = toRecord(data.imageValidation);
+  const creativeHealth = toRecord(data.creativeHealth);
+  const primaryImage = toRecord(imageValidation?.primaryImage);
+  return (
+    normalizeToken(imageValidation?.selectedSceneType) ||
+    normalizeToken(creativeHealth?.sceneType) ||
+    normalizeToken(primaryImage?.sceneType)
+  );
+}
+
+function passesImageDisplayGate(data: Record<string, unknown>): boolean {
+  const imageUrls = extractItemImageUrls(data);
+  if (imageUrls.length === 0) return false;
+
+  const criticalIssues = new Set([
+    "no-images",
+    "no-valid-images",
+    "broken",
+    "validation-error",
+    "fetch-failed",
+    "non-image-response",
+    "domain-blocked",
+  ]);
+
+  const imageValidation = toRecord(data.imageValidation);
+  const creativeHealth = toRecord(data.creativeHealth);
+  const validationIssuesRaw = Array.isArray(imageValidation?.issues) ? imageValidation?.issues : [];
+  const creativeIssuesRaw = Array.isArray(creativeHealth?.issues) ? creativeHealth?.issues : [];
+  const issueTokens = [...validationIssuesRaw, ...creativeIssuesRaw]
+    .map((issue) => normalizeToken(issue))
+    .filter((issue): issue is string => issue != null);
+
+  if (issueTokens.some((issue) => criticalIssues.has(issue))) return false;
+
+  const validated = imageValidation?.validated === true;
+  const validImageCount = asFiniteNumber(imageValidation?.validImageCount);
+  if (validated && validImageCount != null && validImageCount <= 0) return false;
+
+  return true;
+}
+
 function passesSoftRepeatQualityGate(
   data: Record<string, unknown>,
   creativeScoreByItemId?: Map<string, number>
@@ -1092,8 +1155,8 @@ function passesSoftRepeatQualityGate(
     return explicitScore >= SOFT_REPEAT_MIN_CREATIVE_SCORE;
   }
 
-  const images = Array.isArray(data.images) ? data.images : [];
-  const hasEnoughImages = images.length >= SOFT_REPEAT_MIN_IMAGE_COUNT;
+  const imageUrls = extractItemImageUrls(data);
+  const hasEnoughImages = imageUrls.length >= SOFT_REPEAT_MIN_IMAGE_COUNT;
   const hasTitle = asTrimmedString(data.title) != null;
   const hasSource = asTrimmedString(data.canonicalUrl) != null || asTrimmedString(data.sourceUrl) != null;
   return hasEnoughImages && hasTitle && hasSource;
@@ -1991,6 +2054,13 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   for (const queue of QUEUE_ORDER) {
     queueState.set(queue, { docs: queueDocs[queue], cursor: 0 });
   }
+  const deferredStudioCutoutDocs = new Map<QueueName, admin.firestore.DocumentSnapshot[]>();
+  for (const queue of QUEUE_ORDER) {
+    deferredStudioCutoutDocs.set(queue, []);
+  }
+  const deferredStudioCutoutIds = new Set<string>();
+  let deferredStudioCutoutCount = 0;
+  let recoveredStudioCutoutCount = 0;
 
   const acceptedIds = new Set<string>();
   const seenCanonicals = new Set<string>();
@@ -2046,7 +2116,16 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     return !titleHasNegativeSofaKeyword(title);
   };
 
-  const tryAcceptCandidate = (doc: admin.firestore.DocumentSnapshot, queue: QueueName): boolean => {
+  const tryAcceptCandidate = (
+    doc: admin.firestore.DocumentSnapshot,
+    queue: QueueName,
+    options?: {
+      allowStudioCutout?: boolean;
+      recordDeferredStudioCutout?: boolean;
+    }
+  ): boolean => {
+    const allowStudioCutout = options?.allowStudioCutout ?? true;
+    const recordDeferredStudioCutout = options?.recordDeferredStudioCutout === true;
     if (!doc.exists) return false;
     if (candidateDocs.length >= candidateCap) return false;
     if (seenItemIds.has(doc.id)) return false;
@@ -2090,6 +2169,8 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         if (!titleLooksLikeSofa(title)) return false;
       }
     }
+
+    if (!passesImageDisplayGate(data)) return false;
 
     if (queue === "fresh_promoted") {
       const targetingDecision = evaluatePromotedItemTargeting(
@@ -2202,6 +2283,18 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       }
     }
 
+    if (PREFER_CONTEXTUAL_SCENE_CANDIDATES && !allowStudioCutout) {
+      const sceneType = selectedImageSceneType(data);
+      if (sceneType === "studio_cutout") {
+        if (recordDeferredStudioCutout && !deferredStudioCutoutIds.has(doc.id)) {
+          deferredStudioCutoutIds.add(doc.id);
+          deferredStudioCutoutDocs.get(queue)?.push(doc);
+          deferredStudioCutoutCount += 1;
+        }
+        return false;
+      }
+    }
+
     acceptedIds.add(doc.id);
     if (canonical) seenCanonicals.add(canonical);
     if (familyKey) seenFamilyKeys.add(familyKey);
@@ -2221,7 +2314,12 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       const state = queueState.get(queue)!;
       while (state.cursor < state.docs.length) {
         const doc = state.docs[state.cursor++];
-        if (tryAcceptCandidate(doc, queue)) {
+        if (
+          tryAcceptCandidate(doc, queue, {
+            allowStudioCutout: !PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+            recordDeferredStudioCutout: PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+          })
+        ) {
           madeProgress = true;
           break;
         }
@@ -2235,7 +2333,28 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
     const state = queueState.get(queue)!;
     while (state.cursor < state.docs.length && candidateDocs.length < candidateCap) {
       const doc = state.docs[state.cursor++];
-      tryAcceptCandidate(doc, queue);
+      tryAcceptCandidate(doc, queue, {
+        allowStudioCutout: !PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+        recordDeferredStudioCutout: PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+      });
+    }
+  }
+
+  // Contextual-first pass: if we still have room, re-consider deferred studio cutouts.
+  if (
+    PREFER_CONTEXTUAL_SCENE_CANDIDATES &&
+    candidateDocs.length < candidateCap &&
+    deferredStudioCutoutCount > 0
+  ) {
+    for (const queue of BACKFILL_QUEUE_ORDER) {
+      if (candidateDocs.length >= candidateCap) break;
+      const deferredDocs = deferredStudioCutoutDocs.get(queue) || [];
+      for (const doc of deferredDocs) {
+        if (candidateDocs.length >= candidateCap) break;
+        if (tryAcceptCandidate(doc, queue, { allowStudioCutout: true })) {
+          recoveredStudioCutoutCount += 1;
+        }
+      }
     }
   }
 
@@ -2253,7 +2372,7 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       state.cursor = 0;
       while (state.cursor < state.docs.length && candidateDocs.length < candidateCap) {
         const doc = state.docs[state.cursor++];
-        tryAcceptCandidate(doc, queue);
+        tryAcceptCandidate(doc, queue, { allowStudioCutout: true });
       }
     }
     fallbackStage = candidateDocs.length > 0 ? "recycled_seen_items" : "catalog_exhausted";
@@ -2444,6 +2563,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         qualityScoreLookupLimit: QUALITY_SCORE_LOOKUP_LIMIT,
         qualityScoresFound: creativeScoreByItemId.size,
       },
+      scenePreferencePolicy: {
+        contextualFirst: PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+        deferredStudioCutoutCount,
+        recoveredStudioCutoutCount,
+      },
       nearDuplicateShaping: nearDuplicateShaping.stats,
       nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
       sourceDiversityPolicy: {
@@ -2520,6 +2644,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         qualityScoreLookupEnabled: ENABLE_SCORE_QUALITY_GATE,
         qualityScoreLookupLimit: QUALITY_SCORE_LOOKUP_LIMIT,
         qualityScoresFound: creativeScoreByItemId.size,
+        scenePreference: {
+          contextualFirst: PREFER_CONTEXTUAL_SCENE_CANDIDATES,
+          deferredStudioCutoutCount,
+          recoveredStudioCutoutCount,
+        },
         nearDuplicatePhase1Shaping: nearDuplicatePhase1.stats,
         nearDuplicateShaping: nearDuplicateShaping.stats,
         sourceDiversityTopN: SOURCE_DIVERSITY_TOP_N,
@@ -2601,6 +2730,8 @@ export const __deckTestUtils = {
   itemFamilyKey,
   itemSourceKey,
   itemVariantKey,
+  extractItemImageUrls,
+  passesImageDisplayGate,
   passesSoftRepeatQualityGate,
   applyNearDuplicateExplorationPolicy,
   applySourceDiversityPolicy,

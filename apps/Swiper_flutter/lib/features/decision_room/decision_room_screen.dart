@@ -11,6 +11,30 @@ import '../../data/event_tracker.dart';
 import '../../data/locale_provider.dart';
 import '../../l10n/app_strings.dart';
 
+String? _asString(dynamic value) {
+  if (value == null) return null;
+  if (value is String) return value;
+  if (value is num || value is bool) return value.toString();
+  return null;
+}
+
+String _extractImageUrl(dynamic imagesRaw) {
+  if (imagesRaw is! List) return '';
+  for (final entry in imagesRaw) {
+    if (entry is String && entry.trim().isNotEmpty) {
+      return entry.trim();
+    }
+    if (entry is Map) {
+      final map = entry.map((k, v) => MapEntry(k.toString(), v));
+      final url = _asString(map['url'])?.trim();
+      if (url != null && url.isNotEmpty) {
+        return url;
+      }
+    }
+  }
+  return '';
+}
+
 /// Decision Room screen - view and participate in a shared decision room.
 /// Viewing is public; participation (vote/comment) requires authentication.
 class DecisionRoomScreen extends ConsumerStatefulWidget {
@@ -388,10 +412,10 @@ class _DecisionRoomScreenState extends ConsumerState<DecisionRoomScreen> {
                 final item = items[index];
                 final itemId = item['id'] as String;
                 final itemTitle = item['title'] as String? ?? 'Product';
-                final images = (item['images'] as List?)?.cast<String>() ?? [];
-                final imageUrl = images.isNotEmpty ? images.first : '';
-                final voteCountUp = item['voteCountUp'] as int? ?? 0;
-                final voteCountDown = item['voteCountDown'] as int? ?? 0;
+                final imageUrl = _extractImageUrl(item['images']);
+                final voteCountUp = (item['voteCountUp'] as num?)?.toInt() ?? 0;
+                final voteCountDown =
+                    (item['voteCountDown'] as num?)?.toInt() ?? 0;
                 final isSuggested = item['isSuggested'] as bool? ?? false;
                 final isFinalist = finalistIds.contains(itemId);
 

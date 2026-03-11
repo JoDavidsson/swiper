@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
 import '../../data/auth_provider.dart';
@@ -117,6 +118,23 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       'item': {'itemId': item.id},
       'outbound': {'destinationDomain': domain ?? 'unknown'},
     });
+  }
+
+  String _decisionRoomCreateErrorText(Object error, String defaultMessage) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      final responseData = error.response?.data;
+      if (responseData is Map) {
+        final apiError = responseData['error'];
+        if (apiError is String && apiError.trim().isNotEmpty) {
+          return '$defaultMessage: $apiError';
+        }
+      }
+      if (statusCode != null) {
+        return '$defaultMessage (${statusCode.toString()})';
+      }
+    }
+    return '$defaultMessage: $error';
   }
 
   @override
@@ -408,7 +426,8 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${strings.failedToCreateDecisionRoom}: $e')),
+          SnackBar(content: Text(_decisionRoomCreateErrorText(
+              e, strings.failedToCreateDecisionRoom))),
         );
       }
     }
