@@ -93,7 +93,7 @@ Persona aggregation is a **separate process** (scheduled function or pipeline) t
 To prevent the ranker from over-exploiting the same top items (filter bubble), **exploration** is applied after ranking.
 
 - **Strategy**: Sample-from-top-2limit (take top 2×limit by score from the ranked window). Replace roughly `rate × limit` positions in the top list with items sampled from that pool. Configurable rate (e.g. 0–10%). Optional `seed` for reproducible tests.
-- **Config**: `RANKER_EXPLORATION_RATE` (env, default `0.08` in deck API), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
+- **Config**: `RANKER_EXPLORATION_RATE` (env, default `0` in deck API), `RANKER_EXPLORATION_SEED` (optional; when unset, deck uses session-based seed for deterministic exploration per session).
 - **Tests**: With rate 0, output equals ranker order; with fixed seed and rate &gt; 0, output is reproducible.
 
 **Exposure bias:** Items that rank higher get more exposure, hence more right-swipes, hence higher weights. We mitigate with exploration (sample-from-top-2limit), queue-based retrieval, and optional diversity; long-term consider exposure-aware or causal approaches.
@@ -186,7 +186,7 @@ Writes **NDJSON** to `<workspace>/.cursor/debug.log` (entry/exit for each step, 
 
 ## Stress test
 
-From the repo root, run `./scripts/run_stress_test.sh` to generate a larger synthetic DB (5,000 products, 100 users, 30 swipes each), run Jest, and hit the deck API many times. A **human-readable report** is printed and written to [docs/STRESS_TEST_REPORT.md](STRESS_TEST_REPORT.md). See [TESTING_LOCAL.md](TESTING_LOCAL.md) “Stress test” for prerequisites (emulators must be running). To stress the ranker with many more candidates per request (e.g. 1,000–2,000), set `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (e.g. `2000`) in the environment when starting the emulators.
+From the repo root, run `./scripts/run_stress_test.sh` to generate a larger synthetic DB (5,000 products, 100 users, 30 swipes each), run Jest, and hit the deck API many times. A **human-readable report** is printed and written to [docs/STRESS_TEST_REPORT.md](STRESS_TEST_REPORT.md). See [TESTING_LOCAL.md](TESTING_LOCAL.md) “Stress test” for prerequisites (emulators must be running). To stress the ranker with many more candidates per request (e.g. 1,000–2,000), set `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (e.g. `2000`) in the environment when starting the emulators. To increase or reduce how deep scoring goes before final slicing, also set `DECK_RANK_WINDOW_MULTIPLIER` (default `48`).
 
 ---
 
@@ -202,7 +202,7 @@ The ranker is then run with a **rank window** (`rankWindow`, larger than respons
 - `itemIds` (served slate)
 - `variant`, `variantBucket`, `explorationPolicy`
 
-Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` raise fetch and candidate caps for stress testing. When persona signals are available, deck uses `PersonalPlusPersonaRanker`; otherwise it uses `PreferenceWeightsRanker`.
+Optional env vars `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` raise fetch and candidate caps for stress testing. `DECK_RANK_WINDOW_MULTIPLIER` controls score window depth (`rankWindow = max(limit * multiplier, MIN_RANK_WINDOW)` clamped by candidate count). `DECK_RETRIEVAL_DOCS_CACHE_TTL_MS` controls in-memory recency-doc cache TTL for the retrieval stage (default `15000`). When persona signals are available, deck uses `PersonalPlusPersonaRanker`; otherwise it uses `PreferenceWeightsRanker`.
 
 For featured distribution, campaign-backed promoted cards now pass a serve-time eligibility stack before entering the candidate set:
 

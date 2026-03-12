@@ -1,0 +1,5 @@
+config	oracle_metric	likes_metric	probe_rank_window	probe_candidate_count	probe_cache_enabled	probe_cache_hit	latency_count	latency_avg_ms	latency_p95_ms	latency_max_ms
+cap800_cache_off	0.136400	0.000000	480	800	NA	NA	895	739.65	890	1355
+cap800_cache_on	0.146000	0.000000	480	800	true	true	895	159.49	167	1272
+cap1200_cache_off	0.188800	0.001692	480	1200	NA	NA	895	948.95	1068	1564
+cap1200_cache_on	0.188800	0.001692	480	1200	true	true	895	203.56	213	1664

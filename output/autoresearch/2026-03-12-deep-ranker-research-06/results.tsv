@@ -1,0 +1,5 @@
+config	oracle_metric	likes_metric	probe_rank_window	probe_candidate_count	latency_count	latency_avg_ms	latency_p95_ms	latency_max_ms
+cap240_fetch360	0.040800	0.001269	240	240	895	328.11	415	718
+cap400_fetch700	0.073600	0.001269	400	400	895	452.47	630	1170
+cap800_fetch1400	0.138400	0.000000	480	800	895	708.07	887	1300
+cap1200_fetch2000	0.185600	0.001692	480	1200	895	965.19	1245	1845

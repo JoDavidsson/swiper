@@ -1,0 +1,9 @@
+config	oracle_metric	oracle_failed	likes_metric	likes_failed	probe_variant	probe_rank_window	probe_candidate_count	probe_exploration_rate	probe_mmr_enabled	probe_mmr_applied	config_validation
+baseline_default	0.020800	0	0.001269	0	personal_only_multi_queue_personal_exploration_8	120	120	0.08	NA	NA	unexpected_mmr
+no_exploration	0.020800	0	0.002961	0	personal_only_multi_queue_personal	120	120	0	NA	NA	unexpected_mmr
+low_exploration	0.020800	0	0.002961	0	personal_only_multi_queue_personal_exploration_4	120	120	0.04	NA	NA	unexpected_mmr
+high_exploration	0.020000	0	0.001269	0	personal_only_multi_queue_personal_exploration_12	120	120	0.12	NA	NA	unexpected_mmr
+wide_pool_no_exploration	0.190000	0	0.001692	0	personal_only_multi_queue_personal	240	1200	0	NA	NA	unexpected_mmr
+wide_pool_default_exploration	0.190400	0	0.001692	0	personal_only_multi_queue_personal_exploration_8	240	1200	0.08	NA	NA	unexpected_mmr
+wide_pool_mmr95_no_exploration	0.173200	0	0.001692	0	personal_only_multi_queue_personal	240	1200	0	true	true	ok
+wide_pool_mmr95_default_exploration	0.176400	0	0.001692	0	personal_only_multi_queue_personal_exploration_8	240	1200	0.08	true	true	ok

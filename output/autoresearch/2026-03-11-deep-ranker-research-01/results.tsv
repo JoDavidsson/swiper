@@ -1,0 +1,8 @@
+run_id	eval_quality	mmr_lambda	mmr_topn_multiplier	exploration_rate	baseline_cov	mmr_cov	mmr_adaptive_cov	baseline_rel	mmr_rel	mmr_adaptive_rel	baseline_div	mmr_div	mmr_adaptive_div	best_variant	decision
+run_01	exploratory	0.72	4	0.08	0.283333	0.280400	0.279200	2.591566	2.557917	2.538194	0.556917	0.616420	0.612449	baseline	discard_mmr
+run_02	exploratory	0.90	3	0.08	0.284133	0.284800	0.283467	2.586576	2.588346	2.570928	0.557814	0.595263	0.595610	mmr	candidate_mmr
+run_03	exploratory	0.85	2	0.08	0.289867	0.287600	0.285333	2.645275	2.619915	2.593221	0.555491	0.584936	0.585078	baseline	discard_mmr
+run_04	exploratory	0.88	2	0.06	0.288400	0.286133	0.284267	2.627692	2.612093	2.592723	0.552959	0.583698	0.583575	baseline	discard_mmr
+run_07	deterministic	0.90	3	0.08	0.333333	0.333333	0.333333	2.991373	2.991107	2.983348	0.563437	0.597355	0.597521	baseline	keep_mmr_as_flagged_candidate
+run_09	deterministic	0.92	3	0.08	0.333333	0.333333	0.333333	2.991373	2.991236	2.983441	0.563437	0.596044	0.596481	baseline	keep_mmr_as_flagged_candidate
+run_10	deterministic	0.95	3	0.08	0.333333	0.333333	0.333333	2.991373	2.991321	2.983520	0.563437	0.594940	0.595524	baseline	preferred_mmr_candidate

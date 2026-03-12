@@ -29,7 +29,13 @@ const PERSONA_CLUSTERS = [
 ];
 
 function parseArgs() {
-  const args = { users: DEFAULT_USERS, interactionsPerUser: DEFAULT_INTERACTIONS_PER_USER, seed: 42, generateItems: null };
+  const args = {
+    users: DEFAULT_USERS,
+    interactionsPerUser: DEFAULT_INTERACTIONS_PER_USER,
+    seed: 42,
+    generateItems: null,
+    itemPoolLimit: Math.max(1, parseInt(process.env.EVAL_ITEM_POOL_LIMIT || "5000", 10) || 5000),
+  };
   for (let i = 2; i < process.argv.length; i++) {
     if (process.argv[i] === "--users" && process.argv[i + 1]) {
       args.users = Math.max(1, parseInt(process.argv[++i], 10) || DEFAULT_USERS);
@@ -39,6 +45,8 @@ function parseArgs() {
       args.seed = parseInt(process.argv[++i], 10) || 42;
     } else if (process.argv[i] === "--generate-items" && process.argv[i + 1]) {
       args.generateItems = Math.max(1, parseInt(process.argv[++i], 10));
+    } else if (process.argv[i] === "--item-pool-limit" && process.argv[i + 1]) {
+      args.itemPoolLimit = Math.max(1, parseInt(process.argv[++i], 10) || args.itemPoolLimit);
     }
   }
   return args;
@@ -71,14 +79,15 @@ function main() {
 
   const args = parseArgs();
   const totalInteractions = args.users * args.interactionsPerUser;
-  console.log("Config: users=%d, interactionsPerUser=%d, total=%d, seed=%d, generateItems=%s",
-    args.users, args.interactionsPerUser, totalInteractions, args.seed, args.generateItems || "no");
+  console.log("Config: users=%d, interactionsPerUser=%d, total=%d, seed=%d, generateItems=%s, itemPoolLimit=%d",
+    args.users, args.interactionsPerUser, totalInteractions, args.seed, args.generateItems || "no", args.itemPoolLimit);
 
   if (!admin.apps.length) {
     admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || "swiper-95482" });
   }
   const db = admin.firestore();
   const FieldValue = admin.firestore.FieldValue;
+  const FieldPath = admin.firestore.FieldPath;
   const Timestamp = admin.firestore.Timestamp;
 
   const rng = seededRandom(args.seed);
@@ -87,6 +96,88 @@ function main() {
 
   let itemIds = [];
   let itemsById = {};
+
+  async function deleteDocsByFieldPrefix(collectionName, fieldName, prefix) {
+    let deleted = 0;
+    while (true) {
+      const snap = await db
+        .collection(collectionName)
+        .where(fieldName, ">=", prefix)
+        .where(fieldName, "<", `${prefix}\uf8ff`)
+        .limit(BATCH_LIMIT)
+        .get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      for (const doc of snap.docs) {
+        batch.delete(doc.ref);
+        deleted += 1;
+      }
+      await batch.commit();
+    }
+    return deleted;
+  }
+
+  async function deleteDocsByIdPrefix(collectionName, idPrefix) {
+    let deleted = 0;
+    while (true) {
+      const snap = await db
+        .collection(collectionName)
+        .where(FieldPath.documentId(), ">=", idPrefix)
+        .where(FieldPath.documentId(), "<", `${idPrefix}\uf8ff`)
+        .limit(BATCH_LIMIT)
+        .get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      for (const doc of snap.docs) {
+        batch.delete(doc.ref);
+        deleted += 1;
+      }
+      await batch.commit();
+    }
+    return deleted;
+  }
+
+  async function cleanupSyntheticData() {
+    const synthSessionPrefix = "synth_";
+    const synthItemPrefix = "synth_item_";
+
+    console.log("Cleanup: removing prior synthetic records...");
+
+    const deletedSwipes = await deleteDocsByFieldPrefix("swipes", "sessionId", synthSessionPrefix);
+    const deletedLikes = await deleteDocsByFieldPrefix("likes", "sessionId", synthSessionPrefix);
+
+    // Remove synthetic anonSessions and any nested subcollections (likes, preferenceWeights, etc).
+    let deletedSessions = 0;
+    while (true) {
+      const sessionSnap = await db
+        .collection("anonSessions")
+        .where(FieldPath.documentId(), ">=", synthSessionPrefix)
+        .where(FieldPath.documentId(), "<", `${synthSessionPrefix}\uf8ff`)
+        .limit(100)
+        .get();
+      if (sessionSnap.empty) break;
+      for (const doc of sessionSnap.docs) {
+        if (typeof db.recursiveDelete === "function") {
+          // recursiveDelete keeps synthetic runs deterministic across iterations.
+          await db.recursiveDelete(doc.ref);
+        } else {
+          await doc.ref.delete();
+        }
+        deletedSessions += 1;
+      }
+    }
+
+    // Only synthetic items are deleted; real catalog items are untouched.
+    const deletedItems = await deleteDocsByIdPrefix("items", synthItemPrefix);
+
+    console.log(
+      "Cleanup done. swipes=%d likes=%d sessions=%d items=%d",
+      deletedSwipes,
+      deletedLikes,
+      deletedSessions,
+      deletedItems
+    );
+  }
 
   async function loadOrGenerateItems() {
     if (args.generateItems) {
@@ -136,7 +227,7 @@ function main() {
       console.log("Items: %d synthetic items written", written);
       return;
     }
-    const snap = await db.collection("items").where("isActive", "==", true).limit(500).get();
+    const snap = await db.collection("items").where("isActive", "==", true).limit(args.itemPoolLimit).get();
     if (snap.empty) {
       console.error("No items in Firestore. Ingest items first (ingest_sample_feed.sh) or use --generate-items N");
       process.exit(1);
@@ -151,7 +242,10 @@ function main() {
         sizeClass: d_.sizeClass,
       };
     });
-    console.log("Items: loaded %d from Firestore", itemIds.length);
+    console.log("Items: loaded %d active items from Firestore (cap=%d)", itemIds.length, args.itemPoolLimit);
+    if (itemIds.length === args.itemPoolLimit) {
+      console.log("Items: reached cap. Increase --item-pool-limit if you want a larger real catalog sample.");
+    }
   }
 
   async function createSessionsAndWeights() {
@@ -271,6 +365,7 @@ function main() {
   }
 
   (async () => {
+    await cleanupSyntheticData();
     await loadOrGenerateItems();
     const { sessionIds, sessionWeights } = await createSessionsAndWeights();
     const rightSwipes = await generateSwipes(sessionIds, sessionWeights);

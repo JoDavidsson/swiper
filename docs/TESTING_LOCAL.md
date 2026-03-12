@@ -134,7 +134,7 @@ A **stress test** runs a larger synthetic dataset (5,000 products, 100 users, 30
 
 **Report:** The script prints a plain-language summary to the console and writes it to [docs/STRESS_TEST_REPORT.md](STRESS_TEST_REPORT.md). The report explains: how many products and users were generated, how long each phase took, whether all deck requests and Jest tests passed, and what that means.
 
-**Large-candidate ranking:** By default the deck API only fetches and ranks a small number of candidates per request. To stress the ranker with many more candidates (e.g. 1,000–2,000 per request), set `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (e.g. `2000`) in the environment **when you start the emulators**, so the Functions process sees them. Then run `./scripts/run_stress_test.sh` again.
+**Large-candidate ranking:** By default the deck API only fetches and ranks a conservative number of candidates per request. To stress the ranker with many more candidates (e.g. 1,000–2,000 per request), set `DECK_ITEMS_FETCH_LIMIT` and `DECK_CANDIDATE_CAP` (e.g. `2000`) in the environment **when you start the emulators**, so the Functions process sees them. If you also want to score deeper before final slicing, set `DECK_RANK_WINDOW_MULTIPLIER` (default `48`). For repeated high-cap tests, `DECK_RETRIEVAL_DOCS_CACHE_TTL_MS` controls retrieval-doc cache TTL (default `15000`). Then run `./scripts/run_stress_test.sh` again.
 
 ---
 

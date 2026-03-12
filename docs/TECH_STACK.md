@@ -219,9 +219,12 @@ on:
 | `ADMIN_PASSWORD` | Legacy password auth | — |
 | `SUPPLY_ENGINE_URL` | Supply Engine URL | `http://localhost:8081` |
 | `DECK_RESPONSE_LIMIT` | Max items per deck response | `20` |
-| `DECK_ITEMS_FETCH_LIMIT` | Max items fetched for ranking | `500` |
-| `DECK_CANDIDATE_CAP` | Max candidates for ranker | `2000` |
+| `DECK_ITEMS_FETCH_LIMIT` | Max items fetched for ranking | `700` |
+| `DECK_CANDIDATE_CAP` | Max candidates for ranker | `400` |
+| `DECK_RANK_WINDOW_MULTIPLIER` | Score window multiplier (`limit * multiplier`) | `48` |
 | `RANKER_EXPLORATION_RATE` | Exploration sampling rate | `0` |
+| `RANKER_ENABLE_MMR_RERANK` | Enable MMR reranking | `false` |
+| `DECK_RETRIEVAL_DOCS_CACHE_TTL_MS` | Retrieval-doc cache TTL (ms) | `15000` |
 | `RANKER_EXPLORATION_SEED` | Random seed for exploration | — |
 
 ### Supply Engine

@@ -1,7 +1,12 @@
 import { Request } from "firebase-functions/v2/https";
 import { Response } from "express";
 import * as admin from "firebase-admin";
-import { applyExploration, PreferenceWeightsRanker, PersonalPlusPersonaRanker } from "../ranker";
+import {
+  applyExploration,
+  applyMMRReRank,
+  PreferenceWeightsRanker,
+  PersonalPlusPersonaRanker,
+} from "../ranker";
 import type { ItemCandidate, PersonaSignals, SessionContext } from "../ranker";
 import { getPersonaSignals } from "../scheduled/persona_aggregation";
 import {
@@ -13,8 +18,8 @@ import {
 import type { SessionTargetingProfile } from "../targeting/segment_targeting";
 
 const DEFAULT_LIMIT = 30;
-const MIN_ITEMS_FETCH_LIMIT = 240;
-const MIN_CANDIDATE_CAP = 120;
+const MIN_ITEMS_FETCH_LIMIT = 700;
+const MIN_CANDIDATE_CAP = 400;
 const MIN_RANK_WINDOW = 120;
 const MIN_SOURCE_FETCH = 60;
 const MAX_PERSONA_RETRIEVAL_IDS = 120;
@@ -103,6 +108,39 @@ const ENABLE_SCORE_QUALITY_GATE = process.env.ENABLE_SCORE_QUALITY_GATE !== "fal
 const QUALITY_SCORE_LOOKUP_LIMIT = Math.max(
   0,
   parseInt(String(process.env.QUALITY_SCORE_LOOKUP_LIMIT || "120"), 10) || 120
+);
+const ENABLE_MMR_RERANK = process.env.RANKER_ENABLE_MMR_RERANK === "true";
+const RANKER_MMR_LAMBDA = Math.min(
+  1,
+  Math.max(0, parseFloat(String(process.env.RANKER_MMR_LAMBDA || "0.95")) || 0.95)
+);
+const RANKER_MMR_TOP_N_MULTIPLIER = Math.max(
+  1,
+  parseInt(String(process.env.RANKER_MMR_TOP_N_MULTIPLIER || "4"), 10) || 4
+);
+const ENABLE_ADAPTIVE_EXPLORATION = process.env.RANKER_ADAPTIVE_EXPLORATION_ENABLED === "true";
+const ADAPTIVE_EXPLORATION_COLD_BOOST = Math.max(
+  0,
+  parseFloat(String(process.env.RANKER_ADAPTIVE_EXPLORATION_COLD_BOOST || "1.25")) || 1.25
+);
+const ADAPTIVE_EXPLORATION_MIN_RATE = Math.min(
+  0.2,
+  Math.max(0, parseFloat(String(process.env.RANKER_ADAPTIVE_EXPLORATION_MIN_RATE || "0.04")) || 0.04)
+);
+const ADAPTIVE_EXPLORATION_MAX_RATE = Math.min(
+  0.2,
+  Math.max(
+    ADAPTIVE_EXPLORATION_MIN_RATE,
+    parseFloat(String(process.env.RANKER_ADAPTIVE_EXPLORATION_MAX_RATE || "0.16")) || 0.16
+  )
+);
+const DECK_RANK_WINDOW_MULTIPLIER = Math.max(
+  1,
+  parseInt(String(process.env.DECK_RANK_WINDOW_MULTIPLIER || "48"), 10) || 48
+);
+const RETRIEVAL_DOCS_CACHE_TTL_MS = Math.max(
+  0,
+  parseInt(String(process.env.DECK_RETRIEVAL_DOCS_CACHE_TTL_MS ?? "15000"), 10)
 );
 
 const MAX_LIMIT = parseInt(String(process.env.DECK_RESPONSE_LIMIT || "500"), 10) || 500;
@@ -194,6 +232,15 @@ type SourceDiversityStats = {
 type ModelDiversityStats = {
   deferredForModelCap: number;
 };
+
+type RetrievalDocsCacheEntry = {
+  key: string;
+  expiresAtMs: number;
+  freshPromotedDocs: admin.firestore.DocumentSnapshot[];
+  freshCatalogDocs: admin.firestore.DocumentSnapshot[];
+};
+
+let retrievalDocsCache: RetrievalDocsCacheEntry | null = null;
 
 const ONBOARDING_V2_SCENE_SIGNAL_MAP: Record<string, string[]> = {
   calm_minimal: ["minimal", "scandinavian", "modern", "color:white", "color:grey"],
@@ -632,6 +679,23 @@ function getTopPositivePreferenceKeys(weights: Record<string, number>, maxKeys: 
     .map(([key]) => key);
 }
 
+function computePreferenceConfidence(weights: Record<string, number>): number {
+  const positives = Object.values(weights)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0)
+    .sort((a, b) => b - a);
+  if (positives.length === 0) return 0;
+  const sum = positives.reduce((acc, value) => acc + value, 0);
+  if (sum <= 0) return 0;
+  const topShare = positives[0] / sum;
+  return Math.max(0, Math.min(1, topShare));
+}
+
+function deriveAdaptiveExplorationRate(baseRate: number, preferenceConfidence: number): number {
+  if (!ENABLE_ADAPTIVE_EXPLORATION) return baseRate;
+  const boosted = baseRate * (1 + (1 - preferenceConfidence) * ADAPTIVE_EXPLORATION_COLD_BOOST);
+  return Math.max(ADAPTIVE_EXPLORATION_MIN_RATE, Math.min(ADAPTIVE_EXPLORATION_MAX_RATE, boosted));
+}
+
 function preferenceOverlapScore(data: Record<string, unknown> | undefined, preferredKeys: Set<string>): number {
   if (!data || preferredKeys.size === 0) return 0;
 
@@ -759,6 +823,70 @@ async function getDocsByIds(
   if (ids.length === 0) return [];
   const refs = ids.map((id) => db.collection(collectionName).doc(id));
   return db.getAll(...refs);
+}
+
+async function loadRecentSourceDocs(
+  db: admin.firestore.Firestore,
+  deckSurface: string,
+  useGold: boolean,
+  sourceFetchLimit: number,
+  secondaryFetchLimit: number
+): Promise<{
+  freshPromotedDocs: admin.firestore.DocumentSnapshot[];
+  freshCatalogDocs: admin.firestore.DocumentSnapshot[];
+  cacheHit: boolean;
+}> {
+  const cacheKey = `${deckSurface}:${useGold ? "gold" : "organic"}:${sourceFetchLimit}:${secondaryFetchLimit}`;
+  const now = Date.now();
+
+  if (
+    RETRIEVAL_DOCS_CACHE_TTL_MS > 0 &&
+    retrievalDocsCache != null &&
+    retrievalDocsCache.key === cacheKey &&
+    retrievalDocsCache.expiresAtMs > now
+  ) {
+    return {
+      freshPromotedDocs: retrievalDocsCache.freshPromotedDocs,
+      freshCatalogDocs: retrievalDocsCache.freshCatalogDocs,
+      cacheHit: true,
+    };
+  }
+
+  const [goldSnapOrNull, catalogSnap] = await Promise.all([
+    useGold
+      ? db
+          .collection("goldItems")
+          .where("isActive", "==", true)
+          .where("eligibleSurfaces", "array-contains", deckSurface)
+          .orderBy("promotedAt", "desc")
+          .limit(sourceFetchLimit)
+          .get()
+      : Promise.resolve(null),
+    db
+      .collection("items")
+      .where("isActive", "==", true)
+      .orderBy("lastUpdatedAt", "desc")
+      .limit(useGold ? secondaryFetchLimit : sourceFetchLimit)
+      .get(),
+  ]);
+
+  const freshPromotedDocs = goldSnapOrNull?.docs ?? [];
+  const freshCatalogDocs = catalogSnap.docs;
+
+  if (RETRIEVAL_DOCS_CACHE_TTL_MS > 0) {
+    retrievalDocsCache = {
+      key: cacheKey,
+      expiresAtMs: now + RETRIEVAL_DOCS_CACHE_TTL_MS,
+      freshPromotedDocs,
+      freshCatalogDocs,
+    };
+  }
+
+  return {
+    freshPromotedDocs,
+    freshCatalogDocs,
+    cacheHit: false,
+  };
 }
 
 async function loadCreativeHealthScoreByItemId(
@@ -1957,27 +2085,17 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   // The deck surface determines which items are eligible (default: sofas only).
   const deckSurface = (req.query.surface as string) || "swiper_deck_sofas";
   const useGold = process.env.DECK_USE_GOLD !== "false";
-  const [goldSnapOrNull, catalogSnap, activeCampaignTargeting] = await Promise.all([
-    useGold
-      ? db
-          .collection("goldItems")
-          .where("isActive", "==", true)
-          .where("eligibleSurfaces", "array-contains", deckSurface)
-          .orderBy("promotedAt", "desc")
-          .limit(sourceFetchLimit)
-          .get()
-      : Promise.resolve(null),
-    db
-      .collection("items")
-      .where("isActive", "==", true)
-      .orderBy("lastUpdatedAt", "desc")
-      .limit(useGold ? secondaryFetchLimit : itemsFetchLimit)
-      .get(),
-    loadActiveCampaignTargetingContexts(db, Date.now()),
-  ]);
-
-  const freshPromotedDocs = goldSnapOrNull?.docs ?? [];
-  const freshCatalogDocs = catalogSnap.docs;
+  const [{ freshPromotedDocs, freshCatalogDocs, cacheHit: retrievalDocsCacheHit }, activeCampaignTargeting] =
+    await Promise.all([
+      loadRecentSourceDocs(
+        db,
+        deckSurface,
+        useGold,
+        Math.max(sourceFetchLimit, itemsFetchLimit),
+        secondaryFetchLimit
+      ),
+      loadActiveCampaignTargetingContexts(db, Date.now()),
+    ]);
   const interleavedRecentDocs = interleaveDocs([freshPromotedDocs, freshCatalogDocs], itemsFetchLimit);
 
   let personaDocs: admin.firestore.DocumentSnapshot[] = [];
@@ -2385,21 +2503,41 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
   const candidates: ItemCandidate[] = candidateDocs.map((doc) => ({ id: doc.id, ...doc.data() } as ItemCandidate));
   const sessionContext: SessionContext = { preferenceWeights };
 
-  const rankWindow = Math.min(candidates.length, Math.max(limit * 24, MIN_RANK_WINDOW));
+  const rankWindow = Math.min(
+    candidates.length,
+    Math.max(limit * DECK_RANK_WINDOW_MULTIPLIER, MIN_RANK_WINDOW)
+  );
   const rankResult = usePersonaRanker
     ? PersonalPlusPersonaRanker.rank(sessionContext, candidates, { limit: rankWindow }, personaSignals)
     : PreferenceWeightsRanker.rank(sessionContext, candidates, { limit: rankWindow });
 
-  const explorationRate = Math.min(
+  const configuredExplorationRate = Math.min(
     0.2,
-    Math.max(0, parseFloat(String(process.env.RANKER_EXPLORATION_RATE || "0.08")) || 0)
+    Math.max(0, parseFloat(String(process.env.RANKER_EXPLORATION_RATE || "0")) || 0)
+  );
+  const preferenceConfidence = computePreferenceConfidence(preferenceWeights);
+  const explorationRate = deriveAdaptiveExplorationRate(
+    configuredExplorationRate,
+    preferenceConfidence
   );
   const explorationSeed =
     process.env.RANKER_EXPLORATION_SEED != null
       ? parseInt(String(process.env.RANKER_EXPLORATION_SEED), 10)
       : hashSessionId(sessionId);
 
-  const exploredIds = applyExploration(rankResult.itemIds, candidates, {
+  const mmrTopN = Math.min(
+    rankResult.itemIds.length,
+    Math.max(limit, limit * RANKER_MMR_TOP_N_MULTIPLIER)
+  );
+  const mmrApplied = ENABLE_MMR_RERANK && rankResult.itemIds.length > 1 && RANKER_MMR_LAMBDA < 1;
+  const mmrRankedIds = mmrApplied
+    ? applyMMRReRank(rankResult.itemIds, candidates, rankResult.itemScores, {
+        lambda: RANKER_MMR_LAMBDA,
+        topN: mmrTopN,
+      })
+    : rankResult.itemIds;
+
+  const exploredIds = applyExploration(mmrRankedIds, candidates, {
     explorationRate,
     limit,
     seed: explorationSeed,
@@ -2540,11 +2678,30 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       candidateSetId: `${rankResult.runId}:${candidates.length}`,
       candidateCount: candidates.length,
       rankWindow,
+      rankWindowMultiplier: DECK_RANK_WINDOW_MULTIPLIER,
       retrievalQueues: retrievalQueuesUsed,
+      retrievalCache: {
+        enabled: RETRIEVAL_DOCS_CACHE_TTL_MS > 0,
+        hit: retrievalDocsCacheHit,
+        ttlMs: RETRIEVAL_DOCS_CACHE_TTL_MS,
+      },
       itemIds: servedItemIds,
       variant,
       variantBucket,
       explorationPolicy: explorationRate > 0 ? "sample_from_top_2limit" : "none",
+      adaptiveExploration: {
+        enabled: ENABLE_ADAPTIVE_EXPLORATION,
+        configuredRate: configuredExplorationRate,
+        effectiveRate: explorationRate,
+        preferenceConfidence,
+        coldBoost: ADAPTIVE_EXPLORATION_COLD_BOOST,
+      },
+      mmrPolicy: {
+        enabled: ENABLE_MMR_RERANK,
+        applied: mmrApplied,
+        lambda: RANKER_MMR_LAMBDA,
+        topN: mmrTopN,
+      },
       scoreStats,
       sameFamilyTop8Rate,
       styleDistanceTop4Min,
@@ -2621,6 +2778,15 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
       seenItemsExcluded: seenItemIds.size,
       hasPersonaSignals: usePersonaRanker,
       explorationRate,
+      configuredExplorationRate,
+      adaptiveExplorationEnabled: ENABLE_ADAPTIVE_EXPLORATION,
+      preferenceConfidence,
+      mmrRerank: {
+        enabled: ENABLE_MMR_RERANK,
+        applied: mmrApplied,
+        lambda: RANKER_MMR_LAMBDA,
+        topN: mmrTopN,
+      },
       budgetFilter: minPriceFilter != null || maxPriceFilter != null ? { min: minPriceFilter, max: maxPriceFilter } : "none",
       onboardingConstraintMode: onboardingConstraintsMode,
       onboardingMediumConstraintSwipeThreshold: ONBOARDING_MEDIUM_CONSTRAINT_SWIPE_THRESHOLD,
@@ -2631,6 +2797,11 @@ export async function deckGet(req: Request, res: Response): Promise<void> {
         freshPromoted: freshPromotedDocs.length,
         freshCatalog: freshCatalogDocs.length,
         personaById: personaDocs.length,
+      },
+      retrievalCache: {
+        enabled: RETRIEVAL_DOCS_CACHE_TTL_MS > 0,
+        hit: retrievalDocsCacheHit,
+        ttlMs: RETRIEVAL_DOCS_CACHE_TTL_MS,
       },
       diversityGuards: {
         universalFamilyDedupeTopN: UNIVERSAL_FAMILY_DEDUPE_TOP_N,

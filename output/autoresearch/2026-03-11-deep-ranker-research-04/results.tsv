@@ -1,0 +1,8 @@
+config	oracle_metric	oracle_failed	likes_metric	likes_failed	probe_variant	probe_rank_window	probe_rank_window_multiplier	probe_candidate_count	probe_exploration_rate	probe_mmr_enabled	probe_mmr_applied
+wide_win12_exp0	0.188800	0	0.001692	0	personal_only_multi_queue_personal	240	NA	1200	0	false	false
+wide_win24_exp0	0.190000	0	0.001692	0	personal_only_multi_queue_personal	240	NA	1200	0	false	false
+wide_win36_exp0	0.188800	0	0.001692	0	personal_only_multi_queue_personal	240	NA	1200	0	false	false
+wide_win48_exp0	0.189600	0	0.001692	0	personal_only_multi_queue_personal	240	NA	1200	0	false	false
+wide_win72_exp0	0.184800	0	0.001692	0	personal_only_multi_queue_personal	240	NA	1200	0	false	false
+wide_win24_exp8	0.185200	0	0.001692	0	personal_only_multi_queue_personal_exploration_8	240	NA	1200	0.08	false	false
+wide_win48_exp8	0.188400	0	0.001692	0	personal_only_multi_queue_personal_exploration_8	240	NA	1200	0.08	false	false
