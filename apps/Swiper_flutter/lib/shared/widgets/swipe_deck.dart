@@ -231,6 +231,7 @@ class _SwipeDeckState extends State<SwipeDeck> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings(Localizations.localeOf(context));
     if (widget.items.isEmpty) {
       return _EmptyDeckWidget(
         hasFiltersApplied: widget.hasFiltersApplied,
@@ -331,7 +332,7 @@ class _SwipeDeckState extends State<SwipeDeck> {
                     _DeckActionButton(
                       icon: Icons.close_rounded,
                       color: AppTheme.negativeDislike,
-                      tooltip: 'Pass',
+                      tooltip: strings.skip,
                       onPressed: _isDeckAnimating
                           ? null
                           : () => _triggerButtonSwipe('left'),
@@ -339,16 +340,18 @@ class _SwipeDeckState extends State<SwipeDeck> {
                     _DeckActionButton(
                       icon: Icons.info_outline_rounded,
                       color: AppTheme.secondaryAction,
-                      tooltip: 'Details',
+                      tooltip: strings.details,
                       onPressed: _isDeckAnimating ? null : _onTapDetail,
                     ),
-                    _DeckActionButton(
-                      icon: Icons.favorite_rounded,
-                      color: AppTheme.positiveLike,
-                      tooltip: 'Save',
-                      onPressed: _isDeckAnimating
-                          ? null
-                          : () => _triggerButtonSwipe('right'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DeckPrimaryActionButton(
+                        icon: Icons.favorite_rounded,
+                        label: strings.save,
+                        onPressed: _isDeckAnimating
+                            ? null
+                            : () => _triggerButtonSwipe('right'),
+                      ),
                     ),
                   ],
                 ),
@@ -358,6 +361,7 @@ class _SwipeDeckState extends State<SwipeDeck> {
                   left: 18,
                   top: -18,
                   child: _UndoActionButton(
+                    tooltip: strings.undo,
                     onPressed: _isDeckAnimating
                         ? null
                         : () {
@@ -401,26 +405,84 @@ class _DeckActionButtonState extends State<_DeckActionButton> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
-    return GestureDetector(
-      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-      onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
-      child: AnimatedScale(
-        scale: _pressed ? 0.88 : 1,
-        duration: const Duration(milliseconds: 130),
-        curve: Curves.easeOutCubic,
-        child: Material(
-          color: widget.color.withValues(alpha: enabled ? 0.15 : 0.08),
-          shape: const CircleBorder(),
-          child: IconButton(
-            icon: Icon(
-              widget.icon,
-              size: 30,
-              color: enabled ? widget.color : AppTheme.textCaption,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.tooltip,
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+        onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+        child: AnimatedScale(
+          scale: _pressed ? 0.88 : 1,
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOutCubic,
+          child: Material(
+            color: widget.color.withValues(alpha: enabled ? 0.15 : 0.08),
+            shape: const CircleBorder(),
+            child: IconButton(
+              icon: Icon(
+                widget.icon,
+                size: 30,
+                color: enabled ? widget.color : AppTheme.textCaption,
+              ),
+              tooltip: widget.tooltip,
+              onPressed: widget.onPressed,
+              splashRadius: 28,
             ),
-            tooltip: widget.tooltip,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeckPrimaryActionButton extends StatefulWidget {
+  const _DeckPrimaryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_DeckPrimaryActionButton> createState() =>
+      _DeckPrimaryActionButtonState();
+}
+
+class _DeckPrimaryActionButtonState extends State<_DeckPrimaryActionButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.label,
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+        onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+        child: AnimatedScale(
+          scale: _pressed ? 0.97 : 1,
+          duration: const Duration(milliseconds: 130),
+          curve: Curves.easeOutCubic,
+          child: FilledButton.icon(
             onPressed: widget.onPressed,
-            splashRadius: 28,
+            icon: Icon(widget.icon, size: 20),
+            label: Text(widget.label),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.positiveLike,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusChip),
+              ),
+            ),
           ),
         ),
       ),
@@ -429,23 +491,32 @@ class _DeckActionButtonState extends State<_DeckActionButton> {
 }
 
 class _UndoActionButton extends StatelessWidget {
-  const _UndoActionButton({required this.onPressed});
+  const _UndoActionButton({
+    required this.onPressed,
+    required this.tooltip,
+  });
 
   final VoidCallback? onPressed;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.filledTonal(
-      icon: Icon(
-        Icons.undo_rounded,
-        color:
-            onPressed != null ? AppTheme.textSecondary : AppTheme.textCaption,
-      ),
-      tooltip: 'Undo',
-      onPressed: onPressed,
-      style: IconButton.styleFrom(
-        backgroundColor: AppTheme.surface.withValues(alpha: 0.95),
-        side: BorderSide(color: AppTheme.outlineSoft.withValues(alpha: 0.8)),
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: tooltip,
+      child: IconButton.filledTonal(
+        icon: Icon(
+          Icons.undo_rounded,
+          color:
+              onPressed != null ? AppTheme.textSecondary : AppTheme.textCaption,
+        ),
+        tooltip: tooltip,
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          backgroundColor: AppTheme.surface.withValues(alpha: 0.95),
+          side: BorderSide(color: AppTheme.outlineSoft.withValues(alpha: 0.8)),
+        ),
       ),
     );
   }

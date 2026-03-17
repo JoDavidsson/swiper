@@ -2,7 +2,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../data/deck_provider.dart';
@@ -163,19 +162,6 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
       title: AppConstants.appName,
       showBottomNav: true,
       transparentAppBar: true,
-      onShareTap: () {
-        final tracker = ref.read(eventTrackerProvider);
-        tracker.track('shortlist_share', {
-          'share': {'method': 'native_share', 'linkType': 'unknown'},
-        });
-        final base = Uri.base;
-        final shareUrl =
-            base.hasAuthority ? '${base.origin}/deck' : 'https://swiper.app';
-        Share.share(
-          '${AppConstants.appName} - ${AppConstants.tagline}\n$shareUrl',
-          subject: AppConstants.appName,
-        );
-      },
       leading: Padding(
         padding: const EdgeInsets.only(left: 8),
         child: _DeckHeaderButton(
@@ -1020,23 +1006,7 @@ class _DeckScreenState extends ConsumerState<DeckScreen> {
           Navigator.of(context).pop(<String, dynamic>{});
         },
       ),
-    ).then((result) {
-      // Auto-apply filters when the sheet is dismissed (swiped down / tapped outside)
-      // without explicitly pressing Apply or Clear. result is null in that case.
-      if (result == null) {
-        final currentFilters = filterSheetKey.currentState?.selectedFilters;
-        if (currentFilters != null) {
-          final previousFilters = ref.read(deckFiltersProvider);
-          // Only refresh if filters actually changed
-          if (currentFilters.toString() != previousFilters.toString()) {
-            ref.read(deckFiltersProvider.notifier).state =
-                Map<String, dynamic>.from(currentFilters);
-            ref.read(deckItemsProvider.notifier).refresh();
-            _trackFiltersApply(ref, currentFilters);
-          }
-        }
-      }
-    });
+    );
   }
 
   void _trackFiltersApply(WidgetRef ref, Map<String, dynamic> filters) {
@@ -1183,15 +1153,21 @@ class _DeckHeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppTheme.surface.withValues(alpha: 0.88),
-      shape: const CircleBorder(),
-      elevation: 2,
-      shadowColor: Colors.black12,
-      child: IconButton(
-        icon: Icon(icon, size: 20),
-        onPressed: onPressed,
-        tooltip: tooltip,
-        splashRadius: 22,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: Material(
+          color: AppTheme.surface.withValues(alpha: 0.88),
+          shape: const CircleBorder(),
+          elevation: 2,
+          shadowColor: Colors.black12,
+          child: IconButton(
+            icon: Icon(icon, size: 20),
+            onPressed: onPressed,
+            tooltip: tooltip,
+            splashRadius: 22,
+          ),
+        ),
       ),
     );
   }

@@ -22,6 +22,9 @@ class AppStrings {
       'filters': 'Filters',
       'preferences': 'Preferences',
       'swipeHint': 'Swipe right to like, left to skip.',
+      'details': 'Details',
+      'save': 'Save',
+      'undo': 'Undo',
       'likes': 'Likes',
       'compare': 'Compare',
       'deck': 'Deck',
@@ -227,6 +230,9 @@ class AppStrings {
       'filters': 'Filter',
       'preferences': 'Preferenser',
       'swipeHint': 'Svep höger för att gilla, vänster för att hoppa.',
+      'details': 'Detaljer',
+      'save': 'Spara',
+      'undo': 'Ångra',
       'likes': 'Gillade',
       'compare': 'Jämför',
       'deck': 'Deck',
@@ -447,6 +453,9 @@ class AppStrings {
   String get filters => _t('filters');
   String get preferences => _t('preferences');
   String get swipeHint => _t('swipeHint');
+  String get details => _t('details');
+  String get save => _t('save');
+  String get undo => _t('undo');
   String get likes => _t('likes');
   String get compare => _t('compare');
   String get deck => _t('deck');

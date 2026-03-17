@@ -141,8 +141,9 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
   Widget build(BuildContext context) {
     final strings = ref.watch(appStringsProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted)
+      if (mounted) {
         ref.read(currentSurfaceProvider.notifier).state = {'name': 'likes'};
+      }
     });
     final likesAsync = ref.watch(likesListProvider);
     final sessionId = ref.watch(sessionIdProvider);
@@ -159,19 +160,6 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
     return AppShell(
       title: strings.likes,
       showBottomNav: true,
-      onShareTap: () {
-        final tracker = ref.read(eventTrackerProvider);
-        tracker.track('shortlist_share', {
-          'share': {'method': 'native_share', 'linkType': 'unknown'},
-        });
-        final base = Uri.base;
-        final shareUrl =
-            base.hasAuthority ? '${base.origin}/likes' : 'https://swiper.app';
-        Share.share(
-          'Swiper likes\n$shareUrl',
-          subject: 'Swiper',
-        );
-      },
       body: likesAsync.when(
         data: (items) {
           if (items.isEmpty) {
@@ -179,7 +167,7 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.favorite_border,
+                  const Icon(Icons.favorite_border,
                       size: 64, color: AppTheme.textCaption),
                   const SizedBox(height: AppTheme.spacingUnit),
                   Text(strings.noLikesYet,
@@ -426,8 +414,9 @@ class _LikesScreenState extends ConsumerState<LikesScreen> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_decisionRoomCreateErrorText(
-              e, strings.failedToCreateDecisionRoom))),
+          SnackBar(
+              content: Text(_decisionRoomCreateErrorText(
+                  e, strings.failedToCreateDecisionRoom))),
         );
       }
     }
@@ -475,13 +464,13 @@ class _LikeCard extends StatelessWidget {
                         child: const Center(
                             child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
-                      errorWidget: (_, __, ___) => Icon(
+                      errorWidget: (_, __, ___) => const Icon(
                           Icons.image_not_supported,
                           color: AppTheme.textCaption),
                     )
                   : Container(
                       color: AppTheme.background,
-                      child: Icon(Icons.image_not_supported,
+                      child: const Icon(Icons.image_not_supported,
                           color: AppTheme.textCaption)),
             ),
             Padding(
@@ -559,13 +548,13 @@ class _LikeListTile extends StatelessWidget {
                         ),
                         errorWidget: (_, __, ___) => Container(
                           color: AppTheme.background,
-                          child: Icon(Icons.image_not_supported,
+                          child: const Icon(Icons.image_not_supported,
                               color: AppTheme.textCaption),
                         ),
                       )
                     : Container(
                         color: AppTheme.background,
-                        child: Icon(Icons.image_not_supported,
+                        child: const Icon(Icons.image_not_supported,
                             color: AppTheme.textCaption),
                       ),
               ),
