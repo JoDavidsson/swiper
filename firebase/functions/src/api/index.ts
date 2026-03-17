@@ -24,7 +24,11 @@ import { adminRunsGet, adminRunGet } from "./admin_runs";
 import { adminRunTriggerPost, adminRunBatchPost, adminReExtractImagesPost, adminImageHealthGet, adminExplainGet, adminProxyToSupplyEngine, adminStopCrawlPost } from "./admin_run_trigger";
 import { adminQaGet } from "./admin_qa";
 import { adminItemsGet } from "./admin_items";
-import { requireAdminAuth } from "./admin_auth";
+import {
+  allowLegacyAdminPassword,
+  isLegacyAdminPasswordValid,
+  requireAdminAuth,
+} from "./admin_auth";
 import { onboardingCuratedSofasGet } from "./onboarding_curated";
 import { onboardingPicksPost, onboardingPicksGet } from "./onboarding_picks";
 import { onboardingV2Post, onboardingV2Get } from "./onboarding_v2";
@@ -203,12 +207,14 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
 
     // Admin routes (except verify): require Bearer token + allowlist OR X-Admin-Password (password gate)
     if (path.startsWith("admin/") && !(method === "POST" && path === "admin/verify")) {
-      const adminUser = await requireAdminAuth(req, res);
+      const adminUser = await requireAdminAuth(req);
       const passwordHeader = req.headers["x-admin-password"] as string | undefined;
-      const adminPassword = process.env.ADMIN_PASSWORD || "";
-      const passwordOk = adminPassword && passwordHeader === adminPassword;
+      const passwordOk = allowLegacyAdminPassword() && isLegacyAdminPasswordValid(passwordHeader);
       if (!adminUser && !passwordOk) {
-        res.status(401).json({ error: "Unauthorized. Use admin password or Sign in with Google." });
+        const message = allowLegacyAdminPassword() ?
+          "Unauthorized. Use admin password or Sign in with Google." :
+          "Unauthorized. Use Sign in with Google with an allowlisted admin account.";
+        res.status(401).json({ error: message });
         return;
       }
     }

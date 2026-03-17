@@ -1,5 +1,5 @@
 import { Request } from "express";
-import * as admin from "firebase-admin";
+import { isLegacyAdminPasswordValid, requireAdminAuth } from "../api/admin_auth";
 
 /**
  * Check if the request is from an admin user.
@@ -7,27 +7,9 @@ import * as admin from "firebase-admin";
  * Returns true if admin, false otherwise.
  */
 export async function requireAdmin(req: Request): Promise<boolean> {
-  // Check X-Admin-Password header first
   const passwordHeader = req.headers["x-admin-password"] as string | undefined;
-  const adminPassword = process.env.ADMIN_PASSWORD || "";
-  if (adminPassword && passwordHeader === adminPassword) {
-    return true;
-  }
+  if (isLegacyAdminPasswordValid(passwordHeader)) return true;
 
-  // Check Firebase Auth token + allowlist
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return false;
-
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    const email = decoded.email as string | undefined;
-    if (!email) return false;
-
-    const db = admin.firestore();
-    const allowlistDoc = await db.collection("adminAllowlist").doc(email).get();
-    return allowlistDoc.exists;
-  } catch {
-    return false;
-  }
+  const adminUser = await requireAdminAuth(req);
+  return adminUser != null;
 }

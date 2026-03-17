@@ -455,13 +455,16 @@ class ApiClient {
 
   /// Admin login: verify password against backend (legacy). For full access use Sign in with Google.
   Future<bool> adminLogin(String password) async {
-    try {
-      final r = await _dio.post<Map<String, dynamic>>('/api/admin/verify',
-          data: {'password': password});
-      return r.data?['ok'] as bool? ?? false;
-    } catch (_) {
-      return false;
+    final r = await _dio.post<Map<String, dynamic>>('/api/admin/verify',
+        data: {'password': password});
+    final ok = r.data?['ok'] as bool? ?? false;
+    if (ok) return true;
+
+    final error = r.data?['error'] as String?;
+    if (error != null && error.isNotEmpty) {
+      throw Exception(error);
     }
+    return false;
   }
 
   /// Admin verify with Firebase ID token (Bearer). Add your email to Firestore adminAllowlist.

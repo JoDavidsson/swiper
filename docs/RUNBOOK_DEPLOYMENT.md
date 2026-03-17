@@ -15,6 +15,8 @@ One-command staging deploy (builds Flutter web + Functions, then deploys):
 ./scripts/deploy_staging.sh
 ```
 
+The script derives the active Firebase project from `firebase use --json`, builds Flutter web with `API_BASE_URL=https://<project>.web.app`, and forwards `GOOGLE_SIGN_IN_WEB_CLIENT_ID` / `APP_VERSION` if those env vars are set.
+
 Or manually:
 
 ```bash
@@ -50,14 +52,12 @@ gcloud run deploy swiper-supply-engine --image gcr.io/<project>/supply-engine ..
 
 ## Secrets / env
 
-- **Functions**: `ADMIN_PASSWORD` (legacy; optional), `SUPPLY_ENGINE_URL` (Cloud Run URL). Set in Firebase Console or `firebase functions:config:set`.
+- **Functions**: `SUPPLY_ENGINE_URL` (Cloud Run URL). `ADMIN_PASSWORD` is optional legacy fallback; if you intentionally need hosted password-based admin access, set `ALLOW_LEGACY_ADMIN_PASSWORD=true` as well.
 - **Supply Engine**: `GOOGLE_APPLICATION_CREDENTIALS` or service account in Secret Manager; `SOURCES_JSON` or load from Firestore later.
 
 ## Set up full admin access
 
-**Current:** Admin uses **password only** (no Google Sign-In). Set `ADMIN_PASSWORD` in `.env` or Functions config; open `/admin`, enter the password, and you get full access (dashboard, sources, runs, items, import, QA). The backend accepts either a Bearer token (Google + allowlist) or the `X-Admin-Password` header matching `ADMIN_PASSWORD`.
-
-**Optional (paused):** To use Sign in with Google later, do the steps below.
+**Current:** Hosted admin access should use **Google Sign-In + `adminAllowlist`**. Open `/admin`, click **Sign in with Google**, and use an allowlisted account. Password login is intended for emulator/dev by default; hosted password login only works if `ALLOW_LEGACY_ADMIN_PASSWORD=true` is explicitly set alongside `ADMIN_PASSWORD`.
 
 ### 1. Enable Google sign-in (Firebase Console)
 
@@ -79,9 +79,11 @@ The Flutter web app needs an **OAuth 2.0 Web client ID** or the Google Sign-In b
    flutter run -d chrome --dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
    ```
    Example: `flutter run -d chrome --dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=503757220152-xxxx.apps.googleusercontent.com`
-6. For production build:
+6. For hosted build:
    ```bash
-   flutter build web --dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+   flutter build web \
+     --dart-define=API_BASE_URL=https://YOUR_PROJECT_ID.web.app \
+     --dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
    ```
 7. **Authorized URIs (required to fix redirect_uri_mismatch):** In Google Cloud Console, open that OAuth 2.0 Web client and add:
    - **Authorized JavaScript origins:**  
@@ -147,12 +149,11 @@ Run through this checklist after deploying to confirm the app works end-to-end:
 5. **Likes** – Swipe right on an item; open menu → Likes; item appears.
 6. **Go redirect** – From detail, tap "View on site"; redirect to outbound URL with UTM (or placeholder). Check network for 302 from `/go/:itemId`.
 7. **Data & Privacy** – Open menu → Data & Privacy; screen loads and switch works.
-8. **Admin** – Open `/admin`; log in with ADMIN_PASSWORD; dashboard and Sources/Runs/Items/Import/QA load without 500s.
+8. **Admin** – Open `/admin`; sign in with Google using an allowlisted account; dashboard and Sources/Runs/Items/Import/QA load without 500s.
 9. **Shared shortlist** – Create shortlist from Likes (share); open `/s/:token` in new tab; shortlist page loads.
 
 ## Data retention
 
-- **events_v1**: Retention **24 months** (see [PRIVACY_GDPR.md](PRIVACY_GDPR.md)). Enforce by either:
-  - **Firestore TTL**: If your project supports TTL policies, set a TTL on the `events_v1` collection so documents expire 24 months after `createdAtServer`.
-  - **Scheduled job**: Run a scheduled function or script that deletes (or anonymizes) events_v1 documents where `createdAtServer` is older than 24 months. Document the script path and schedule here when implemented.
+- **events_v1**: Retention **24 months** (see [PRIVACY_GDPR.md](PRIVACY_GDPR.md)). Implemented via scheduled Functions job `cleanupAnalyticsEvents`, which deletes docs older than `EVENTS_V1_RETENTION_DAYS` (default `730`) based on `createdAtServer`.
+- **Optional TTL**: If your project supports Firestore TTL and you prefer managed expiry, you can also configure TTL on `createdAtServer`.
 - **Other collections**: swipes, likes, anonSessions, etc. – retention policy to be defined; export/deletion stubs are in PRIVACY_GDPR.

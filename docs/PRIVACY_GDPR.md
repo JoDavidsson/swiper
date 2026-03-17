@@ -4,4 +4,4 @@
 - **Events**: No PII in analytics; sessionId opaque.
 - **Export**: Stub UI; API shape GET /api/me/export (auth) returning session, swipes, likes, shortlists.
 - **Deletion**: Stub UI; API shape POST /api/me/delete (auth) deleting session and linked data; events may be anonymized.
-- **Retention**: Analytics events (events_v1): **24 months**. Documented in runbook; enforced by Firestore TTL (when configured) or by scheduled purge job. See [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) “Data retention”.
+- **Retention**: Analytics events (`events_v1`): **24 months**. Enforced by scheduled Functions job `cleanupAnalyticsEvents` using `createdAtServer` (default `EVENTS_V1_RETENTION_DAYS=730`). Firestore TTL can be added as an optional managed alternative. See [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) “Data retention”.

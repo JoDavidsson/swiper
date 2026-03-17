@@ -3,6 +3,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { apiHandler } from "./api";
 import { goHandler } from "./go";
+import { cleanupAnalyticsEvents } from "./scheduled/analytics_retention";
 import { computePersonaSignals } from "./scheduled/persona_aggregation";
 import { calculateConfidenceScores } from "./scheduled/confidence_score";
 
@@ -24,3 +25,6 @@ export { computePersonaSignals };
 
 // Scheduled function for confidence score calculation (hourly)
 export { calculateConfidenceScores };
+
+// Scheduled cleanup for analytics retention.
+export { cleanupAnalyticsEvents };

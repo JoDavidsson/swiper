@@ -17,7 +17,7 @@ Outcome-focused goals (order is suggested; reorder as needed):
 1. **Staging / first real deploy** – Deploy app + API to live Firebase once; run post-deploy smoke from [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md). *Done: [scripts/deploy_staging.sh](../scripts/deploy_staging.sh), runbook updated.*
 2. **Real supply** – At least one non-sample source (CSV/JSON/URL) in admin, ingested into Firestore; deck shows real items. *Done: [config/sources.json](../config/sources.json) has sample_feed + demo_feed (JSON); runbook updated.*
 3. **Language / locale** – Unblock "Swedish / English – coming soon" in profile (e.g. app locale switch or i18n skeleton) so we can use locale in recommendations. *Done: [lib/l10n/app_strings.dart](../apps/Swiper_flutter/lib/l10n/app_strings.dart), locale_provider, profile Language sheet, app-localised strings.*
-4. **Admin auth** – Replace password gate with Firebase Auth allowlist (see [ASSUMPTIONS.md](ASSUMPTIONS.md), [DECISIONS.md](DECISIONS.md)). *Done: Firebase Auth + adminAllowlist; Sign in with Google on admin login; legacy password for verify only; [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) and [SECURITY.md](SECURITY.md) updated.*
+4. **Admin auth** – Replace password gate with Firebase Auth allowlist (see [ASSUMPTIONS.md](ASSUMPTIONS.md), [DECISIONS.md](DECISIONS.md)). *Done: Firebase Auth + adminAllowlist; Sign in with Google on admin login; legacy password fallback is emulator-only by default and must be explicitly re-enabled for hosted environments; [RUNBOOK_DEPLOYMENT.md](RUNBOOK_DEPLOYMENT.md) and [SECURITY.md](SECURITY.md) updated.*
 5. **SSO / social login (optional)** – Optional connection to Instagram/Facebook for personalised feed; keep anonymous flow default. *Done: Data & Privacy "Connect social accounts" tappable with "Coming soon" dialog.*
 6. **Swipe-first UX refresh** – Launch into deck, one-time swipe hint, hamburger menu, no bottom nav. *Done.*
 
@@ -27,7 +27,6 @@ Outcome-focused goals (order is suggested; reorder as needed):
 
 Prioritised list (merge of EVENT_TRACKING, ASSUMPTIONS, DECISIONS; no duplicates):
 
-- **Admin auth hardening** – Remove legacy `X-Admin-Password` fallback in production and enforce allowlist-based Google auth only.
 - **SSO / social login** – Optional connection to Instagram, Facebook, etc. for personalised feed; anonymous remains default.
 - **Optional user auth** – Signup / login for users later; anonymous-first stays.
 - **Supply Engine: sources from Firestore** – Load sources from Firestore instead of config JSON. *Done: `services/supply_engine/app/sources.py` prefers Firestore `sources` and falls back to config.*

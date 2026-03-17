@@ -23,10 +23,10 @@
 
 ### C) Admin password (for admin console)
 
-- **What:** A password you choose for the admin login (MVP password gate).  
+- **What:** A legacy password fallback for admin login. Hosted admin should use Google Sign-In + Firestore `adminAllowlist`; password login is mainly for local/emulator use unless you explicitly enable it in production.  
 - **Where to add it:**  
   - **Local:** In **`.env`** as `ADMIN_PASSWORD=your-secure-password`.  
-  - **Production:** In Firebase Functions config (e.g. `firebase functions:config:set admin.password "your-password"`) or in your deployment env (see runbook).
+  - **Production:** Only if you intentionally want hosted password fallback, set both `ADMIN_PASSWORD` and `ALLOW_LEGACY_ADMIN_PASSWORD=true` in your deployment env (see runbook).
 
 ---
 
@@ -39,7 +39,9 @@ Create a **`.env`** file in the **repo root** (copy from `.env.example`). Only t
 | Firebase project | (used by `firebase use` and Flutter; no env var required) | — |
 | Service account key path | `GOOGLE_APPLICATION_CREDENTIALS` | `/Users/you/keys/swiper-firebase-adminsdk.json` |
 | Admin password | `ADMIN_PASSWORD` | `your-admin-password` |
-| API base URL (Flutter, if not using emulator) | `API_BASE_URL` | `https://europe-west1-YOUR_PROJECT.cloudfunctions.net` |
+| Legacy password fallback toggle | `ALLOW_LEGACY_ADMIN_PASSWORD` | `true` |
+| Google Sign-In web client ID | `GOOGLE_SIGN_IN_WEB_CLIENT_ID` | `123456789-xxx.apps.googleusercontent.com` |
+| API base URL (Flutter, if not using emulator) | `API_BASE_URL` | `https://YOUR_PROJECT.web.app` |
 | Supply Engine URL (production) | `SUPPLY_ENGINE_URL` | `https://swiper-supply-engine-xxx.run.app` |
 
 **Example `.env` (local, real Firebase project):**
@@ -51,8 +53,14 @@ GOOGLE_APPLICATION_CREDENTIALS=/Users/johannesdavidsson/keys/swiper-firebase-adm
 # Admin console password
 ADMIN_PASSWORD=your-secure-password
 
+# Enable hosted password fallback only if you intentionally need it.
+# ALLOW_LEGACY_ADMIN_PASSWORD=true
+
+# Required for Google Sign-In on Flutter web
+# GOOGLE_SIGN_IN_WEB_CLIENT_ID=123456789-xxx.apps.googleusercontent.com
+
 # Flutter – only if app talks to deployed Functions (not emulator)
-# API_BASE_URL=https://europe-west1-YOUR_PROJECT_ID.cloudfunctions.net
+# API_BASE_URL=https://YOUR_PROJECT_ID.web.app
 
 # Supply Engine – only for production / deployed Functions
 # SUPPLY_ENGINE_URL=https://swiper-supply-engine-xxx.run.app
@@ -129,7 +137,7 @@ git push -u origin main
 
 - [ ] Firebase project created and Project ID noted.
 - [ ] Service account key downloaded; path set in **`.env`** as `GOOGLE_APPLICATION_CREDENTIALS`.
-- [ ] **`.env`** created from `.env.example` with `ADMIN_PASSWORD` (and optionally `API_BASE_URL` / `SUPPLY_ENGINE_URL` when you deploy).
+- [ ] **`.env`** created from `.env.example` with `ADMIN_PASSWORD` for local fallback, and `GOOGLE_SIGN_IN_WEB_CLIENT_ID` if you want hosted admin login on web.
 - [ ] `firebase use YOUR_PROJECT_ID` and `flutterfire configure` run once.
 - [ ] (Later) Enable Cloud Run in the same GCP project when you deploy the Supply Engine; no extra signup.
 

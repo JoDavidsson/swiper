@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../core/google_sign_in_config.dart';
 import 'session_provider.dart';
 import 'deck_provider.dart';
 
@@ -154,6 +155,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.unknown, error: null);
     try {
       final googleSignIn = GoogleSignIn(
+        clientId: hasGoogleSignInWebClientId ? kGoogleSignInWebClientId : null,
         scopes: ['email', 'profile'],
       );
       final googleUser = await googleSignIn.signIn();
