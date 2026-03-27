@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Full Mio ingestion - extracts and writes all products to Firestore.
+Full Mio ingestion - extracts and writes all products to Firestore in batches.
 Uses GOOGLE_APPLICATION_CREDENTIALS env var for auth.
 """
 import argparse
-import asyncio
 import os
 import sys
 import time
-import json
+import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
@@ -16,8 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.firestore_client import (
     get_firestore_client, create_run, update_run, write_items,
-    upsert_crawl_url, record_extraction_failure, write_product_snapshot,
-    upsert_metrics_daily,
+    upsert_crawl_url, upsert_metrics_daily,
 )
 from app.http.fetcher import PoliteFetcher, FetchError
 from app.extractor.cascade import extract_product_from_html
@@ -25,9 +23,9 @@ from app.normalization import (
     clean_title_text, clean_description_text,
     infer_color_from_title, infer_size_from_title,
     normalize_color_family, normalize_material,
-    normalize_price_amount, validate_currency,
+    normalize_price_amount,
 )
-from app.monitor.drift import check_drift
+from app.recipes.mio import get_mio_recipe
 
 # ── GCP credentials ────────────────────────────────────────────────────────────
 CREDS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
@@ -42,7 +40,6 @@ MIO_SOURCE = {
     "baseUrl": "https://www.mio.se",
     "rateLimitRps": 1.5,
     "robotsRespect": True,
-    "useBrowserFallback": False,
     "sitemapUrls": [
         "https://www.mio.se/sitemap/sitemap_1774569601726_0.txt",
         "https://www.mio.se/sitemap/sitemap_1774569601726_1.txt",
@@ -64,21 +61,17 @@ MIO_SOURCE = {
         "https://www.mio.se/sitemap/sitemap_1774569601726_17.txt",
         "https://www.mio.se/sitemap/sitemap_1774569601726_18.txt",
     ],
-    "categoryFilter": ["soff", "sofa", "fåtölj", "fatoelj", "divan", "stol", "möbel"],
 }
 
-PRODUCT_PATH_PATTERNS = ["/p/", "-p", "/produkt/", "/vara/", "/artikel/"]
+PRODUCT_PATH_PATTERNS = ["/p/"]
 NON_PRODUCT_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".css", ".js", ".xml", ".txt"]
 
 def is_product_url(url: str) -> bool:
-    """Fast gate: only URLs with a product-like path pattern."""
     if not url:
         return False
     url_lower = url.lower()
-    # Drop non-product extensions
     if any(url_lower.endswith(ext) for ext in NON_PRODUCT_EXTENSIONS):
         return False
-    # Must match at least one product pattern
     return any(pat in url_lower for pat in PRODUCT_PATH_PATTERNS)
 
 def _utc_now_iso() -> str:
@@ -86,15 +79,6 @@ def _utc_now_iso() -> str:
 
 def _utc_date() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-def progress_bar(current, total, prefix="Progress", bar_len=30):
-    pct = (current / total * 100) if total > 0 else 0
-    filled = int(bar_len * current / total) if total > 0 else 0
-    bar = "█" * filled + "░" * (bar_len - filled)
-    elapsed = time.time()
-    print(f"\r[{bar}] {current}/{total} ({pct:.0f}%) {prefix}", end="", flush=True)
-    if current >= total:
-        print()  # newline when done
 
 def collect_sitemap_urls(fetcher: PoliteFetcher, sitemap_urls: list[str]) -> list[str]:
     """Fetch all sitemaps and collect product-candidate URLs."""
@@ -106,23 +90,21 @@ def collect_sitemap_urls(fetcher: PoliteFetcher, sitemap_urls: list[str]) -> lis
             all_urls.extend(lines)
         except Exception as e:
             print(f"  [sitemap error] {sm_url}: {e}")
-    
-    # Dedupe
+
     seen = set()
     deduped = []
     for u in all_urls:
         if u not in seen:
             seen.add(u)
             deduped.append(u)
-    
-    # Filter to product URLs
+
     product_urls = [u for u in deduped if is_product_url(u)]
     print(f"\n  Collected {len(deduped)} total URLs, {len(product_urls)} product candidates")
     return product_urls
 
 def extract_one(args) -> dict | None:
     """Extract a single product from a URL. Returns item dict or None."""
-    url, source_id = args
+    url, source_id, recipe = args
     fetcher = PoliteFetcher(user_agent="SwiperBot/0.1 (contact: johannes@branchandleaf.se)")
     try:
         r = fetcher.fetch(url, base_url="https://www.mio.se", robots_respect=True, rate_limit_rps=1.5)
@@ -133,13 +115,12 @@ def extract_one(args) -> dict | None:
             final_url=r.final_url,
             html=r.text,
             extracted_at_iso=extracted_at,
+            recipe=recipe,
         )
         if not product or not product.title:
             return None
-        
-        # Build item dict
+
         item = {
-            "id": None,  # Let firestore_client assign
             "sourceId": source_id,
             "sourceUrl": url,
             "canonicalUrl": getattr(product, 'canonical_url', url) or url,
@@ -150,46 +131,40 @@ def extract_one(args) -> dict | None:
             "priceAmount": getattr(product, 'price_amount', None),
             "priceCurrency": getattr(product, 'price_currency', None),
             "priceRaw": getattr(product, 'price_raw', None),
-            "images": getattr(product, 'images', []) or [],
-            "dimensionsRaw": getattr(product, 'dimensions_raw', None),
-            "materialRaw": getattr(product, 'material_raw', None),
-            "colorRaw": getattr(product, 'color_raw', None),
+            "images": [{"url": u, "alt": product.title[:200]} for u in (product.images or []) if isinstance(u, str) and u],
+            "dimensionsCm": getattr(product, 'dimensions_raw', None),
+            "material": normalize_material(getattr(product, 'material_raw', None)),
+            "colorFamily": normalize_color_family(getattr(product, 'color_raw', None)),
             "completenessScore": getattr(product, 'completeness_score', 0.0),
             "firstSeenAt": extracted_at,
             "lastSeenAt": extracted_at,
             "lastUpdatedAt": extracted_at,
             "isActive": True,
+            "sourceType": "crawl",
         }
-        
-        # Normalize
-        if item.get("colorRaw"):
-            item["colorFamily"] = normalize_color_family(item["colorRaw"])
-        if item.get("materialRaw"):
-            item["materialNormalized"] = normalize_material(item["materialRaw"])
-        if item.get("title"):
-            item["colorInferred"] = infer_color_from_title(item["title"])
-            item["sizeInferred"] = infer_size_from_title(item["title"])
-        
         return item
-    except FetchError as e:
+    except FetchError:
         return None
-    except Exception as e:
+    except Exception:
         return None
     finally:
         fetcher.close()
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch-size", type=int, default=50, help="Concurrent workers")
+    parser.add_argument("--batch-size", type=int, default=30, help="Concurrent workers")
+    parser.add_argument("--write-batch-size", type=int, default=200, help="Firestore write batch size")
     parser.add_argument("--max-urls", type=int, default=0, help="Max URLs to process (0=all)")
     parser.add_argument("--dry-run", action="store_true", help="Extract only, skip Firestore write")
     args = parser.parse_args()
 
     source_id = MIO_SOURCE["id"]
     batch_size = args.batch_size
+    write_batch_size = args.write_batch_size
+    max_urls = args.max_urls or float('inf')
 
     print("=" * 60)
-    print("  MIO FULL INGESTION")
+    print("  MIO FULL INGESTION (batch writer)")
     print("=" * 60)
 
     # ── Initialize Firestore ──────────────────────────────────────────────
@@ -209,102 +184,117 @@ def run():
 
     if args.max_urls > 0:
         product_urls = product_urls[:args.max_urls]
-    
+
     print(f"  Total to process: {len(product_urls)}")
 
     if not product_urls:
         update_run(db, run_id, "failed", {}, "No product URLs found")
-        print("\n[FAIL] No product URLs found in sitemaps")
         return
 
-    # ── Extract in batches ─────────────────────────────────────────────────
-    print(f"\n[4] Extracting products ({batch_size} concurrent workers)...")
-    all_items = []
-    failed_urls = []
+    # ── Get Mio recipe ─────────────────────────────────────────────────────
+    recipe = get_mio_recipe()
+    print(f"\n[4] Extracting with recipe: {recipe['recipeId']} v{recipe['version']}")
+
+    # ── Extract in batches, write incrementally ────────────────────────────
+    all_items: list = []
+    failed_urls: list = []
+    total_upserted = 0
+    total_failed_write = 0
     start_time = time.time()
-    total = len(product_urls)
     completed = 0
-    batch_num = 0
+    urls_to_process = [u for u in product_urls if is_product_url(u)]
 
     with ThreadPoolExecutor(max_workers=batch_size) as executor:
-        futures = {executor.submit(extract_one, (url, source_id)): url for url in product_urls}
-        
+        futures = {executor.submit(extract_one, (url, source_id, recipe)): url for url in urls_to_process}
+
         for future in as_completed(futures):
             url = futures[future]
             completed += 1
-            batch_num += 1
-            
+
             try:
                 item = future.result()
                 if item:
                     all_items.append(item)
                 else:
                     failed_urls.append(url)
-            except Exception as e:
+            except Exception:
                 failed_urls.append(url)
-            
-            if batch_num % 50 == 0 or batch_num == total:
+
+            # Progress every 50 URLs
+            if completed % 50 == 0 or completed == len(urls_to_process):
                 elapsed = time.time() - start_time
                 rate = completed / elapsed if elapsed > 0 else 0
-                remaining = (total - completed) / rate if rate > 0 else 0
-                print(f"\n  [{completed}/{total}] Extracted: {len(all_items)}, Failed: {len(failed_urls)}, Rate: {rate:.1f}/s, ETA: {remaining:.0f}s")
-            
-            if completed >= (args.max_urls or float('inf')):
-                break  # Stop when max_urls limit reached (0 = unlimited)
+                eta = (len(urls_to_process) - completed) / rate if rate > 0 else 0
+                mem_mb = 0  # can't easily get from subprocess
+                print(f"\n  [{completed}/{len(urls_to_process)}] Extracted: {len(all_items)}, "
+                      f"Failed: {len(failed_urls)}, Rate: {rate:.1f}/s, ETA: {eta:.0f}s")
 
-    print(f"\n  Extraction complete: {len(all_items)} items, {len(failed_urls)} failed")
+            # Batch write every write_batch_size items
+            if len(all_items) >= write_batch_size:
+                if not args.dry_run:
+                    upserted, failed_write, _ = write_items(db, all_items, source_id)
+                    total_upserted += upserted
+                    total_failed_write += failed_write
+                    print(f"  ✓ Batch write: +{upserted} items (total: {total_upserted})")
+                else:
+                    print(f"  [DRY RUN] Would write {len(all_items)} items")
+                all_items = []
+                gc.collect()
+
+            # Respect max_urls limit
+            if completed >= max_urls:
+                break
+
+    # ── Final write ────────────────────────────────────────────────────────
+    if all_items:
+        if not args.dry_run:
+            upserted, failed_write, _ = write_items(db, all_items, source_id)
+            total_upserted += upserted
+            total_failed_write += failed_write
+            print(f"  ✓ Final batch write: +{upserted} items")
+        else:
+            print(f"  [DRY RUN] Would write final {len(all_items)} items")
+
+    elapsed_total = time.time() - start_time
+    print(f"\n  Extraction complete: {len(all_items)} remaining, {len(failed_urls)} failed")
 
     if args.dry_run:
-        print("\n[DRY RUN] Skipping Firestore write")
         update_run(db, run_id, "stopped", {
             "urlsDiscovered": len(product_urls),
-            "urlsExtracted": len(all_items),
+            "urlsExtracted": completed - len(failed_urls),
             "failed": len(failed_urls),
         }, "Dry run")
         return
 
-    # ── Write to Firestore ─────────────────────────────────────────────────
-    print(f"\n[5] Writing {len(all_items)} items to Firestore...")
-    if all_items:
-        upserted, failed_write, item_ids = write_items(db, all_items, source_id)
-        print(f"  ✓ Upserted: {upserted}, Failed: {failed_write}")
-    else:
-        upserted, failed_write = 0, 0
-
     # ── Write metrics ──────────────────────────────────────────────────────
+    total_extracted = completed - len(failed_urls)
     metrics = {
         "urlsDiscovered": len(product_urls),
         "urlsCandidateProducts": len(product_urls),
-        "fetched": len(product_urls),
-        "urlsExtracted": len(all_items),
-        "success": len(all_items),
-        "upserted": upserted,
-        "failed": failed_write + len(failed_urls),
-        "blockedCount": 0,
-        "avgCompleteness": sum(i.get("completenessScore", 0) for i in all_items) / len(all_items) if all_items else 0,
-        "descriptionRate": sum(1 for i in all_items if i.get("description")) / len(all_items) if all_items else 0,
-        "dimensionsRate": sum(1 for i in all_items if i.get("dimensionsRaw")) / len(all_items) if all_items else 0,
-        "materialRate": sum(1 for i in all_items if i.get("materialRaw")) / len(all_items) if all_items else 0,
+        "fetched": completed,
+        "urlsExtracted": total_extracted,
+        "success": total_extracted,
+        "upserted": total_upserted,
+        "failed": total_failed_write + len(failed_urls),
+        "avgCompleteness": sum(i.get("completenessScore", 0) for i in all_items) / max(len(all_items), 1),
     }
-    doc_id = upsert_metrics_daily(db, source_id=source_id, date=_utc_date(), metrics=metrics)
-    print(f"  ✓ Metrics saved: {doc_id}")
+    upsert_metrics_daily(db, source_id=source_id, date=_utc_date(), metrics=metrics)
 
     # ── Complete run ──────────────────────────────────────────────────────
     stats = {
         "urlsDiscovered": len(product_urls),
         "urlsCandidateProducts": len(product_urls),
-        "fetched": len(product_urls),
-        "urlsExtracted": len(all_items),
-        "success": len(all_items),
-        "upserted": upserted,
-        "failed": failed_write + len(failed_urls),
+        "fetched": completed,
+        "urlsExtracted": total_extracted,
+        "success": total_extracted,
+        "upserted": total_upserted,
+        "failed": total_failed_write + len(failed_urls),
     }
     update_run(db, run_id, "succeeded", stats)
-    
-    elapsed_total = time.time() - start_time
+
     print(f"\n{'='*60}")
     print(f"  INGESTION COMPLETE in {elapsed_total:.1f}s")
-    print(f"  Items written to Firestore: {upserted}")
+    print(f"  Total items written to Firestore: {total_upserted}")
     print(f"{'='*60}")
 
 if __name__ == "__main__":
