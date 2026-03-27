@@ -1,0 +1,45 @@
+---
+schema: paperclip/v1
+agents:
+  ceo:
+    inputs:
+      env:
+        GITHUB_TOKEN:
+          kind: secret
+          requirement: optional
+  flutter-dev:
+    inputs:
+      env:
+        FIREBASE_SERVICE_ACCOUNT:
+          kind: secret
+          requirement: optional
+  backend-dev:
+    inputs:
+      env:
+        FIREBASE_SERVICE_ACCOUNT:
+          kind: secret
+          requirement: optional
+  supply-engineer:
+    inputs:
+      env:
+        FIREBASE_SERVICE_ACCOUNT:
+          kind: secret
+          requirement: optional
+        FIRESTORE_EMULATOR_HOST:
+          kind: env
+          requirement: optional
+  recommendation-dev:
+    inputs:
+      env:
+        FIREBASE_SERVICE_ACCOUNT:
+          kind: secret
+          requirement: optional
+  qa-engineer:
+    inputs:
+      env:
+        FIREBASE_SERVICE_ACCOUNT:
+          kind: secret
+          requirement: optional
+        PLAYWRIGHT_BROWSERS_PATH:
+          kind: env
+          requirement: optional
