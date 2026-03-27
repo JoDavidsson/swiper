@@ -92,6 +92,15 @@ import {
   retailerReportsSharePost,
   retailerReportsShareGet,
 } from "./retailer_console";
+import {
+  adminGovernanceGet,
+  adminGovernancePatch,
+  adminGovernanceReset,
+} from "./admin/governance";
+import {
+  adminRetailerGovernanceGet,
+  adminRetailerGovernancePatch,
+} from "./admin/retailerGovernance";
 
 export async function apiHandler(req: Request, res: Response): Promise<void> {
   // Emulator: path can be /project/region/api/... ; prod/hosted: /api/... or /items/deck. Normalize to e.g. "session" or "items/deck".
@@ -563,6 +572,30 @@ export async function apiHandler(req: Request, res: Response): Promise<void> {
     }
     if (method === "POST" && path === "admin/scores/recalculate") {
       await adminScoresRecalculatePost(req, res);
+      return;
+    }
+
+    // Governance routes (admin)
+    if (method === "GET" && path === "admin/governance") {
+      await adminGovernanceGet(req, res);
+      return;
+    }
+    if (method === "PATCH" && path === "admin/governance") {
+      await adminGovernancePatch(req, res);
+      return;
+    }
+    if (method === "POST" && path === "admin/governance/reset") {
+      await adminGovernanceReset(req, res);
+      return;
+    }
+    if (method === "GET" && path.match(/^admin\/retailers\/[^/]+\/governance$/)) {
+      const retailerId = path.replace("admin/retailers/", "").replace("/governance", "");
+      await adminRetailerGovernanceGet(req, res, retailerId);
+      return;
+    }
+    if (method === "PATCH" && path.match(/^admin\/retailers\/[^/]+\/governance$/)) {
+      const retailerId = path.replace("admin/retailers/", "").replace("/governance", "");
+      await adminRetailerGovernancePatch(req, res, retailerId);
       return;
     }
 
