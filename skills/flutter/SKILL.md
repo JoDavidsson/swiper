@@ -1,6 +1,7 @@
-# Flutter Mobile Development
-
-Reusable skill for building and maintaining the Swiper Flutter PWA.
+---
+name: flutter
+description: Flutter mobile development skill for Swiper — builds and maintains the Flutter PWA (iOS, Android, Web), Firebase integration, and swipe UX.
+---
 
 ## Triggers
 
@@ -21,9 +22,7 @@ Reusable skill for building and maintaining the Swiper Flutter PWA.
 
 - Use `go_router` for navigation (app routes + `/admin/*` + `/s/:token`)
 - Follow `docs/FRONTEND_GUIDELINES.md`
-- State management: prefer Flutter best practices (see APP_FLOW.md)
-- Locale: English default, Swedish toggle support
-- Featured cards: label "Featured", apply frequency cap (1 in 12 max), relevance gate
+- Featured cards: label "Featured", frequency cap 1 in 12, relevance gate
 
 ## Files
 

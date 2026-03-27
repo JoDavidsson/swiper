@@ -1,6 +1,7 @@
-# Recommendation Systems
-
-Reusable skill for the Swiper ranker, preference learning, and offline evaluation.
+---
+name: recommendations
+description: Recommendation systems skill for Swiper — ranker, preference learning, collaborative filtering, offline evaluation, and autonomous research campaigns.
+---
 
 ## Triggers
 
@@ -24,22 +25,13 @@ Reusable skill for the Swiper ranker, preference learning, and offline evaluatio
 ## Running Evaluations
 
 ```bash
-# Baseline eval
-./scripts/run_eval.sh
-
-# Stress test (pre-autoresearch guardrail)
-./scripts/run_stress_test.sh
-
-# Autoresearch campaign
-# Use docs/AUTORESEARCH_AGENT_PROMPT.md with
-# $recommender-offline-evaluation-specialist + $swiper-recommendation-eval-analyst
+./scripts/run_eval.sh        # baseline eval
+./scripts/run_stress_test.sh # stress test (pre-autoresearch guardrail)
 ```
 
 ## Confidence Score
 
-Per-product/segment intent metric (0–100):
-- Tracks high-intent consideration behavior (saves, shortlists, shares, comparisons)
-- Used for Featured Distribution targeting and billing
+Per-product/segment intent metric (0–100) tracking high-intent consideration behaviors.
 
 ## Files
 

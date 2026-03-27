@@ -1,12 +1,13 @@
-# Autonomous Research Campaigns
-
-Reusable skill for running autonomous recommendation research for Swiper.
+---
+name: autoresearch
+description: Autonomous research campaign skill for Swiper — runs recommendation improvement campaigns using specialized agents, with strict metric-driven keep/discard discipline.
+---
 
 ## Triggers
 
 - "start an autoresearch campaign"
-- "run the recommendation agent"
 - "improve the ranker autonomously"
+- "run the recommendation agent"
 
 ## Campaign Setup
 
@@ -14,14 +15,6 @@ Reusable skill for running autonomous recommendation research for Swiper.
 2. Create ledger: `output/autoresearch/<RUN_TAG>/results.tsv`
 3. Run baseline eval: `scripts/run_eval.sh`
 4. Log baseline row in ledger
-
-## Campaign Config
-
-```
-Mode: shadow_or_active
-Scope: firebase/functions/src/ranker/** and firebase/functions/src/api/deck*.ts
-Objective: improve Liked-in-top-K (primary metric from docs/OFFLINE_EVAL.md)
-```
 
 ## Agent Pair
 
@@ -36,13 +29,13 @@ Objective: improve Liked-in-top-K (primary metric from docs/OFFLINE_EVAL.md)
 4. Check guardrails: `docs/RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md`
 5. Every 5 kept commits: run `scripts/run_stress_test.sh`
 6. Keep/discard strictly from metrics and guardrails
-7. Document in ledger
+7. Log to ledger
 
 ## Modes
 
 | Mode | Behavior |
 |------|----------|
-| shadow | Autonomous commits, shadow_keep/shadow_discard statuses only |
+| shadow | Autonomous commits, shadow_keep/shadow_discard only |
 | active | CEO authorization required; autonomous merge decisions |
 
 ## Guardrails
@@ -50,13 +43,11 @@ Objective: improve Liked-in-top-K (primary metric from docs/OFFLINE_EVAL.md)
 - `scripts/run_eval.sh` must pass
 - `scripts/run_stress_test.sh` must pass (every 5 kept commits)
 - No regressions against `docs/RUNBOOK_GOLDEN_CARD_V2_OBSERVABILITY.md`
-- Never modify out-of-scope files
 - Never bypass CI or merge directly to main
 
 ## Files
 
 - `docs/AUTORESEARCH_AGENT_PROMPT.md` — agent prompt
-- `docs/AUTORESEARCH_PROTOCOL.md` — protocol details
 - `docs/OFFLINE_EVAL.md` — primary metric
 - `scripts/run_eval.sh`
 - `scripts/run_stress_test.sh`

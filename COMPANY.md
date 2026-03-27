@@ -1,27 +1,37 @@
-# Swiper — Company Manifest
+---
+name: Swiper
+description: Mobile-first furniture discovery app — Tinder for sofas, Sweden-first. Users swipe right on sofas they like to build a personalized shortlist. Retailers pay for featured distribution to targeted personas, tracked via Confidence Score.
+slug: swiper
+schema: agentcompanies/v1
+version: 1.0.0
+license: Proprietary
+website: https://github.com/JoDavidsson/swiper
+status: Active
+goals:
+  - Build and ship the Swiper mobile-first furniture discovery PWA (Flutter + Firebase)
+  - Ingest, normalize, and surface furniture inventory from retailer feeds and crawls
+  - Run autonomous recommendation research campaigns to improve the ranker
+  - Maintain Featured Distribution and retailer console operations
+  - Ensure data privacy (GDPR) and security compliance
+---
 
-> **Agent Companies** compliant package for the Swiper product org.
-> Swiper is a mobile-first furniture discovery app (Tinder for sofas, Sweden-first).
+## Company Overview
 
-## Metadata
+**Swiper** is a mobile-first furniture discovery app that lets users find their perfect sofa through a Tinder-like swipe experience. Users swipe right on sofas they like, left to dismiss, and build a personalized shortlist to share or compare.
 
-| Field | Value |
-|-------|-------|
-| **name** | Swiper |
-| **version** | 1.0.0 |
-| **license** | Proprietary |
-| **website** | https://github.com/JoDavidsson/swiper |
-| **status** | Active |
+**Commercial Layer:** Retailers pay for Featured Distribution to targeted user personas, tracked via Confidence Score — a unified metric representing high-intent consideration behavior.
 
-## Goals
+## Product Stack
 
-- Build and ship the Swiper mobile-first furniture discovery PWA (Flutter + Firebase)
-- Ingest, normalize, and surface furniture inventory from retailer feeds and crawls
-- Run autonomous recommendation research campaigns to improve the ranker
-- Maintain feature distribution and retailer console operations
-- Ensure data privacy (GDPR) and security compliance
+| Layer | Technology |
+|-------|-----------|
+| App | Flutter (iOS, Android, Web PWA) |
+| Backend | Firebase Hosting + Cloud Functions + Firestore |
+| Supply Engine | Python / FastAPI |
+| Ingestion | Feed CSV/JSON + Crawl (sitemap + category) |
+| Ranker | Collaborative filtering + preference weights |
 
-## Structure
+## Org Structure
 
 ```
 Swiper org
@@ -33,25 +43,18 @@ Swiper org
 └── QA Engineer  — Test automation, stress testing, observability
 ```
 
-## Stack
+## Key Milestones
 
-| Layer | Technology |
-|-------|-----------|
-| App | Flutter (PWA — iOS, Android, Web) |
-| Backend | Firebase Hosting + Cloud Functions + Firestore |
-| Supply Engine | Python / FastAPI |
-| Ingestion | Feed CSV/JSON + Crawl (sitemap + category) |
-| Ranker | Collaborative filtering + preference weights |
+- [x] MVP Shipped — swipe deck, likes, compare, outbound redirect
+- [x] Golden Card v2 — implemented, controlled rollout gates active
+- [x] Phase 12 — Featured Distribution (controlled rollout)
+- [ ] Decision Room v1 — vote, comment, shareable shortlists
+- [ ] User Accounts — required for Decision Room, optional otherwise
+- [ ] Retailer Console v1 — Insights Feed, Campaigns, Catalog, Trends, Reporting
+- [ ] Confidence Score — per-product/segment intent metric (0–100)
 
-## Operates In
+## Compliance
 
-- Repo: `JoDavidsson/swiper` (GitHub)
-- Branching: feature branches → PR → main
-- CI: Playwright tests, eval scripts, stress tests
-- Runbooks: `docs/RUNBOOK_LOCAL_DEV.md`, `docs/RUNBOOK_DEPLOYMENT.md`
-
-## Telemetry & Privacy
-
-- Analytics: opt-out supported, V1 event schema, batched
 - GDPR: data export/delete stubs in place
-- No AR preview, no marketplace payments, no user-submitted links
+- Privacy: analytics opt-out, no AR, no marketplace payments
+- Security: see `docs/SECURITY.md`, `docs/PRIVACY_GDPR.md`

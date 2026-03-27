@@ -1,6 +1,7 @@
-# Firebase Development
-
-Reusable skill for Firebase — Cloud Functions, Firestore, Hosting, Auth.
+---
+name: firebase
+description: Firebase development skill for Swiper — Cloud Functions, Firestore, Hosting, Auth, and REST API.
+---
 
 ## Triggers
 
@@ -28,14 +29,6 @@ Reusable skill for Firebase — Cloud Functions, Firestore, Hosting, Auth.
 | `POST /api/shortlists/create` | Create shareable shortlist |
 | `GET /s/:token` | Shared shortlist page |
 | `GET /go/:itemId` | Outbound redirect with UTM |
-
-## Security Rules
-
-- Anonymous sessions: read/write own session only
-- Items: public read
-- Shortlists: read via share token, no write
-- Admin: authenticated admin only
-- See `firebase/firestore.rules` and `docs/SECURITY.md`
 
 ## Files
 
