@@ -44,6 +44,14 @@
       "collectionGroup": "items",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "retailer", "order": "ASCENDING" },
+        { "fieldPath": "lastUpdatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "items",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "newUsed", "order": "ASCENDING" },
         { "fieldPath": "lastUpdatedAt", "order": "DESCENDING" }

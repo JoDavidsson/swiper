@@ -644,6 +644,413 @@ export async function retailerCatalogPatch(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Insight card types
+// ---------------------------------------------------------------------------
+
+type InsightPriority = "high" | "medium" | "low";
+
+type InsightMetric = {
+  label: string;
+  value: string;
+  unit?: string;
+};
+
+type InsightAction = {
+  label: string;
+  url: string;
+};
+
+type InsightCard = {
+  id: string;
+  type: string;
+  priority: InsightPriority;
+  headline: string;
+  body: string;
+  metric?: InsightMetric;
+  action: InsightAction;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function insightId(prefix: string, suffix: string): string {
+  return `${prefix}_${suffix}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function avgRound(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sum = values.reduce((a, b) => a + b, 0);
+  return Math.round(sum / values.length);
+}
+
+// ---------------------------------------------------------------------------
+// Insight generators
+// ---------------------------------------------------------------------------
+
+async function buildLowConfidenceScoreInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  // Fetch active campaigns for this retailer to get segmentIds
+  const campaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .where("status", "==", "active")
+    .limit(200)
+    .get();
+
+  if (campaignsSnap.empty) return null;
+
+  const segmentIds = [...new Set(campaignsSnap.docs.map((d) => (d.data() as Record<string, unknown>).segmentId as string).filter(Boolean))];
+  if (segmentIds.length === 0) return null;
+
+  // Fetch scores for those segments (30d window) with low scores
+  const lowScoreThreshold = 45;
+  const scorePromises = segmentIds.slice(0, 10).map((segmentId) =>
+    db
+      .collection("scores")
+      .where("segmentId", "==", segmentId)
+      .where("timeWindow", "==", "30d")
+      .where("score", "<", lowScoreThreshold)
+      .limit(100)
+      .get()
+  );
+
+  const scoreSnapshots = await Promise.all(scorePromises);
+  const lowScoringItems: { productId: string; score: number; impressions: number; saves: number }[] = [];
+
+  for (const snap of scoreSnapshots) {
+    for (const doc of snap.docs) {
+      const data = doc.data() as Record<string, unknown>;
+      const productId = asTrimmedString(data.productId);
+      const score = asFiniteNumber(data.score);
+      const impressions = asFiniteNumber(data.impressions) ?? 0;
+      const saves = asFiniteNumber(data.saves) ?? 0;
+      if (!productId || score == null) continue;
+      // Only include if has meaningful impressions but low saves ratio
+      if (impressions >= 20 && saves < impressions * 0.05) {
+        lowScoringItems.push({ productId, score, impressions, saves });
+      }
+    }
+  }
+
+  if (lowScoringItems.length === 0) return null;
+
+  // Group by product to deduplicate
+  const seen = new Set<string>();
+  const unique = lowScoringItems.filter((item) => {
+    if (seen.has(item.productId)) return false;
+    seen.add(item.productId);
+    return true;
+  });
+
+  const count = unique.length;
+  const avgScore = avgRound(unique.map((i) => i.score));
+
+  return {
+    id: insightId("low_conf", retailerId),
+    type: "low_confidence_score",
+    priority: count >= 3 ? "high" : "medium",
+    headline: count === 1
+      ? "1 product has a red Confidence Score"
+      : `${count} products have red Confidence Scores`,
+    body: "These products are getting saves but few clicks. Review their pricing or images to improve performance.",
+    metric: { label: "Avg score", value: String(avgScore), unit: "/100" },
+    action: { label: "Review products", url: "/retailer/products?filter=low-score" },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function buildCampaignUnderperformingInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  const campaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .where("status", "==", "active")
+    .limit(100)
+    .get();
+
+  if (campaignsSnap.empty) return null;
+
+  const underperforming: { id: string; name: string; fillRate: number; featuredImpressions: number }[] = [];
+
+  for (const doc of campaignsSnap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const budget = asFiniteNumber(data.budget) ?? 0;
+    const featuredImpressions = asFiniteNumber(data.featuredImpressions) ?? asFiniteNumber(data.impressions) ?? 0;
+    const fillRate = budget > 0 ? (featuredImpressions / budget) * 100 : 0;
+    if (budget > 0 && fillRate < 0.3) {
+      underperforming.push({
+        id: doc.id,
+        name: asTrimmedString(data.name) || "Untitled campaign",
+        fillRate: Math.round(fillRate * 10) / 10,
+        featuredImpressions,
+      });
+    }
+  }
+
+  if (underperforming.length === 0) return null;
+
+  // Sort by lowest fill rate
+  underperforming.sort((a, b) => a.fillRate - b.fillRate);
+  const worst = underperforming[0];
+
+  return {
+    id: insightId("underperform", worst.id),
+    type: "campaign_underperforming",
+    priority: worst.fillRate < 0.1 ? "high" : "medium",
+    headline: `"${worst.name}" has low fill rate`,
+    body: `This campaign has a ${worst.fillRate}% fill rate. Consider broadening your target segment or refreshing the product selection.`,
+    metric: { label: "Fill rate", value: `${worst.fillRate}%`, unit: "" },
+    action: { label: "View campaign", url: `/retailer/campaigns/${worst.id}` },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function buildNewProductsNoTractionInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const twoWeeksAgo = Date.now() - 2 * WEEK_MS;
+
+  // Fetch items for this retailer ingested in the last 2 weeks
+  const itemsSnap = await db
+    .collection("items")
+    .where("retailer", "==", retailerId)
+    .where("lastUpdatedAt", ">=", admin.firestore.Timestamp.fromMillis(twoWeeksAgo))
+    .limit(200)
+    .get();
+
+  if (itemsSnap.empty) return null;
+
+  const itemIds = itemsSnap.docs.map((d) => d.id).slice(0, 100);
+
+  // Fetch scores for these items (first segment, 7d window for recent traction)
+  const scoresSnap = await db
+    .collection("scores")
+    .where("productId", "in", itemIds)
+    .where("timeWindow", "==", "7d")
+    .limit(200)
+    .get();
+
+  const noTraction: string[] = [];
+  for (const doc of scoresSnap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const impressions = asFiniteNumber(data.impressions) ?? 0;
+    if (impressions < 10) {
+      const productId = asTrimmedString(data.productId);
+      if (productId) noTraction.push(productId);
+    }
+  }
+
+  if (noTraction.length === 0) return null;
+
+  const count = noTraction.length;
+  return {
+    id: insightId("no_traction", retailerId),
+    type: "new_products_no_traction",
+    priority: count >= 5 ? "high" : "medium",
+    headline: count === 1
+      ? "1 newly added product isn't getting traction"
+      : `${count} newly added products aren't getting traction`,
+    body: "These products were added recently but have low impressions. Consider boosting them in a campaign or checking their images.",
+    metric: { label: "Products <10 impressions", value: String(count), unit: "" },
+    action: { label: "Review products", url: "/retailer/products?filter=new" },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function buildBudgetPacingInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const todayKey = toDateKeyUTC(Date.now());
+
+  const campaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .where("status", "==", "active")
+    .limit(80)
+    .get();
+
+  for (const doc of campaignsSnap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const budgetTotal = asFiniteNumber(data.budget);
+    const budgetDaily = asFiniteNumber(data.budgetDaily);
+    const endDate = data.endDate;
+
+    // Check daily budget pacing first
+    if (budgetDaily != null && budgetDaily > 0) {
+      const todaySpend = sumNumberRecordWithinDateRange(
+        toRecord(data.dailySpendByDate)?.[todayKey] ?? 0,
+        null,
+        null
+      );
+      if (todaySpend > budgetDaily * 0.85) {
+        return {
+          id: insightId("pacing_daily", doc.id),
+          type: "budget_pacing",
+          priority: todaySpend > budgetDaily ? "high" : "medium",
+          headline: "Daily budget nearly exhausted",
+          body: `This campaign has spent ${Math.round((todaySpend / budgetDaily) * 100)}% of its daily budget. Delivery may stop early today.`,
+          metric: { label: "Daily budget used", value: `${Math.round((todaySpend / budgetDaily) * 100)}%`, unit: "" },
+          action: { label: "Adjust budget", url: `/retailer/campaigns/${doc.id}` },
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    // Check total budget pacing if endDate exists
+    if (budgetTotal != null && budgetTotal > 0 && endDate) {
+      const totalSpent = asFiniteNumber(data.budgetSpent) ?? 0;
+      const endDateMs = toDateMillis(endDate);
+      if (endDateMs != null) {
+        const nowMs = Date.now();
+        const totalDuration = endDateMs - ((data.createdAt as Timestamp)?.toMillis?.() ?? nowMs);
+        const elapsed = nowMs - ((data.createdAt as Timestamp)?.toMillis?.() ?? nowMs);
+        if (totalDuration > 0 && elapsed > 0) {
+          const expectedSpend = (budgetTotal * elapsed) / totalDuration;
+          if (totalSpent > expectedSpend * 1.1) {
+            const daysLeft = Math.max(0, Math.ceil((endDateMs - nowMs) / DAY_MS));
+            return {
+              id: insightId("pacing_total", doc.id),
+              type: "budget_pacing",
+              priority: daysLeft <= 2 ? "high" : "medium",
+              headline: "Campaign may run out of budget before end date",
+              body: `With ${daysLeft} day${daysLeft !== 1 ? "s" : ""} left, this campaign is pacing faster than expected. Consider widening dates or adjusting budget.`,
+              metric: { label: "Budget used", value: `${Math.round((totalSpent / budgetTotal) * 100)}%`, unit: "" },
+              action: { label: "Adjust budget", url: `/retailer/campaigns/${doc.id}` },
+              createdAt: new Date().toISOString(),
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+async function buildTopPerformerInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  // Find campaigns with segment to get scores
+  const campaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .where("status", "==", "active")
+    .limit(50)
+    .get();
+
+  if (campaignsSnap.empty) return null;
+
+  const segmentIds = [...new Set(campaignsSnap.docs
+    .map((d) => (d.data() as Record<string, unknown>).segmentId as string)
+    .filter(Boolean))];
+
+  if (segmentIds.length === 0) return null;
+
+  // Compare 7d vs 30d scores to find biggest improvers
+  const score7dSnap = await db
+    .collection("scores")
+    .where("segmentId", "in", segmentIds.slice(0, 5))
+    .where("timeWindow", "==", "7d")
+    .orderBy("score", "desc")
+    .limit(200)
+    .get();
+
+  const score30dSnap = await db
+    .collection("scores")
+    .where("segmentId", "in", segmentIds.slice(0, 5))
+    .where("timeWindow", "==", "30d")
+    .orderBy("score", "desc")
+    .limit(200)
+    .get();
+
+  const score30dByProduct = new Map<string, number>();
+  for (const doc of score30dSnap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const productId = asTrimmedString(data.productId);
+    const score = asFiniteNumber(data.score);
+    if (productId && score != null) {
+      score30dByProduct.set(productId, score);
+    }
+  }
+
+  let bestImprover: { productId: string; improvement: number; score7d: number } | null = null;
+  for (const doc of score7dSnap.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const productId = asTrimmedString(data.productId);
+    const score7d = asFiniteNumber(data.score);
+    if (!productId || score7d == null) continue;
+    const score30d = score30dByProduct.get(productId) ?? score7d;
+    const improvement = score7d - score30d;
+    if (improvement > 5 && (!bestImprover || improvement > bestImprover.improvement)) {
+      bestImprover = { productId, improvement, score7d };
+    }
+  }
+
+  if (!bestImprover) return null;
+
+  return {
+    id: insightId("top_performer", bestImprover.productId),
+    type: "top_performer",
+    priority: "low",
+    headline: "A product is trending up this week",
+    body: `This product's Confidence Score increased by ${bestImprover.improvement.toFixed(0)} points recently. It's gaining traction — consider featuring it more prominently.`,
+    metric: { label: "Confidence Score", value: String(Math.round(bestImprover.score7d)), unit: "/100" },
+    action: { label: "View product", url: `/retailer/products?filter=top` },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function buildNoActiveCampaignsInsight(
+  db: admin.firestore.Firestore,
+  retailerId: string
+): Promise<InsightCard | null> {
+  const campaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+
+  if (!campaignsSnap.empty) return null;
+
+  // Check if any campaigns exist at all (not just active)
+  const anyCampaignsSnap = await db
+    .collection("campaigns")
+    .where("retailerId", "==", retailerId)
+    .limit(1)
+    .get();
+
+  return {
+    id: insightId("no_campaign", retailerId),
+    type: "no_active_campaigns",
+    priority: anyCampaignsSnap.empty ? "high" : "medium",
+    headline: anyCampaignsSnap.empty
+      ? "You don't have any campaigns yet"
+      : "All your campaigns are paused",
+    body: anyCampaignsSnap.empty
+      ? "Create your first Featured campaign to start driving conversions."
+      : "Activate a paused campaign or create a new one to continue featuring your products.",
+    action: { label: "Create campaign", url: "/retailer/campaigns/new" },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
+
 export async function retailerInsightsGet(req: Request, res: Response): Promise<void> {
   const db = admin.firestore();
   const user = await requireUserAuth(req);
@@ -660,111 +1067,35 @@ export async function retailerInsightsGet(req: Request, res: Response): Promise<
       return;
     }
 
-    const report = await buildRetailerReport(db, access.retailerId, null, null);
-    const byCampaignRaw = Array.isArray(report.byCampaign) ? report.byCampaign : [];
-    const byCampaign = byCampaignRaw
-      .map((entry) => toRecord(entry))
-      .filter((entry): entry is Record<string, unknown> => entry != null);
-    const todayKey = toDateKeyUTC(Date.now());
+    const retailerId = access.retailerId;
 
-    const insights: Array<Record<string, unknown>> = [];
+    // Run all insight generators in parallel
+    const [
+      lowConfInsight,
+      underperformingInsight,
+      noTractionInsight,
+      pacingInsight,
+      topPerformerInsight,
+      noCampaignInsight,
+    ] = await Promise.all([
+      buildLowConfidenceScoreInsight(db, retailerId),
+      buildCampaignUnderperformingInsight(db, retailerId),
+      buildNewProductsNoTractionInsight(db, retailerId),
+      buildBudgetPacingInsight(db, retailerId),
+      buildTopPerformerInsight(db, retailerId),
+      buildNoActiveCampaignsInsight(db, retailerId),
+    ]);
 
-    if (byCampaign.length > 0) {
-      const winner = byCampaign.reduce((a, b) =>
-        (asFiniteNumber(a.cpScore) ?? 0) >= (asFiniteNumber(b.cpScore) ?? 0) ? a : b
-      );
-      insights.push({
-        id: `winner_${asTrimmedString(winner.campaignId) || "unknown"}`,
-        type: "winner",
-        severity: "positive",
-        title: "Top performing campaign",
-        body: `${
-          asTrimmedString(winner.name) || "Campaign"
-        } is currently leading with CPScore ${
-          asFiniteNumber(winner.cpScore)?.toFixed(2) ?? "0.00"
-        }.`,
-        ctaLabel: "Open campaign",
-        campaignId: asTrimmedString(winner.campaignId),
-      });
-    }
+    const insights: InsightCard[] = [
+      lowConfInsight,
+      underperformingInsight,
+      noTractionInsight,
+      pacingInsight,
+      topPerformerInsight,
+      noCampaignInsight,
+    ].filter((i): i is InsightCard => i !== null);
 
-    const lowMomentum = byCampaign.filter((campaign) => {
-      const status = asTrimmedString(campaign.status);
-      const campaignImpressions = asFiniteNumber(campaign.featuredImpressions) ?? 0;
-      return status == "active" && campaignImpressions < 25;
-    });
-    if (lowMomentum.length > 0) {
-      const campaign = lowMomentum[0];
-      insights.push({
-        id: `needs_help_${asTrimmedString(campaign.campaignId) || "unknown"}`,
-        type: "needs_help",
-        severity: "warning",
-        title: "Campaign needs attention",
-        body: `${
-          asTrimmedString(campaign.name) || "Campaign"
-        } is active but has low featured reach. Consider refreshing product set or broadening segment.`,
-        ctaLabel: "Refresh products",
-        campaignId: asTrimmedString(campaign.campaignId),
-      });
-    }
-
-    const campaignsSnap = await db
-      .collection("campaigns")
-      .where("retailerId", "==", access.retailerId)
-      .where("status", "==", "active")
-      .limit(80)
-      .get();
-    const pacingRiskCampaign = campaignsSnap.docs
-      .map((doc) => ({ id: doc.id, data: (doc.data() || {}) as Record<string, unknown> }))
-      .find(({ data }) => {
-        const budgetDaily = asFiniteNumber(data.budgetDaily);
-        if (budgetDaily == null || budgetDaily <= 0) return false;
-        const spentToday = sumNumberRecordWithinDateRange(
-          toRecord(data.dailySpendByDate)?.[todayKey] == null
-            ? {}
-            : { [todayKey]: toRecord(data.dailySpendByDate)?.[todayKey] },
-          null,
-          null
-        );
-        return spentToday > budgetDaily * 0.9;
-      });
-    if (pacingRiskCampaign) {
-      insights.push({
-        id: `pacing_${pacingRiskCampaign.id}`,
-        type: "anomaly",
-        severity: "warning",
-        title: "Daily pacing risk",
-        body: `${
-          asTrimmedString(pacingRiskCampaign.data.name) || "Campaign"
-        } is close to today's daily budget cap. Lower frequency or widen dates to sustain delivery.`,
-        ctaLabel: "Adjust budget",
-        campaignId: pacingRiskCampaign.id,
-      });
-    }
-
-    const byProductRaw = Array.isArray(report.byProduct) ? report.byProduct : [];
-    if (byProductRaw.length > 0) {
-      const top = toRecord(byProductRaw[0]);
-      if (top) {
-        insights.push({
-          id: `trend_${asTrimmedString(top.productId) || "unknown"}`,
-          type: "trend",
-          severity: "neutral",
-          title: "Demand trend spotted",
-          body: `${
-            asTrimmedString(top.title) || "A product"
-          } is currently your most exposed featured product. Consider adding sibling variants to capture more intent.`,
-          ctaLabel: "Open catalog",
-          productId: asTrimmedString(top.productId),
-        });
-      }
-    }
-
-    res.json({
-      retailerId: access.retailerId,
-      generatedAt: new Date().toISOString(),
-      insights,
-    });
+    res.status(200).json({ insights });
   } catch (error) {
     console.error("retailer_insights_get_failed", error);
     res.status(500).json({ error: "Failed to load insights" });
