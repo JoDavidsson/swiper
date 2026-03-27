@@ -1,0 +1,95 @@
+[
+  {
+    "retailer": "Mio",
+    "input_url": "https://www.mio.se/soffor",
+    "robots_found": true,
+    "sitemap_count": 51,
+    "sitemaps_found": [
+      "https://www.mio.se/sitemap/sitemap_index.xml",
+      "https://www.mio.se/sitemap/sitemap_1774569601726_0.txt",
+      "https://www.mio.se/sitemap/sitemap_1774569601726_1.txt",
+      "https://www.mio.se/sitemap/sitemap_1774569601726_2.txt",
+      "https://www.mio.se/sitemap/sitemap_1774569601726_3.txt"
+    ],
+    "total_urls_sampled": 4500,
+    "product_urls_estimated": 4002,
+    "category_urls_estimated": 395,
+    "matching_path_urls": 2,
+    "suggested_strategy": "sitemap",
+    "strategy_reason": "Found 4002 product URLs in sitemaps",
+    "errors": [],
+    "warnings": []
+  },
+  {
+    "retailer": "Svenska Hem",
+    "input_url": "https://www.svenskahem.se/soffor",
+    "robots_found": true,
+    "sitemap_count": 1,
+    "sitemaps_found": [
+      "https://www.svenskahem.se/sitemap.xml"
+    ],
+    "total_urls_sampled": 500,
+    "product_urls_estimated": 30,
+    "category_urls_estimated": 441,
+    "matching_path_urls": 60,
+    "suggested_strategy": "sitemap",
+    "strategy_reason": "Found 1 sitemaps with ~60 URLs matching path pattern",
+    "errors": [],
+    "warnings": [
+      "No sitemaps in robots.txt, trying default locations"
+    ]
+  },
+  {
+    "retailer": "Comfort",
+    "input_url": "https://www.comfort.se/soffor",
+    "robots_found": true,
+    "sitemap_count": 0,
+    "sitemaps_found": [],
+    "total_urls_sampled": 0,
+    "product_urls_estimated": 0,
+    "category_urls_estimated": 0,
+    "matching_path_urls": 0,
+    "suggested_strategy": "crawl",
+    "strategy_reason": "No sitemaps found or accessible, using category crawl",
+    "errors": [],
+    "warnings": [
+      "No valid sitemaps found"
+    ]
+  },
+  {
+    "retailer": "Skona Hem",
+    "input_url": "https://www.skonahem.se/soffor",
+    "robots_found": true,
+    "sitemap_count": 0,
+    "sitemaps_found": [],
+    "total_urls_sampled": 0,
+    "product_urls_estimated": 0,
+    "category_urls_estimated": 0,
+    "matching_path_urls": 0,
+    "suggested_strategy": "crawl",
+    "strategy_reason": "No sitemaps found or accessible, using category crawl",
+    "errors": [],
+    "warnings": [
+      "No sitemaps in robots.txt, trying default locations",
+      "No valid sitemaps found"
+    ]
+  },
+  {
+    "retailer": "IKEA SE",
+    "input_url": "https://www.ikea.se/soffor",
+    "robots_found": true,
+    "sitemap_count": 0,
+    "sitemaps_found": [],
+    "total_urls_sampled": 0,
+    "product_urls_estimated": 0,
+    "category_urls_estimated": 0,
+    "matching_path_urls": 0,
+    "suggested_strategy": "crawl",
+    "strategy_reason": "No sitemaps found or accessible, using category crawl",
+    "errors": [],
+    "warnings": [
+      "No sitemaps in robots.txt, trying default locations",
+      "No valid sitemaps found"
+    ]
+  }
+]
