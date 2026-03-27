@@ -193,6 +193,12 @@ class AdminScreen extends ConsumerWidget {
                 onTap: () => context.push('/admin/review'),
               ),
               ListTile(
+                title: const Text('Governance'),
+                subtitle: const Text('Frequency cap, relevance, pacing, brand safety'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/admin/governance'),
+              ),
+              ListTile(
                 title: const Text('Import'),
                 subtitle: const Text('Upload CSV'),
                 trailing: const Icon(Icons.chevron_right),

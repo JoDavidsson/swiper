@@ -22,6 +22,7 @@ import '../features/admin/admin_qa_screen.dart';
 import '../features/admin/admin_curated_screen.dart';
 import '../features/admin/admin_catalog_preview_screen.dart';
 import '../features/admin/admin_review_screen.dart';
+import '../features/admin/admin_governance_screen.dart';
 import '../features/retailer/retailer_console_screen.dart';
 import '../data/session_provider.dart';
 
@@ -160,6 +161,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/review',
         builder: (context, state) => const AdminReviewScreen(),
+      ),
+      GoRoute(
+        path: '/admin/governance',
+        builder: (context, state) => const AdminGovernanceScreen(),
       ),
       GoRoute(
         path: '/retailer',

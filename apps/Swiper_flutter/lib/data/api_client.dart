@@ -687,6 +687,56 @@ class ApiClient {
     return r.data ?? {};
   }
 
+  // ============ Governance APIs ============
+
+  /// Get global governance config
+  Future<Map<String, dynamic>> adminGetGovernance() async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/governance');
+    return r.data ?? {};
+  }
+
+  /// Patch global governance config
+  Future<Map<String, dynamic>> adminPatchGovernance(
+      Map<String, dynamic> body) async {
+    final r = await _dio.patch<Map<String, dynamic>>(
+      '/api/admin/governance',
+      data: body,
+    );
+    return r.data ?? {};
+  }
+
+  /// Reset governance to defaults
+  Future<Map<String, dynamic>> adminResetGovernance() async {
+    final r =
+        await _dio.post<Map<String, dynamic>>('/api/admin/governance/reset');
+    return r.data ?? {};
+  }
+
+  /// Get all retailers with optional governance override status
+  Future<List<Map<String, dynamic>>> adminGetRetailers() async {
+    final r = await _dio.get<Map<String, dynamic>>('/api/admin/retailers');
+    final list = r.data?['retailers'] as List? ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Get governance override for a specific retailer
+  Future<Map<String, dynamic>> adminGetRetailerGovernance(
+      String retailerId) async {
+    final r = await _dio
+        .get<Map<String, dynamic>>('/api/admin/retailers/$retailerId/governance');
+    return r.data ?? {};
+  }
+
+  /// Patch governance override for a specific retailer
+  Future<Map<String, dynamic>> adminPatchRetailerGovernance(
+      String retailerId, Map<String, dynamic> body) async {
+    final r = await _dio.patch<Map<String, dynamic>>(
+      '/api/admin/retailers/$retailerId/governance',
+      data: body,
+    );
+    return r.data ?? {};
+  }
+
   /// Trigger image validation for items
   Future<Map<String, dynamic>> adminValidateImages({
     int limit = 50,
