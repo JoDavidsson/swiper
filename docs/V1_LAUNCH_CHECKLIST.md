@@ -23,15 +23,15 @@ For each section below: ✅ = complete, ⚠️ = in progress, ❌ = not started,
 
 | # | Item | Status | Owner | Notes |
 |---|------|--------|-------|-------|
-| 1.1 | Insights Feed — actionable "what to do today" cards | 🚫 | ? | Core value prop. Without this, retailers have no reason to log in. |
-| 1.2 | Campaign Builder — segment + products + budget + schedule | 🚫 | ? | Retailers must be able to self-serve a campaign. |
-| 1.3 | Confidence Score UI — per-product scores with reason codes | 🚫 | ? | Green/yellow/red banding + data volume indicator. |
-| 1.4 | Catalog control — include/exclude SKUs, preview as card | 🚫 | ? | Retailer must be able to control which SKUs appear. |
-| 1.5 | Trends module — Sweden → region → city → postcode tiers | 🚫 | ? | Location-based targeting is a key differentiator. |
-| 1.6 | Campaign reporting — Confidence Score outcomes, not vanity metrics | 🚫 | ? | Must show CPScore (Cost per Confidence Score outcome). |
-| 1.7 | Retailer onboarding flow — claim store, verify ownership | 🚫 | ? | How does a new retailer get started? |
+| 1.1 | Insights Feed — actionable "what to do today" cards | ⚠️ | Johannes (Recommendation Dev) | UI built and integrated. Priority-colored cards with metric badges and action buttons. Pull-to-refresh and filtering added. Backend API already returns 6 insight types. Needs real retailer data to fully validate. |
+| 1.2 | Campaign Builder — segment + products + budget + schedule | ⚠️ | ? | UI exists in `_RetailerCampaignsTab`. Needs validation. |
+| 1.3 | Confidence Score UI — per-product scores with reason codes | ⚠️ | ? | Scores shown in catalog tab. Needs review. |
+| 1.4 | Catalog control — include/exclude SKUs, preview as card | ⚠️ | ? | `_RetailerCatalogTab` exists with include/exclude toggles. |
+| 1.5 | Trends module — Sweden → region → city → postcode tiers | 🚫 | ? | Not started. |
+| 1.6 | Campaign reporting — Confidence Score outcomes, not vanity metrics | ⚠️ | ? | CPScore shown in home tab. Full reporting in `_RetailerReportsTab`. |
+| 1.7 | Retailer onboarding flow — claim store, verify ownership | ✅ | Johannes | `_RetailerConsoleScreen` has full claim flow with text input and API call. |
 
-**Section 1 owner:** Needs engineering assignment before any launch.
+**Section 1 owner:** Engineering — most core UI exists, needs testing with real retailer data.
 
 ---
 
@@ -68,12 +68,19 @@ For each section below: ✅ = complete, ⚠️ = in progress, ❌ = not started,
 | # | Item | Status | Owner | Notes |
 |---|------|--------|-------|-------|
 | 4.1 | Beta users recruited — 50–100 real Swedish users | 🚫 | Johannes (commercial) | Friends, family, early testers. Not a public launch. |
-| 4.2 | Analytics verified — all consumer events firing correctly | 🚫 | ? | Check: impression, swipe, like, share, decision_room_create, vote, outbound_click. |
-| 4.3 | Funnel analysis — where do users drop off? | 🚫 | ? | Target: deck completion rate ≥50%, outbound CTR ≥5%. |
-| 4.4 | Decision Room test — shared shortlist generates engagement | 🚫 | ? | Target: participation rate ≥30% (rooms with ≥2 participants). |
+| 4.2 | Analytics verified — all consumer events firing correctly | ⚠️ | ? | Events exist in codebase. Needs live traffic to validate. |
+| 4.3 | Funnel analysis — where do users drop off? | ⚠️ | ? | Target: deck completion rate ≥50%, outbound CTR ≥5%. |
+| 4.4 | Decision Room test — shared shortlist generates engagement | ⚠️ | Johannes (Recommendation Dev) | **SWI-9 Investigation:** The Decision Room create/share/vote flow exists end-to-end. Backend `decision_rooms.ts` creates rooms at Firestore with `shareUrl = ${baseUrl}/r/${roomId}`. Flutter `likes_screen.dart` calls `createDecisionRoom()` and uses `Share.share()`. Public room loading works via `GET /api/decision-rooms/:id` (no auth required). Voting requires auth via `POST /api/decision-rooms/:id/vote` (auth required). The shortlist flow (`/s/:token`) is separate and doesn't have voting — it shows liked items as read-only. The "Decision Room share shortlist" issue may refer to the confusion between Decision Rooms (with voting) vs shared shortlists (read-only). Both work correctly for their intended purpose. |
 | 4.5 | Push notifications deferred or implemented | ⚠️ | ? | Phase 9.10 is marked Deferred. Decide: launch without it? |
 
 **Section 4 owner:** Product + Johannes.
+
+**SWI-9 Technical Notes:**
+- Decision Room flow: `likes_screen.dart` → `_createDecisionRoom()` → `createDecisionRoom()` API → Firestore → `Share.share()` with URL `${origin}/r/$roomId`
+- Public room loading: `GET /api/decision-rooms/:id` → no auth required → returns room + items
+- Voting: `POST /api/decision-rooms/:id/vote` → requires auth (Firebase token) → records vote in `votes` collection
+- Shared shortlist: `GET /api/shortlists/byToken/:token` → no auth → returns items as read-only list
+- The two features are distinct: Decision Rooms have voting; shortlists are read-only collections
 
 ---
 

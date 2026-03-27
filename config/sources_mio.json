@@ -1,0 +1,49 @@
+{
+  "sources": [
+    {
+      "id": "mio-se",
+      "name": "Mio (Sweden)",
+      "mode": "crawl",
+      "isEnabled": true,
+      "baseUrl": "https://www.mio.se",
+      "rateLimitRps": 1.5,
+      "seedUrls": ["https://www.mio.se"],
+      "seedType": "sitemap",
+      "includeKeywords": [],
+      "categoryFilter": [],
+      "robotsRespect": true,
+      "useBrowserFallback": false,
+      "derived": {
+        "domain": "www.mio.se",
+        "baseUrl": "https://www.mio.se",
+        "seedUrl": "https://www.mio.se",
+        "seedPath": "",
+        "seedPathPattern": "",
+        "strategy": "sitemap",
+        "sitemapUrls": [
+          "https://www.mio.se/sitemap/sitemap_index.xml",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_0.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_1.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_2.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_3.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_4.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_5.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_6.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_7.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_8.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_9.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_10.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_11.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_12.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_13.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_14.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_15.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_16.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_17.txt",
+          "https://www.mio.se/sitemap/sitemap_1774569601726_18.txt"
+        ],
+        "discoveredAt": "2026-03-27T15:00:00Z"
+      }
+    }
+  ]
+}

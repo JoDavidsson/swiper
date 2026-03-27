@@ -416,7 +416,7 @@ class _RetailerHomeTab extends ConsumerWidget {
                   : <String, dynamic>{};
               return Card(
                 child: ListTile(
-                  title: Text(card['title']?.toString() ?? 'Insight'),
+                  title: Text(card['headline']?.toString() ?? 'Insight'),
                   subtitle: Text(card['body']?.toString() ?? ''),
                 ),
               );
@@ -1065,7 +1065,9 @@ class _RetailerCatalogTabState extends ConsumerState<_RetailerCatalogTab> {
   }
 }
 
-class _RetailerInsightsTab extends ConsumerWidget {
+enum _PriorityFilter { all, highOnly, highAndMedium }
+
+class _RetailerInsightsTab extends ConsumerStatefulWidget {
   const _RetailerInsightsTab({
     super.key,
     required this.token,
@@ -1076,60 +1078,332 @@ class _RetailerInsightsTab extends ConsumerWidget {
   final String retailerId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: ref
-          .read(apiClientProvider)
-          .retailerGetInsights(token: token, retailerId: retailerId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return _InlineErrorCard(
-            title: 'Failed to load insights',
-            message: _humanizeError(snapshot.error),
-          );
-        }
-        final insights = snapshot.data?['insights'] as List? ?? const [];
-        if (insights.isEmpty) {
-          return const _InlineErrorCard(
-            title: 'No insights yet',
-            message:
-                'Insights appear after campaigns start serving impressions.',
-          );
-        }
-        return ListView(
-          padding: const EdgeInsets.all(AppTheme.spacingUnit),
-          children: insights.map((entry) {
-            final card = entry is Map
-                ? entry.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{};
-            final type = card['type']?.toString() ?? 'insight';
-            final severity = card['severity']?.toString() ?? 'neutral';
-            final color = severity == 'positive'
-                ? AppTheme.positiveLike
-                : severity == 'warning'
-                    ? AppTheme.warning
-                    : AppTheme.primaryAction;
-            return Card(
-              margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: color.withValues(alpha: 0.15),
-                  foregroundColor: color,
-                  child: Icon(_iconForInsightType(type)),
-                ),
-                title: Text(card['title']?.toString() ?? 'Insight'),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(card['body']?.toString() ?? ''),
-                ),
-              ),
-            );
-          }).toList(),
+  ConsumerState<_RetailerInsightsTab> createState() =>
+      _RetailerInsightsTabState();
+}
+
+class _RetailerInsightsTabState extends ConsumerState<_RetailerInsightsTab> {
+  late Future<Map<String, dynamic>> _future;
+  _PriorityFilter _filter = _PriorityFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<Map<String, dynamic>> _load() {
+    return ref
+        .read(apiClientProvider)
+        .retailerGetInsights(token: widget.token, retailerId: widget.retailerId);
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _load();
+    });
+    await _future;
+  }
+
+  Color _colorForPriority(String? priority) {
+    switch (priority?.toString().toLowerCase()) {
+      case 'high':
+        return Colors.red[600]!;
+      case 'medium':
+        return Colors.amber;
+      case 'low':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void _navigateToAction(BuildContext context, Map<String, dynamic> entry) {
+    final action = entry['action'] as Map<String, dynamic>?;
+    if (action == null) return;
+    final url = action['url']?.toString();
+    if (url == null || url.isEmpty) return;
+
+    // Handle internal retailer console navigation
+    // e.g. /retailer/campaigns/${id} or /retailer/products?filter=...
+    if (url.startsWith('/retailer')) {
+      // Parse the path and switch tabs accordingly
+      final uri = Uri.parse(url);
+      final path = uri.path;
+
+      if (path.startsWith('/retailer/campaigns/')) {
+        // Navigate to campaigns tab and potentially open a specific campaign
+        // For now just show a snackbar - full deep linking would need more work
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Campaign: ${action['label'] ?? 'View'}')),
         );
-      },
+      } else if (path.contains('products')) {
+        // Navigate to catalog tab
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Catalog: ${action['label'] ?? 'Review products'}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(action['label'] ?? 'Open')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Priority filter chips
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.spacingUnit,
+            AppTheme.spacingUnit,
+            AppTheme.spacingUnit,
+            0,
+          ),
+          child: Row(
+            children: [
+              Text(
+                'Filter:',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('All'),
+                selected: _filter == _PriorityFilter.all,
+                onSelected: (_) => setState(() => _filter = _PriorityFilter.all),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: const Text('High only'),
+                selected: _filter == _PriorityFilter.highOnly,
+                onSelected: (_) =>
+                    setState(() => _filter = _PriorityFilter.highOnly),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: const Text('High + Medium'),
+                selected: _filter == _PriorityFilter.highAndMedium,
+                onSelected: (_) =>
+                    setState(() => _filter = _PriorityFilter.highAndMedium),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _InlineErrorCard(
+                  title: 'Failed to load insights',
+                  message: _humanizeError(snapshot.error),
+                  actionLabel: 'Retry',
+                  onAction: _refresh,
+                );
+              }
+              final insights =
+                  (snapshot.data?['insights'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+              if (insights.isEmpty) {
+                return const _InlineErrorCard(
+                  title: 'No insights yet',
+                  message:
+                      'Insights appear after campaigns start serving impressions.',
+                );
+              }
+
+              final filtered = insights.where((entry) {
+                final priority = entry['priority']?.toString().toLowerCase();
+                switch (_filter) {
+                  case _PriorityFilter.highOnly:
+                    return priority == 'high';
+                  case _PriorityFilter.highAndMedium:
+                    return priority == 'high' || priority == 'medium';
+                  case _PriorityFilter.all:
+                    return true;
+                }
+              }).toList();
+
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No insights match the current filter.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(AppTheme.spacingUnit),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final entry = filtered[index];
+                    return _InsightCard(
+                      entry: entry,
+                      color: _colorForPriority(entry['priority']),
+                      onAction: () => _navigateToAction(context, entry),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InsightCard extends StatelessWidget {
+  const _InsightCard({
+    required this.entry,
+    required this.color,
+    this.onAction,
+  });
+
+  final Map<String, dynamic> entry;
+  final Color color;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final priority = entry['priority']?.toString().toUpperCase() ?? '';
+    final headline = entry['headline']?.toString() ?? 'Insight';
+    final body = entry['body']?.toString() ?? '';
+    final metricRaw = entry['metric'] as Map<String, dynamic>?;
+    final actionRaw = entry['action'] as Map<String, dynamic>?;
+    final actionLabel = actionRaw?['label']?.toString();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: color, width: 4),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spacingUnit),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Priority badge + headline
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      priority,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      headline,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+              if (body.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.only(left: 0),
+                  child: Text(
+                    body,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              // Metric + action button row
+              Row(
+                children: [
+                  if (metricRaw != null) ...[
+                    _MetricBadge(
+                      label: metricRaw['label']?.toString() ?? '',
+                      value: metricRaw['value']?.toString() ?? '',
+                      unit: metricRaw['unit']?.toString() ?? '',
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  const Spacer(),
+                  if (actionLabel != null && actionLabel.isNotEmpty)
+                    FilledButton.tonal(
+                      onPressed: onAction,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                      child: Text(actionLabel),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricBadge extends StatelessWidget {
+  const _MetricBadge({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
+
+  final String label;
+  final String value;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(AppTheme.radiusChip),
+      ),
+      child: Text(
+        '$label $value$unit',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+      ),
     );
   }
 }
