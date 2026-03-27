@@ -248,6 +248,11 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
         token: _token!,
         retailerId: retailerId,
       ),
+      _RetailerTrendsTab(
+        key: ValueKey('trends_$_reloadKey'),
+        token: _token!,
+        retailerId: retailerId,
+      ),
     ];
 
     return Scaffold(
@@ -286,6 +291,8 @@ class _RetailerConsoleScreenState extends ConsumerState<RetailerConsoleScreen> {
               icon: Icon(Icons.insights_outlined), label: 'Insights'),
           BottomNavigationBarItem(
               icon: Icon(Icons.assessment_outlined), label: 'Reports'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.trending_up_outlined), label: 'Trends'),
         ],
       ),
     );
@@ -1586,6 +1593,521 @@ class _RetailerReportsTab extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _RetailerTrendsTab extends ConsumerStatefulWidget {
+  const _RetailerTrendsTab({
+    super.key,
+    required this.token,
+    required this.retailerId,
+  });
+
+  final String token;
+  final String retailerId;
+
+  @override
+  ConsumerState<_RetailerTrendsTab> createState() => _RetailerTrendsTabState();
+}
+
+class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
+  // Mock geographic hierarchy data for Sweden
+  static final Map<String, dynamic> _mockTrendsData = {
+    'country': 'Sweden',
+    'productCount': 847,
+    'totalImpressions': 1245893,
+    'ctr': 0.0342,
+    'cpScore': 2.41,
+    'priority': 'medium',
+    'regions': [
+      {
+        'name': 'Stockholm',
+        'productCount': 312,
+        'totalImpressions': 456789,
+        'ctr': 0.0387,
+        'cpScore': 2.68,
+        'priority': 'high',
+        'cities': [
+          {
+            'name': 'Stockholm City',
+            'productCount': 198,
+            'totalImpressions': 289456,
+            'ctr': 0.0412,
+            'cpScore': 2.89,
+            'priority': 'high',
+            'postcodes': [
+              {'code': '111 22', 'productCount': 45, 'totalImpressions': 67890, 'ctr': 0.0431, 'cpScore': 3.01, 'priority': 'high'},
+              {'code': '111 35', 'productCount': 52, 'totalImpressions': 72156, 'ctr': 0.0398, 'cpScore': 2.76, 'priority': 'medium'},
+              {'code': '114 79', 'productCount': 41, 'totalImpressions': 58900, 'ctr': 0.0387, 'cpScore': 2.65, 'priority': 'medium'},
+              {'code': '117 65', 'productCount': 60, 'totalImpressions': 90510, 'ctr': 0.0423, 'cpScore': 3.14, 'priority': 'high'},
+            ],
+          },
+          {
+            'name': 'Södertälje',
+            'productCount': 68,
+            'totalImpressions': 98765,
+            'ctr': 0.0354,
+            'cpScore': 2.41,
+            'priority': 'medium',
+            'postcodes': [
+              {'code': '152 42', 'productCount': 34, 'totalImpressions': 45678, 'ctr': 0.0341, 'cpScore': 2.28, 'priority': 'medium'},
+              {'code': '153 31', 'productCount': 34, 'totalImpressions': 53087, 'ctr': 0.0367, 'cpScore': 2.54, 'priority': 'medium'},
+            ],
+          },
+          {
+            'name': 'Tumba',
+            'productCount': 46,
+            'totalImpressions': 68568,
+            'ctr': 0.0331,
+            'cpScore': 2.23,
+            'priority': 'low',
+            'postcodes': [
+              {'code': '147 34', 'productCount': 46, 'totalImpressions': 68568, 'ctr': 0.0331, 'cpScore': 2.23, 'priority': 'low'},
+            ],
+          },
+        ],
+      },
+      {
+        'name': 'Västra Götaland',
+        'productCount': 234,
+        'totalImpressions': 367890,
+        'ctr': 0.0321,
+        'cpScore': 2.31,
+        'priority': 'medium',
+        'cities': [
+          {
+            'name': 'Gothenburg',
+            'productCount': 189,
+            'totalImpressions': 298765,
+            'ctr': 0.0334,
+            'cpScore': 2.38,
+            'priority': 'medium',
+            'postcodes': [
+              {'code': '411 05', 'productCount': 67, 'totalImpressions': 89456, 'ctr': 0.0356, 'cpScore': 2.51, 'priority': 'medium'},
+              {'code': '412 56', 'productCount': 58, 'totalImpressions': 78123, 'ctr': 0.0321, 'cpScore': 2.29, 'priority': 'medium'},
+              {'code': '416 77', 'productCount': 64, 'totalImpressions': 131186, 'ctr': 0.0325, 'cpScore': 2.34, 'priority': 'medium'},
+            ],
+          },
+          {
+            'name': 'Mölndal',
+            'productCount': 45,
+            'totalImpressions': 69125,
+            'ctr': 0.0312,
+            'cpScore': 2.19,
+            'priority': 'low',
+            'postcodes': [
+              {'code': '431 44', 'productCount': 45, 'totalImpressions': 69125, 'ctr': 0.0312, 'cpScore': 2.19, 'priority': 'low'},
+            ],
+          },
+        ],
+      },
+      {
+        'name': 'Skåne',
+        'productCount': 178,
+        'totalImpressions': 245123,
+        'ctr': 0.0298,
+        'cpScore': 2.12,
+        'priority': 'low',
+        'cities': [
+          {
+            'name': 'Malmö',
+            'productCount': 112,
+            'totalImpressions': 167890,
+            'ctr': 0.0312,
+            'cpScore': 2.21,
+            'priority': 'low',
+            'postcodes': [
+              {'code': '211 26', 'productCount': 48, 'totalImpressions': 72340, 'ctr': 0.0324, 'cpScore': 2.29, 'priority': 'medium'},
+              {'code': '213 45', 'productCount': 38, 'totalImpressions': 54321, 'ctr': 0.0298, 'cpScore': 2.11, 'priority': 'low'},
+              {'code': '215 82', 'productCount': 26, 'totalImpressions': 41229, 'ctr': 0.0314, 'cpScore': 2.23, 'priority': 'low'},
+            ],
+          },
+          {
+            'name': 'Lund',
+            'productCount': 66,
+            'totalImpressions': 77233,
+            'ctr': 0.0276,
+            'cpScore': 1.98,
+            'priority': 'low',
+            'postcodes': [
+              {'code': '223 51', 'productCount': 38, 'totalImpressions': 45123, 'ctr': 0.0281, 'cpScore': 2.01, 'priority': 'low'},
+              {'code': '224 78', 'productCount': 28, 'totalImpressions': 32110, 'ctr': 0.0269, 'cpScore': 1.93, 'priority': 'low'},
+            ],
+          },
+        ],
+      },
+      {
+        'name': 'Uppsala',
+        'productCount': 73,
+        'totalImpressions': 112091,
+        'ctr': 0.0312,
+        'cpScore': 2.28,
+        'priority': 'medium',
+        'cities': [
+          {
+            'name': 'Uppsala',
+            'productCount': 73,
+            'totalImpressions': 112091,
+            'ctr': 0.0312,
+            'cpScore': 2.28,
+            'priority': 'medium',
+            'postcodes': [
+              {'code': '753 20', 'productCount': 41, 'totalImpressions': 62340, 'ctr': 0.0321, 'cpScore': 2.35, 'priority': 'medium'},
+              {'code': '756 45', 'productCount': 32, 'totalImpressions': 49751, 'ctr': 0.0301, 'cpScore': 2.19, 'priority': 'low'},
+            ],
+          },
+        ],
+      },
+      {
+        'name': 'Östergötland',
+        'productCount': 50,
+        'totalImpressions': 64000,
+        'ctr': 0.0289,
+        'cpScore': 2.05,
+        'priority': 'low',
+        'cities': [
+          {
+            'name': 'Norrköping',
+            'productCount': 50,
+            'totalImpressions': 64000,
+            'ctr': 0.0289,
+            'cpScore': 2.05,
+            'priority': 'low',
+            'postcodes': [
+              {'code': '602 24', 'productCount': 50, 'totalImpressions': 64000, 'ctr': 0.0289, 'cpScore': 2.05, 'priority': 'low'},
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  final Set<String> _expandedNodes = {};
+
+  Color _colorForPriority(String? priority) {
+    switch (priority?.toString().toLowerCase()) {
+      case 'high':
+        return Colors.red[600]!;
+      case 'medium':
+        return Colors.amber;
+      case 'low':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  void _toggleNode(String nodeId) {
+    setState(() {
+      if (_expandedNodes.contains(nodeId)) {
+        _expandedNodes.remove(nodeId);
+      } else {
+        _expandedNodes.add(nodeId);
+      }
+    });
+  }
+
+  Widget _buildPostcodeRow(Map<String, dynamic> postcode) {
+    final priorityColor = _colorForPriority(postcode['priority']);
+    return Container(
+      margin: const EdgeInsets.only(left: 48, bottom: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: priorityColor.withValues(alpha: 0.4), width: 2),
+        ),
+      ),
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: priorityColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                postcode['priority']?.toString().toUpperCase() ?? '',
+                style: TextStyle(
+                  color: priorityColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              postcode['code']?.toString() ?? '',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+        subtitle: Text(
+          '${postcode['productCount']} products | ${_num(postcode['totalImpressions']).toStringAsFixed(0)} impr | CTR ${(_num(postcode['ctr']) * 100).toStringAsFixed(1)}% | CP ${_num(postcode['cpScore']).toStringAsFixed(2)}',
+          style: const TextStyle(fontSize: 11),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCityRow(Map<String, dynamic> city, String regionId) {
+    final priorityColor = _colorForPriority(city['priority']);
+    final cityId = '$regionId-${city['name']}';
+    final isExpanded = _expandedNodes.contains(cityId);
+    final postcodes = city['postcodes'] as List? ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(left: 24, bottom: 4),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: priorityColor.withValues(alpha: 0.5), width: 2),
+            ),
+          ),
+          child: ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            leading: GestureDetector(
+              onTap: postcodes.isNotEmpty ? () => _toggleNode(cityId) : null,
+              child: Icon(
+                postcodes.isNotEmpty
+                    ? (isExpanded ? Icons.expand_less : Icons.expand_more)
+                    : Icons.remove,
+                size: 20,
+              ),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    city['priority']?.toString().toUpperCase() ?? '',
+                    style: TextStyle(
+                      color: priorityColor,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  city['name']?.toString() ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ],
+            ),
+            subtitle: Text(
+              '${city['productCount']} products | ${_num(city['totalImpressions']).toStringAsFixed(0)} impr | CTR ${(_num(city['ctr']) * 100).toStringAsFixed(1)}% | CP ${_num(city['cpScore']).toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
+        if (isExpanded)
+          ...postcodes.map((postcode) => _buildPostcodeRow(postcode as Map<String, dynamic>)),
+      ],
+    );
+  }
+
+  Widget _buildRegionRow(Map<String, dynamic> region) {
+    final priorityColor = _colorForPriority(region['priority']);
+    final regionId = region['name']?.toString() ?? '';
+    final isExpanded = _expandedNodes.contains(regionId);
+    final cities = region['cities'] as List? ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 4),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: priorityColor, width: 3),
+            ),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            leading: GestureDetector(
+              onTap: cities.isNotEmpty ? () => _toggleNode(regionId) : null,
+              child: Icon(
+                cities.isNotEmpty
+                    ? (isExpanded ? Icons.expand_less : Icons.expand_more)
+                    : Icons.remove,
+                size: 20,
+              ),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    region['priority']?.toString().toUpperCase() ?? '',
+                    style: TextStyle(
+                      color: priorityColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  region['name']?.toString() ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            subtitle: Text(
+              '${region['productCount']} products | ${_num(region['totalImpressions']).toStringAsFixed(0)} impr | CTR ${(_num(region['ctr']) * 100).toStringAsFixed(1)}% | CP ${_num(region['cpScore']).toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
+        if (isExpanded)
+          ...cities.map((city) => _buildCityRow(city as Map<String, dynamic>, regionId)),
+      ],
+    );
+  }
+
+  Widget _buildCountryHeader() {
+    final data = _mockTrendsData;
+    final priorityColor = _colorForPriority(data['priority']);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: priorityColor, width: 4),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spacingUnit),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.public, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    data['country']?.toString() ?? 'Sweden',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: priorityColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      data['priority']?.toString().toUpperCase() ?? '',
+                      style: TextStyle(
+                        color: priorityColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _MetricBadge(
+                    label: 'Products',
+                    value: data['productCount'].toString(),
+                    unit: '',
+                  ),
+                  _MetricBadge(
+                    label: 'Impressions',
+                    value: _num(data['totalImpressions']).toStringAsFixed(0),
+                    unit: '',
+                  ),
+                  _MetricBadge(
+                    label: 'CTR',
+                    value: (_num(data['ctr']) * 100).toStringAsFixed(1),
+                    unit: '%',
+                  ),
+                  _MetricBadge(
+                    label: 'CP Score',
+                    value: _num(data['cpScore']).toStringAsFixed(2),
+                    unit: '',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _mockTrendsData;
+    final regions = data['regions'] as List? ?? [];
+
+    return ListView(
+      padding: const EdgeInsets.all(AppTheme.spacingUnit),
+      children: [
+        _SectionHeader(
+          title: 'Trends by Geography',
+          subtitle:
+              'Product performance broken down by Swedish geographic hierarchy. Expand regions, cities, and postcodes to drill down.',
+          action: IconButton(
+            onPressed: () {
+              setState(() {
+                _expandedNodes.clear();
+              });
+            },
+            icon: const Icon(Icons.unfold_less),
+            tooltip: 'Collapse all',
+          ),
+        ),
+        const SizedBox(height: AppTheme.spacingUnit),
+        _buildCountryHeader(),
+        const SizedBox(height: 4),
+        ...regions.map((region) => _buildRegionRow(region as Map<String, dynamic>)),
+        const SizedBox(height: AppTheme.spacingUnit),
+        Card(
+          color: AppTheme.surfaceVariant.withValues(alpha: 0.5),
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacingUnit),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 18, color: AppTheme.textSecondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Trends data is currently in development. API integration coming soon.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
