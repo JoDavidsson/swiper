@@ -1316,7 +1316,7 @@ class _InsightCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
+                      color: color.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -1814,7 +1814,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
       margin: const EdgeInsets.only(left: 48, bottom: 4),
       decoration: BoxDecoration(
         border: Border(
-          left: BorderSide(color: priorityColor.withValues(alpha: 0.4), width: 2),
+          left: BorderSide(color: priorityColor.withOpacity(0.4), width: 2),
         ),
       ),
       child: ListTile(
@@ -1825,7 +1825,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: priorityColor.withValues(alpha: 0.15),
+                color: priorityColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -1865,7 +1865,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
           margin: const EdgeInsets.only(left: 24, bottom: 4),
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: priorityColor.withValues(alpha: 0.5), width: 2),
+              left: BorderSide(color: priorityColor.withOpacity(0.5), width: 2),
             ),
           ),
           child: ListTile(
@@ -1885,7 +1885,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: priorityColor.withValues(alpha: 0.15),
+                    color: priorityColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -1948,7 +1948,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: priorityColor.withValues(alpha: 0.15),
+                    color: priorityColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -2012,7 +2012,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: priorityColor.withValues(alpha: 0.15),
+                      color: priorityColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
@@ -2088,7 +2088,7 @@ class _RetailerTrendsTabState extends ConsumerState<_RetailerTrendsTab> {
         ...regions.map((region) => _buildRegionRow(region as Map<String, dynamic>)),
         const SizedBox(height: AppTheme.spacingUnit),
         Card(
-          color: AppTheme.surfaceVariant.withValues(alpha: 0.5),
+          color: AppTheme.surfaceVariant.withOpacity(0.5),
           child: Padding(
             padding: const EdgeInsets.all(AppTheme.spacingUnit),
             child: Row(
@@ -2231,7 +2231,7 @@ class _CampaignComposerSheetState extends State<_CampaignComposerSheet> {
               ),
               const SizedBox(height: AppTheme.spacingUnit),
               DropdownButtonFormField<String>(
-                initialValue: _segmentId,
+                value: _segmentId,
                 decoration: const InputDecoration(labelText: 'Segment'),
                 items: widget.segments.map((segment) {
                   final id = segment['id']?.toString() ?? '';
@@ -2246,7 +2246,7 @@ class _CampaignComposerSheetState extends State<_CampaignComposerSheet> {
               ),
               const SizedBox(height: AppTheme.spacingUnit),
               DropdownButtonFormField<String>(
-                initialValue: _productMode,
+                value: _productMode,
                 decoration: const InputDecoration(labelText: 'Product mode'),
                 items: const [
                   DropdownMenuItem(
@@ -2502,7 +2502,7 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(AppTheme.radiusChip),
       ),
       child: Text(

@@ -217,7 +217,7 @@ class _CompareTable extends StatelessWidget {
 
     return Table(
       border:
-          TableBorder.all(color: AppTheme.textCaption.withValues(alpha: 0.3)),
+          TableBorder.all(color: AppTheme.textCaption.withOpacity(0.3)),
       columnWidths: columnWidths,
       children: [
         TableRow(

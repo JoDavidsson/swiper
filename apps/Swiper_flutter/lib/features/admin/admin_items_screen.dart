@@ -372,7 +372,7 @@ class _AdminItemCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppTheme.negativeDislike.withValues(alpha: 0.15),
+                              color: AppTheme.negativeDislike.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -451,7 +451,7 @@ class _AdminItemDetailSheet extends StatelessWidget {
               height: 4,
               margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
               decoration: BoxDecoration(
-                color: AppTheme.textCaption.withValues(alpha: 0.4),
+                color: AppTheme.textCaption.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

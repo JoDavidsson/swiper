@@ -607,7 +607,7 @@ class _RetailerCard extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             color: hasOverride
-                ? AppTheme.warning.withValues(alpha: 0.15)
+                ? AppTheme.warning.withOpacity(0.15)
                 : AppTheme.surfaceVariant,
             borderRadius: BorderRadius.circular(8),
           ),
@@ -778,12 +778,12 @@ class _RetailerGovernanceSheetState
                                   bottom: AppTheme.spacingUnit),
                               decoration: BoxDecoration(
                                 color:
-                                    AppTheme.warning.withValues(alpha: 0.1),
+                                    AppTheme.warning.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(
                                     AppTheme.radiusCard),
                                 border: Border.all(
                                     color: AppTheme.warning
-                                        .withValues(alpha: 0.3)),
+                                        .withOpacity(0.3)),
                               ),
                               child: Row(
                                 children: [

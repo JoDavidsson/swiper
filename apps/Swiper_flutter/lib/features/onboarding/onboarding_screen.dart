@@ -94,7 +94,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             LinearProgressIndicator(
               value: (_currentStep + 1) / _totalSteps,
-              backgroundColor: AppTheme.textCaption.withValues(alpha: 0.2),
+              backgroundColor: AppTheme.textCaption.withOpacity(0.2),
               valueColor:
                   const AlwaysStoppedAnimation<Color>(AppTheme.primaryAction),
             ),

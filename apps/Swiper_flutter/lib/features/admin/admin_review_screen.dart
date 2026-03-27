@@ -602,7 +602,7 @@ class _AdminReviewScreenState extends ConsumerState<AdminReviewScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
-                    initialValue: category,
+                    value: category,
                     items: _categories
                         .map((c) => DropdownMenuItem<String>(
                               value: c,
@@ -729,7 +729,7 @@ class _AdminReviewScreenState extends ConsumerState<AdminReviewScreen> {
                   ),
                   const SizedBox(height: AppTheme.spacingUnit * 0.75),
                   DropdownButtonFormField<String>(
-                    initialValue: _targetCategory,
+                    value: _targetCategory,
                     items: _categories
                         .map(
                           (c) => DropdownMenuItem<String>(
@@ -752,7 +752,7 @@ class _AdminReviewScreenState extends ConsumerState<AdminReviewScreen> {
                       if (_source == _ReviewSource.sampling)
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: _samplingStrategy,
+                            value: _samplingStrategy,
                             items: const [
                               DropdownMenuItem(
                                   value: 'uncertain', child: Text('Uncertain')),

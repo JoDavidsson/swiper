@@ -320,10 +320,10 @@ class _SwipeDeckState extends State<SwipeDeck> {
                   vertical: AppTheme.spacingUnit * 0.75,
                 ),
                 decoration: BoxDecoration(
-                  color: AppTheme.surface.withValues(alpha: 0.9),
+                  color: AppTheme.surface.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                   border: Border.all(
-                    color: AppTheme.outlineSoft.withValues(alpha: 0.8),
+                    color: AppTheme.outlineSoft.withOpacity(0.8),
                   ),
                 ),
                 child: Row(
@@ -418,7 +418,7 @@ class _DeckActionButtonState extends State<_DeckActionButton> {
           duration: const Duration(milliseconds: 130),
           curve: Curves.easeOutCubic,
           child: Material(
-            color: widget.color.withValues(alpha: enabled ? 0.15 : 0.08),
+            color: widget.color.withOpacity(enabled ? 0.15 : 0.08),
             shape: const CircleBorder(),
             child: IconButton(
               icon: Icon(
@@ -514,8 +514,8 @@ class _UndoActionButton extends StatelessWidget {
         tooltip: tooltip,
         onPressed: onPressed,
         style: IconButton.styleFrom(
-          backgroundColor: AppTheme.surface.withValues(alpha: 0.95),
-          side: BorderSide(color: AppTheme.outlineSoft.withValues(alpha: 0.8)),
+          backgroundColor: AppTheme.surface.withOpacity(0.95),
+          side: BorderSide(color: AppTheme.outlineSoft.withOpacity(0.8)),
         ),
       ),
     );
@@ -548,7 +548,7 @@ class _EmptyDeckWidget extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppTheme.textCaption.withValues(alpha: 0.1),
+                color: AppTheme.textCaption.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(40),
               ),
               child: Icon(

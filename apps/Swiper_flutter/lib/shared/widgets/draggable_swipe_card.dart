@@ -236,12 +236,12 @@ class _FeedbackStamp extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.86),
+        color: AppTheme.surface.withOpacity(0.86),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color, width: 2.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),

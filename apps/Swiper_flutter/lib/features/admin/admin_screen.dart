@@ -335,7 +335,7 @@ class _AlertCard extends StatelessWidget {
     final color = triggered ? AppTheme.negativeDislike : AppTheme.positiveLike;
     return Card(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
-      color: color.withValues(alpha: 0.08),
+      color: color.withOpacity(0.08),
       child: ListTile(
         leading: Icon(
           triggered ? Icons.warning_amber_rounded : Icons.check_circle,
@@ -447,7 +447,7 @@ class _MetricChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppTheme.primaryAction.withValues(alpha: 0.08),
+        color: AppTheme.primaryAction.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(

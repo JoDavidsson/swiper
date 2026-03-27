@@ -626,7 +626,7 @@ class _TopBar extends StatelessWidget {
           value: progress,
           minHeight: 6,
           borderRadius: BorderRadius.circular(999),
-          backgroundColor: AppTheme.textCaption.withValues(alpha: 0.2),
+          backgroundColor: AppTheme.textCaption.withOpacity(0.2),
           valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE4C755)),
         ),
         const SizedBox(height: AppTheme.spacingUnit / 2),
@@ -813,7 +813,7 @@ class _SelectionTile extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withOpacity(0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),

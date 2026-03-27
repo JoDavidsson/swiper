@@ -53,7 +53,7 @@ class GoldCardBudgetState extends State<GoldCardBudget> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+            color: const Color(0xFFFFD700).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -67,8 +67,8 @@ class GoldCardBudgetState extends State<GoldCardBudget> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFFFD700).withValues(alpha: 0.2),
-                  const Color(0xFFFFD700).withValues(alpha: 0.05),
+                  const Color(0xFFFFD700).withOpacity(0.2),
+                  const Color(0xFFFFD700).withOpacity(0.05),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -118,7 +118,7 @@ class GoldCardBudgetState extends State<GoldCardBudget> {
                       vertical: AppTheme.spacingUnit,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryAction.withValues(alpha: 0.1),
+                      color: AppTheme.primaryAction.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(AppTheme.radiusChip),
                     ),
                     child: Text(
@@ -136,9 +136,9 @@ class GoldCardBudgetState extends State<GoldCardBudget> {
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: AppTheme.primaryAction,
-                      inactiveTrackColor: AppTheme.textCaption.withValues(alpha: 0.2),
+                      inactiveTrackColor: AppTheme.textCaption.withOpacity(0.2),
                       thumbColor: AppTheme.primaryAction,
-                      overlayColor: AppTheme.primaryAction.withValues(alpha: 0.2),
+                      overlayColor: AppTheme.primaryAction.withOpacity(0.2),
                       trackHeight: 6,
                       rangeThumbShape: const RoundRangeSliderThumbShape(
                         enabledThumbRadius: 12,
@@ -265,7 +265,7 @@ class GoldCardBudgetState extends State<GoldCardBudget> {
                 Text(
                   'Swipe left to skip',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textCaption.withValues(alpha: 0.7),
+                    color: AppTheme.textCaption.withOpacity(0.7),
                   ),
                 ),
               ],
@@ -306,13 +306,13 @@ class _QuickSelectChip extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryAction.withValues(alpha: 0.15)
+              ? AppTheme.primaryAction.withOpacity(0.15)
               : AppTheme.background,
           borderRadius: BorderRadius.circular(AppTheme.radiusChip),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryAction
-                : AppTheme.textCaption.withValues(alpha: 0.3),
+                : AppTheme.textCaption.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -330,7 +330,7 @@ class _QuickSelectChip extends StatelessWidget {
               subtitle,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: isSelected
-                    ? AppTheme.primaryAction.withValues(alpha: 0.8)
+                    ? AppTheme.primaryAction.withOpacity(0.8)
                     : AppTheme.textCaption,
                 fontSize: 10,
               ),

@@ -331,7 +331,7 @@ class _SourceCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.2)),
+                  border: Border.all(color: AppTheme.textCaption.withOpacity(0.2)),
                 ),
                 child: domain != null
                     ? ClipRRect(
@@ -364,7 +364,7 @@ class _SourceCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _modeColor(mode).withValues(alpha: 0.15),
+                            color: _modeColor(mode).withOpacity(0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -748,9 +748,9 @@ class _SourceDialogState extends State<_SourceDialog> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.1),
+                      color: AppTheme.error.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+                      border: Border.all(color: AppTheme.error.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
@@ -840,7 +840,7 @@ class _SourceDialogState extends State<_SourceDialog> {
                                 }
                               });
                             },
-                            selectedColor: AppTheme.primaryAction.withValues(alpha: 0.2),
+                            selectedColor: AppTheme.primaryAction.withOpacity(0.2),
                             checkmarkColor: AppTheme.primaryAction,
                           );
                         }).toList(),
@@ -923,9 +923,9 @@ class _SourceDialogState extends State<_SourceDialog> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.success.withValues(alpha: 0.1),
+        color: AppTheme.success.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
+        border: Border.all(color: AppTheme.success.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -939,7 +939,7 @@ class _SourceDialogState extends State<_SourceDialog> {
                   height: 24,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.2)),
+                    border: Border.all(color: AppTheme.textCaption.withOpacity(0.2)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(3),

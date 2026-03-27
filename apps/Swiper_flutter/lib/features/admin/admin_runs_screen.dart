@@ -243,7 +243,7 @@ class _RunCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: AppTheme.surface,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.2)),
+                          border: Border.all(color: AppTheme.textCaption.withOpacity(0.2)),
                         ),
                         child: sourceDomain != null
                             ? ClipRRect(
@@ -348,12 +348,12 @@ class _RunCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: isSuccess
-                              ? AppTheme.positiveLike.withValues(alpha: 0.15)
+                              ? AppTheme.positiveLike.withOpacity(0.15)
                               : isError
-                                  ? AppTheme.negativeDislike.withValues(alpha: 0.15)
+                                  ? AppTheme.negativeDislike.withOpacity(0.15)
                                   : isRunning
-                                      ? AppTheme.primaryAction.withValues(alpha: 0.15)
-                                      : AppTheme.textCaption.withValues(alpha: 0.15),
+                                      ? AppTheme.primaryAction.withOpacity(0.15)
+                                      : AppTheme.textCaption.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(AppTheme.radiusChip),
                         ),
                         child: Text(
@@ -433,7 +433,7 @@ class _RunCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(AppTheme.spacingUnit / 2),
                   decoration: BoxDecoration(
-                    color: AppTheme.negativeDislike.withValues(alpha: 0.1),
+                    color: AppTheme.negativeDislike.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(AppTheme.radiusChip),
                   ),
                   child: Row(
@@ -734,7 +734,7 @@ class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
               height: 4,
               margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
               decoration: BoxDecoration(
-                color: AppTheme.textCaption.withValues(alpha: 0.4),
+                color: AppTheme.textCaption.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -750,7 +750,7 @@ class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.2)),
+                  border: Border.all(color: AppTheme.textCaption.withOpacity(0.2)),
                 ),
                 child: sourceDomain != null
                     ? ClipRRect(
@@ -830,9 +830,9 @@ class _RunDetailSheetState extends ConsumerState<_RunDetailSheet> {
               width: double.infinity,
               padding: const EdgeInsets.all(AppTheme.spacingUnit),
               decoration: BoxDecoration(
-                color: AppTheme.negativeDislike.withValues(alpha: 0.1),
+                color: AppTheme.negativeDislike.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                border: Border.all(color: AppTheme.negativeDislike.withValues(alpha: 0.3)),
+                border: Border.all(color: AppTheme.negativeDislike.withOpacity(0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -983,9 +983,9 @@ class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderSta
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingUnit),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.1),
+        color: statusColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -997,7 +997,7 @@ class _StatusBadgeState extends State<_StatusBadge> with SingleTickerProviderSta
                     width: 12,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.5 + _pulseController.value * 0.5),
+                      color: statusColor.withOpacity(0.5 + _pulseController.value * 0.5),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
@@ -1073,7 +1073,7 @@ class _StageStepper extends StatelessWidget {
             return Expanded(
               child: Container(
                 height: 2,
-                color: isActive ? AppTheme.primaryAction : AppTheme.textCaption.withValues(alpha: 0.3),
+                color: isActive ? AppTheme.primaryAction : AppTheme.textCaption.withOpacity(0.3),
               ),
             );
           }
@@ -1119,7 +1119,7 @@ class _StageCircle extends StatelessWidget {
         ? AppTheme.negativeDislike
         : isActive
             ? AppTheme.primaryAction
-            : AppTheme.textCaption.withValues(alpha: 0.4);
+            : AppTheme.textCaption.withOpacity(0.4);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1182,7 +1182,7 @@ class _ProgressStats extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: AppTheme.textCaption.withValues(alpha: 0.1)),
+        border: Border.all(color: AppTheme.textCaption.withOpacity(0.1)),
       ),
       child: Column(
         children: [
@@ -1195,7 +1195,7 @@ class _ProgressStats extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: AppTheme.textCaption.withValues(alpha: 0.2),
+                      backgroundColor: AppTheme.textCaption.withOpacity(0.2),
                       valueColor: const AlwaysStoppedAnimation(AppTheme.primaryAction),
                       minHeight: 8,
                     ),
@@ -1259,7 +1259,7 @@ class _ProgressStat extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: highlight
             ? BoxDecoration(
-                color: AppTheme.positiveLike.withValues(alpha: 0.1),
+                color: AppTheme.positiveLike.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(AppTheme.radiusChip),
               )
             : null,
@@ -1374,7 +1374,7 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingUnit, vertical: AppTheme.spacingUnit / 2),
       decoration: BoxDecoration(
         color: isError 
-            ? AppTheme.negativeDislike.withValues(alpha: 0.1)
+            ? AppTheme.negativeDislike.withOpacity(0.1)
             : AppTheme.background,
         borderRadius: BorderRadius.circular(AppTheme.radiusChip),
       ),

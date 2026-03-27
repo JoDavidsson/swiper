@@ -204,7 +204,7 @@ Future<void> showDetailSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    barrierColor: Colors.black.withValues(alpha: 0.3),
+    barrierColor: Colors.black.withOpacity(0.3),
     backgroundColor: AppTheme.surface,
     shape: const RoundedRectangleBorder(
       borderRadius:
@@ -382,7 +382,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
                   decoration: BoxDecoration(
-                    color: AppTheme.textCaption.withValues(alpha: 0.4),
+                    color: AppTheme.textCaption.withOpacity(0.4),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -488,7 +488,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(_primaryCategoryDisplayLabel(
                               widget.item.primaryCategory!)),
                           backgroundColor:
-                              AppTheme.primaryAction.withValues(alpha: 0.12),
+                              AppTheme.primaryAction.withOpacity(0.12),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.primaryAction,
@@ -502,7 +502,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(_sofaShapeDisplayLabel(
                               widget.item.sofaTypeShape!)),
                           backgroundColor:
-                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                              AppTheme.surfaceVariant.withOpacity(0.9),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.textSecondary,
@@ -516,7 +516,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(_sofaFunctionDisplayLabel(
                               widget.item.sofaFunction!)),
                           backgroundColor:
-                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                              AppTheme.surfaceVariant.withOpacity(0.9),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.textSecondary,
@@ -530,7 +530,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(_seatBucketDisplayLabel(
                               widget.item.seatCountBucket!)),
                           backgroundColor:
-                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                              AppTheme.surfaceVariant.withOpacity(0.9),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.textSecondary,
@@ -545,7 +545,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(_environmentDisplayLabel(
                               widget.item.environment!)),
                           backgroundColor:
-                              AppTheme.surfaceVariant.withValues(alpha: 0.9),
+                              AppTheme.surfaceVariant.withOpacity(0.9),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.textSecondary,
@@ -559,7 +559,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                           label: Text(
                               _subCatDisplayLabel(widget.item.subCategory!)),
                           backgroundColor:
-                              AppTheme.primaryAction.withValues(alpha: 0.1),
+                              AppTheme.primaryAction.withOpacity(0.1),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.primaryAction,
@@ -572,7 +572,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                         (roomType) => Chip(
                           label: Text(_roomTypeDisplayLabel(roomType)),
                           backgroundColor:
-                              AppTheme.textSecondary.withValues(alpha: 0.1),
+                              AppTheme.textSecondary.withOpacity(0.1),
                           labelStyle:
                               Theme.of(context).textTheme.labelSmall?.copyWith(
                                     color: AppTheme.textSecondary,
@@ -620,12 +620,12 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                             _isLiked ? 'Remove from likes' : 'Add to likes',
                         style: IconButton.styleFrom(
                           backgroundColor: _isLiked
-                              ? AppTheme.positiveLike.withValues(alpha: 0.15)
+                              ? AppTheme.positiveLike.withOpacity(0.15)
                               : AppTheme.surface,
                           side: BorderSide(
                             color: _isLiked
                                 ? AppTheme.positiveLike
-                                : AppTheme.textCaption.withValues(alpha: 0.3),
+                                : AppTheme.textCaption.withOpacity(0.3),
                           ),
                         ),
                       ),
@@ -639,7 +639,7 @@ class _DetailSheetContentState extends State<DetailSheetContent> {
                       style: IconButton.styleFrom(
                         backgroundColor: AppTheme.surface,
                         side: BorderSide(
-                          color: AppTheme.textCaption.withValues(alpha: 0.3),
+                          color: AppTheme.textCaption.withOpacity(0.3),
                         ),
                       ),
                     ),
@@ -745,8 +745,8 @@ class _DetailGallery extends StatelessWidget {
               height: 6,
               decoration: BoxDecoration(
                 color: index == currentPage
-                    ? AppTheme.primaryAction.withValues(alpha: 0.9)
-                    : AppTheme.textCaption.withValues(alpha: 0.4),
+                    ? AppTheme.primaryAction.withOpacity(0.9)
+                    : AppTheme.textCaption.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -884,7 +884,7 @@ class _SpecificationsTable extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant.withValues(alpha: 0.5),
+        color: AppTheme.surfaceVariant.withOpacity(0.5),
         borderRadius: BorderRadius.circular(AppTheme.spacingUnit),
       ),
       padding: const EdgeInsets.all(AppTheme.spacingUnit),

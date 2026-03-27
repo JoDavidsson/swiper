@@ -145,9 +145,9 @@ class _BrandChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.86),
+        color: AppTheme.surface.withOpacity(0.86),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppTheme.outlineSoft.withValues(alpha: 0.9)),
+        border: Border.all(color: AppTheme.outlineSoft.withOpacity(0.9)),
       ),
       child: Text(
         label,
@@ -171,7 +171,7 @@ class _FeaturedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.priceHighlight.withValues(alpha: 0.95),
+        color: AppTheme.priceHighlight.withOpacity(0.95),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -322,9 +322,9 @@ class _InfoPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: AppTheme.surface.withValues(alpha: 0.74),
+            color: AppTheme.surface.withOpacity(0.74),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+            border: Border.all(color: Colors.white.withOpacity(0.55)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -362,10 +362,10 @@ class _InfoPill extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 decoration: BoxDecoration(
-                  color: AppTheme.priceHighlight.withValues(alpha: 0.14),
+                  color: AppTheme.priceHighlight.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: AppTheme.priceHighlight.withValues(alpha: 0.35),
+                    color: AppTheme.priceHighlight.withOpacity(0.35),
                   ),
                 ),
                 child: Text(

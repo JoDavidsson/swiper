@@ -1091,7 +1091,7 @@ class _SwipeHintOverlayState extends State<SwipeHintOverlay>
                 horizontal: AppTheme.spacingUnit * 1.5,
                 vertical: AppTheme.spacingUnit),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.35),
+              color: Colors.black.withOpacity(0.35),
               borderRadius: BorderRadius.circular(AppTheme.radiusChip),
             ),
             child: Column(
@@ -1131,7 +1131,7 @@ class _SheetHandle extends StatelessWidget {
         height: 4,
         margin: const EdgeInsets.only(bottom: AppTheme.spacingUnit),
         decoration: BoxDecoration(
-          color: AppTheme.textCaption.withValues(alpha: 0.4),
+          color: AppTheme.textCaption.withOpacity(0.4),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -1157,7 +1157,7 @@ class _DeckHeaderButton extends StatelessWidget {
         button: true,
         label: tooltip,
         child: Material(
-          color: AppTheme.surface.withValues(alpha: 0.88),
+          color: AppTheme.surface.withOpacity(0.88),
           shape: const CircleBorder(),
           elevation: 2,
           shadowColor: Colors.black12,
@@ -1776,10 +1776,10 @@ class _GoldCardSwipeWrapperState extends State<_GoldCardSwipeWrapper>
   Color? get _overlayColor {
     if (_dragDx > 30) {
       return AppTheme.positiveLike
-          .withValues(alpha: (_dragDx / 200).clamp(0, 0.3));
+          .withOpacity((_dragDx / 200).clamp(0.0, 0.3));
     } else if (_dragDx < -30) {
       return AppTheme.negativeDislike
-          .withValues(alpha: (-_dragDx / 200).clamp(0, 0.3));
+          .withOpacity((-_dragDx / 200).clamp(0.0, 0.3));
     }
     return null;
   }
@@ -1879,7 +1879,7 @@ class _ControlButton extends StatelessWidget {
       icon: Icon(icon, color: onPressed != null ? color : AppTheme.textCaption),
       onPressed: onPressed,
       style:
-          IconButton.styleFrom(backgroundColor: color.withValues(alpha: 0.2)),
+          IconButton.styleFrom(backgroundColor: color.withOpacity(0.2)),
     );
   }
 }

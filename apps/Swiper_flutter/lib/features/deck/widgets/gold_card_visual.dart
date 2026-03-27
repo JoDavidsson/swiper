@@ -40,7 +40,7 @@ class GoldCardVisualState extends State<GoldCardVisual> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+            color: const Color(0xFFFFD700).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -54,8 +54,8 @@ class GoldCardVisualState extends State<GoldCardVisual> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFFFFD700).withValues(alpha: 0.2),
-                  const Color(0xFFFFD700).withValues(alpha: 0.05),
+                  const Color(0xFFFFD700).withOpacity(0.2),
+                  const Color(0xFFFFD700).withOpacity(0.05),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -111,11 +111,11 @@ class GoldCardVisualState extends State<GoldCardVisual> {
                         shape: BoxShape.circle,
                         color: i < _selectedIds.length
                             ? AppTheme.positiveLike
-                            : AppTheme.textCaption.withValues(alpha: 0.3),
+                            : AppTheme.textCaption.withOpacity(0.3),
                         border: Border.all(
                           color: i < _selectedIds.length
                               ? AppTheme.positiveLike
-                              : AppTheme.textCaption.withValues(alpha: 0.5),
+                              : AppTheme.textCaption.withOpacity(0.5),
                           width: 2,
                         ),
                       ),
@@ -173,7 +173,7 @@ class GoldCardVisualState extends State<GoldCardVisual> {
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: AppTheme.positiveLike.withValues(alpha: 0.3),
+                                  color: AppTheme.positiveLike.withOpacity(0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -205,7 +205,7 @@ class GoldCardVisualState extends State<GoldCardVisual> {
                               opacity: isSelected ? 1.0 : 0.0,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: AppTheme.positiveLike.withValues(alpha: 0.2),
+                                  color: AppTheme.positiveLike.withOpacity(0.2),
                                 ),
                                 child: const Center(
                                   child: Icon(
@@ -261,7 +261,7 @@ class GoldCardVisualState extends State<GoldCardVisual> {
                 Text(
                   'Swipe left to skip',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.textCaption.withValues(alpha: 0.7),
+                    color: AppTheme.textCaption.withOpacity(0.7),
                   ),
                 ),
               ],
